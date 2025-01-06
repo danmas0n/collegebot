@@ -12,6 +12,12 @@ import {
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import pdfParse from 'pdf-parse';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const STORAGE_DIR = path.join(__dirname, '..', 'storage');
 
 interface CollegeData {
   name: string;
@@ -19,6 +25,8 @@ interface CollegeData {
   cdsUrl?: string;
   description?: string;
   dataPoints?: Record<string, any>;
+  storedFile?: string;
+  lastUpdated?: string;
 }
 
 class CollegeDataServer {
@@ -26,6 +34,11 @@ class CollegeDataServer {
   private colleges: Map<string, CollegeData> = new Map();
 
   constructor() {
+    // Ensure storage directory exists
+    if (!fs.existsSync(STORAGE_DIR)) {
+      fs.mkdirSync(STORAGE_DIR, { recursive: true });
+    }
+
     this.server = new Server(
       {
         name: 'college-data-server',
@@ -65,6 +78,19 @@ class CollegeDataServer {
                   year: {
                     type: 'string',
                     description: 'Academic year (e.g., "2022-2023")'
+                  }
+                },
+                required: ['collegeName']
+              }
+            },
+            get_cds_content: {
+              description: 'Get the full content of a stored CDS file',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  collegeName: {
+                    type: 'string',
+                    description: 'Name of the college'
                   }
                 },
                 required: ['collegeName']
@@ -158,6 +184,20 @@ class CollegeDataServer {
             required: ['collegeName'],
           },
         },
+        {
+          name: 'get_cds_content',
+          description: 'Get the full content of a stored CDS file',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              collegeName: {
+                type: 'string',
+                description: 'Name of the college',
+              },
+            },
+            required: ['collegeName'],
+          },
+        },
       ],
     }));
 
@@ -169,6 +209,8 @@ class CollegeDataServer {
             return await this.handleSearchCollegeData(request.params.arguments);
           case 'get_cds_data':
             return await this.handleGetCdsData(request.params.arguments);
+          case 'get_cds_content':
+            return await this.handleGetCdsContent(request.params.arguments);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -185,6 +227,34 @@ class CollegeDataServer {
         );
       }
     });
+  }
+
+  private async downloadAndStoreCDS(college: CollegeData): Promise<string | null> {
+    try {
+      const response = await axios.get(college.url, {
+        responseType: 'arraybuffer',
+      });
+
+      const contentType = response.headers['content-type'];
+      const isHTML = contentType?.includes('text/html');
+      const isPDF = contentType?.includes('application/pdf');
+
+      if (!isHTML && !isPDF) {
+        console.error('Unsupported content type:', contentType);
+        return null;
+      }
+
+      const filename = path.join(
+        STORAGE_DIR,
+        `${college.name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${isHTML ? 'html' : 'pdf'}`
+      );
+
+      fs.writeFileSync(filename, response.data);
+      return filename;
+    } catch (error) {
+      console.error('Error downloading CDS:', error);
+      return null;
+    }
   }
 
   private async handleSearchCollegeData(args: any) {
@@ -212,30 +282,33 @@ class CollegeDataServer {
         const $ = cheerio.load(response.data);
         const searchResults = $('.g');
 
-        searchResults.each((_, element) => {
+        for (const element of searchResults.toArray()) {
           const title = $(element).find('h3').text();
           const url = $(element).find('a').attr('href');
           const description = $(element).find('.VwiC3b').text();
 
           if (title && url) {
-            results.push({
-              name: title,
-              url: url.startsWith('/url?q=')
-                ? url.substring(7, url.indexOf('&'))
-                : url,
-              description,
-            });
+            const cleanUrl = url.startsWith('/url?q=')
+              ? url.substring(7, url.indexOf('&'))
+              : url;
 
-            // Store in memory for later use
-            this.colleges.set(title, {
+            const collegeData: CollegeData = {
               name: title,
-              url: url.startsWith('/url?q=')
-                ? url.substring(7, url.indexOf('&'))
-                : url,
+              url: cleanUrl,
               description,
-            });
+              lastUpdated: new Date().toISOString()
+            };
+
+            // Download and store the CDS file
+            const storedFile = await this.downloadAndStoreCDS(collegeData);
+            if (storedFile) {
+              collegeData.storedFile = storedFile;
+            }
+
+            results.push(collegeData);
+            this.colleges.set(title, collegeData);
           }
-        });
+        }
       } catch (error) {
         console.error('Web search error:', error);
       }
@@ -245,9 +318,10 @@ class CollegeDataServer {
     const formattedResults = results.map(result => ({
       name: result.name,
       url: result.url,
-      description: result.description
+      description: result.description,
+      hasStoredFile: !!result.storedFile
     }));
-    console.error('MCP Server - Formatted results:', formattedResults);
+    
     return {
       content: [
         {
@@ -284,45 +358,59 @@ class CollegeDataServer {
     }
 
     try {
-      // Fetch the PDF file
       const college = this.colleges.get(args.collegeName);
-      if (!college?.url) {
-        throw new Error('College URL not found');
+      if (!college) {
+        throw new Error('College data not found');
       }
 
-      const response = await axios.get(college.url, {
-        responseType: 'arraybuffer',
-      });
+      let content: Buffer;
+      if (college.storedFile) {
+        content = fs.readFileSync(college.storedFile);
+      } else {
+        const response = await axios.get(college.url, {
+          responseType: 'arraybuffer',
+        });
+        content = Buffer.from(response.data);
+        
+        // Store for future use
+        const storedFile = await this.downloadAndStoreCDS(college);
+        if (storedFile) {
+          college.storedFile = storedFile;
+          this.colleges.set(args.collegeName, college);
+        }
+      }
 
-      // For now, return the college info without PDF parsing
-      // We'll implement PDF parsing in a future update
-      const sections = {
-        admissions: "PDF parsing coming soon",
-        enrollment: "PDF parsing coming soon",
-        expenses: "PDF parsing coming soon",
-        financialAid: "PDF parsing coming soon"
-      };
+      // Parse content based on file type
+      const isPDF = college.url.toLowerCase().endsWith('.pdf') || 
+                   college.storedFile?.toLowerCase().endsWith('.pdf');
+      
+      let sections;
+      if (isPDF) {
+        const data = await pdfParse(content);
+        sections = this.parseCDSContent(data.text);
+      } else {
+        // Handle HTML content
+        const $ = cheerio.load(content);
+        sections = this.parseCDSContent($.text());
+      }
 
       return {
-        jsonrpc: '2.0',
-        id: 1,
-        result: {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  collegeName: args.collegeName,
-                  year: args.year || 'latest',
-                  url: college.url,
-                  sections,
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        },
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                collegeName: args.collegeName,
+                year: args.year || 'latest',
+                url: college.url,
+                sections,
+                hasStoredFile: !!college.storedFile
+              },
+              null,
+              2
+            ),
+          },
+        ],
       };
     } catch (error: unknown) {
       throw new McpError(
@@ -330,6 +418,61 @@ class CollegeDataServer {
         `Error fetching CDS data: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  private async handleGetCdsContent(args: any) {
+    if (!args.collegeName || typeof args.collegeName !== 'string') {
+      throw new McpError(ErrorCode.InvalidParams, 'Invalid college name parameter');
+    }
+
+    const college = this.colleges.get(args.collegeName);
+    if (!college || !college.storedFile) {
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `No stored CDS file found for college: ${args.collegeName}`
+      );
+    }
+
+    try {
+      const content = fs.readFileSync(college.storedFile);
+      const isPDF = college.storedFile.toLowerCase().endsWith('.pdf');
+
+      if (isPDF) {
+        const data = await pdfParse(content);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: data.text
+            }
+          ]
+        };
+      } else {
+        // For HTML files, return the raw content
+        return {
+          content: [
+            {
+              type: 'text',
+              text: content.toString()
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Error reading CDS content: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private parseCDSContent(text: string) {
+    return {
+      admissions: this.extractSection(text, /B\. ENROLLMENT AND PERSISTENCE[\s\S]*?C\. FIRST-TIME/i),
+      enrollment: this.extractSection(text, /C\. FIRST-TIME[\s\S]*?D\. TRANSFER/i),
+      expenses: this.extractSection(text, /G\. ANNUAL EXPENSES[\s\S]*?H\. FINANCIAL AID/i),
+      financialAid: this.extractSection(text, /H\. FINANCIAL AID[\s\S]*?I\. INSTRUCTIONAL/i)
+    };
   }
 
   private extractSection(text: string, pattern: RegExp): string {
