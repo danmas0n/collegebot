@@ -11,10 +11,19 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import pdfParse from 'pdf-parse';
+import PDFParser from 'pdf2json';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+// Google Custom Search configuration
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
+
+if (!GOOGLE_API_KEY || !GOOGLE_CSE_ID) {
+  throw new Error('Google API key and Custom Search Engine ID are required');
+}
+
+const GOOGLE_SEARCH_API = 'https://www.googleapis.com/customsearch/v1';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
@@ -257,82 +266,100 @@ class CollegeDataServer {
     }
   }
 
-  private async handleSearchCollegeData(args: any) {
-    console.error('MCP Server - Handling search request with args:', JSON.stringify(args, null, 2));
-    if (!args.query || typeof args.query !== 'string') {
-      throw new McpError(ErrorCode.InvalidParams, 'Invalid query parameter');
-    }
+  private async searchCDSFiles(query: string): Promise<CollegeData[]> {
+    try {
+      const searchResponse = await axios.get(GOOGLE_SEARCH_API, {
+        params: {
+          key: GOOGLE_API_KEY,
+          cx: GOOGLE_CSE_ID,
+          q: `${query} site:.edu "Common Data Set" filetype:pdf`,
+          num: 10
+        }
+      });
 
-    const includeWebSearch = args.includeWebSearch !== false;
-    const results: CollegeData[] = [];
-
-    if (includeWebSearch) {
-      try {
-        // Search for college data sources
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
-          `${args.query} site:.edu "Common Data Set" filetype:pdf`
-        )}`;
-        const response = await axios.get(searchUrl, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          },
-        });
-
-        const $ = cheerio.load(response.data);
-        const searchResults = $('.g');
-
-        for (const element of searchResults.toArray()) {
-          const title = $(element).find('h3').text();
-          const url = $(element).find('a').attr('href');
-          const description = $(element).find('.VwiC3b').text();
-
-          if (title && url) {
-            const cleanUrl = url.startsWith('/url?q=')
-              ? url.substring(7, url.indexOf('&'))
-              : url;
-
+      const results: CollegeData[] = [];
+      if (searchResponse.data.items) {
+        for (const item of searchResponse.data.items) {
+          if (item.title && item.link) {
             const collegeData: CollegeData = {
-              name: title,
-              url: cleanUrl,
-              description,
+              name: item.title,
+              url: item.link,
+              description: item.snippet || '',
               lastUpdated: new Date().toISOString()
             };
 
-            // Download and store the CDS file
             const storedFile = await this.downloadAndStoreCDS(collegeData);
             if (storedFile) {
               collegeData.storedFile = storedFile;
             }
 
             results.push(collegeData);
-            this.colleges.set(title, collegeData);
+            this.colleges.set(item.title, collegeData);
           }
         }
-      } catch (error) {
-        console.error('Web search error:', error);
       }
+      return results;
+    } catch (error) {
+      console.error('Google Custom Search error:', error);
+      if (error instanceof Error) {
+        throw new McpError(ErrorCode.InternalError, `CDS search failed: ${error.message}`);
+      }
+      return [];
+    }
+  }
+
+  private async handleSearchCollegeData(args: any) {
+    console.error('MCP Server - Handling search request with args:', JSON.stringify(args, null, 2));
+    if (!args.query || typeof args.query !== 'string') {
+      throw new McpError(ErrorCode.InvalidParams, 'Invalid query parameter');
     }
 
-    console.error('MCP Server - Search results:', results);
-    const formattedResults = results.map(result => ({
-      name: result.name,
-      url: result.url,
-      description: result.description,
-      hasStoredFile: !!result.storedFile
-    }));
-    
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({
-            query: args.query,
-            results: formattedResults
-          })
+    try {
+      // Use Google Custom Search API for general college information
+      const searchResponse = await axios.get(GOOGLE_SEARCH_API, {
+        params: {
+          key: GOOGLE_API_KEY,
+          cx: GOOGLE_CSE_ID,
+          q: args.query,
+          num: 10
         }
-      ]
-    };
+      });
+
+      const results = searchResponse.data.items?.map((item: any) => ({
+        title: item.title,
+        url: item.link,
+        description: item.snippet || '',
+        source: new URL(item.link).hostname
+      })) || [];
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              query: args.query,
+              results
+            })
+          }
+        ]
+      };
+    } catch (error) {
+      console.error('Search error:', error);
+      if (error instanceof Error) {
+        throw new McpError(ErrorCode.InternalError, `Search failed: ${error.message}`);
+      }
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              query: args.query,
+              results: []
+            })
+          }
+        ]
+      };
+    }
   }
 
   private async handleGetCdsData(args: any) {
@@ -340,21 +367,17 @@ class CollegeDataServer {
       throw new McpError(ErrorCode.InvalidParams, 'Invalid college name parameter');
     }
 
-    const college = this.colleges.get(args.collegeName);
+    let college = this.colleges.get(args.collegeName);
     if (!college) {
-      // If college not found in memory, try to search for it
-      const searchResult = await this.handleSearchCollegeData({
-        query: `${args.collegeName} Common Data Set`,
-        includeWebSearch: true,
-      });
-
-      const searchData = JSON.parse(searchResult.content[0].text);
-      if (searchData.results.length === 0) {
+      // If college not found in memory, try to search for CDS files
+      const results = await this.searchCDSFiles(args.collegeName);
+      if (results.length === 0) {
         throw new McpError(
           ErrorCode.InvalidRequest,
           `No CDS data found for college: ${args.collegeName}`
         );
       }
+      college = results[0]; // Use the first result
     }
 
     try {
@@ -386,8 +409,23 @@ class CollegeDataServer {
       
       let sections;
       if (isPDF) {
-        const data = await pdfParse(content);
-        sections = this.parseCDSContent(data.text);
+        const pdfParser = new PDFParser();
+        const pdfText = await new Promise<string>((resolve, reject) => {
+          pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+            const pages = pdfData.Pages || [];
+            const text = pages.map((page: any) => {
+              const texts = page.Texts || [];
+              return texts.map((text: any) => {
+                const runs = text.R || [];
+                return runs.map((r: any) => r.T || '').join(' ');
+              }).join(' ');
+            }).join('\n');
+            resolve(decodeURIComponent(text));
+          });
+          pdfParser.on('pdfParser_dataError', reject);
+          pdfParser.parseBuffer(content);
+        });
+        sections = this.parseCDSContent(pdfText);
       } else {
         // Handle HTML content
         const $ = cheerio.load(content);
@@ -438,12 +476,27 @@ class CollegeDataServer {
       const isPDF = college.storedFile.toLowerCase().endsWith('.pdf');
 
       if (isPDF) {
-        const data = await pdfParse(content);
+        const pdfParser = new PDFParser();
+        const pdfText = await new Promise<string>((resolve, reject) => {
+          pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+            const pages = pdfData.Pages || [];
+            const text = pages.map((page: any) => {
+              const texts = page.Texts || [];
+              return texts.map((text: any) => {
+                const runs = text.R || [];
+                return runs.map((r: any) => r.T || '').join(' ');
+              }).join(' ');
+            }).join('\n');
+            resolve(decodeURIComponent(text));
+          });
+          pdfParser.on('pdfParser_dataError', reject);
+          pdfParser.parseBuffer(content);
+        });
         return {
           content: [
             {
               type: 'text',
-              text: data.text
+              text: pdfText
             }
           ]
         };

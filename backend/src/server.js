@@ -1,7 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import { config } from 'dotenv';
 import { generatePrompt } from './prompts/prompt.js';
+
+// Load environment variables
+config();
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -18,15 +22,23 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from 'crypto';
+import Anthropic from '@anthropic-ai/sdk';
 
 // Helper function to create MCP client
 const createMcpClient = async (serverName) => {
+  // Base environment with PATH
+  let env = { PATH: process.env.PATH };
   let command, args;
   
   switch (serverName) {
     case 'college-data':
       command = 'node';
       args = ['../mcp/college-data-server/build/index.js'];
+      env = {
+        ...env,
+        GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+        GOOGLE_CSE_ID: process.env.GOOGLE_CSE_ID
+      };
       break;
     case 'student-data':
       command = 'node';
@@ -46,7 +58,8 @@ const createMcpClient = async (serverName) => {
 
   const transport = new StdioClientTransport({
     command,
-    args
+    args,
+    env
   });
 
   const client = new Client({
@@ -402,6 +415,12 @@ app.post('/api/chat/claude/message', async (req, res) => {
     const systemPrompt = generatePrompt(studentName, studentData);
     console.log('Backend - System prompt length:', systemPrompt.length);
 
+    // Initialize Anthropic client
+    const anthropic = new Anthropic({
+      apiKey,
+      baseURL: 'https://api.anthropic.com'
+    });
+
     // Prepare conversation messages
     const messages = [
       ...history.map(msg => ({
@@ -414,195 +433,151 @@ app.post('/api/chat/claude/message', async (req, res) => {
       }
     ];
 
-    console.log('Backend - Preparing Claude API request');
-    const claudeRequest = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 4096,
-        messages,
-        temperature: 0.7,
-        system: systemPrompt,
-        stream: true
-      })
-    };
-    console.log('Backend - Claude request config:', {
-      url: 'https://api.anthropic.com/v1/messages',
-      headers: Object.keys(claudeRequest.headers),
-      bodyLength: claudeRequest.body.length
-    });
+    // Helper function to process a single stream
+    const processStream = async (currentMessages) => {
+      console.log('Backend - Starting Claude stream');
+      let toolBuffer = '';
+      let hasToolCalls = false;
+      
+      try {
+        const stream = await anthropic.messages.stream({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 4096,
+          messages: currentMessages,
+          system: systemPrompt,
+          temperature: 0.7
+        });
 
-    // Call Claude API with streaming enabled
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', claudeRequest);
-    
-    console.log('Backend - Claude API response:', {
-      status: claudeResponse.status,
-      headers: Object.fromEntries(claudeResponse.headers.entries())
-    });
-
-    if (!claudeResponse.ok) {
-      const errorText = await claudeResponse.text();
-      console.error('Backend - Claude API error:', {
-        status: claudeResponse.status,
-        error: errorText
-      });
-      throw new Error(`Failed to get response from Claude API: ${errorText}`);
-    }
-
-    // Process the stream
-    const reader = claudeResponse.body.getReader();
-    const decoder = new TextDecoder();
-    let lineBuffer = '';
-    let toolBuffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // Append new data to buffer and split into lines
-        lineBuffer += decoder.decode(value, { stream: true });
-        const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop() || ''; // Keep last partial line in buffer
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue;
-
-          try {
-            const data = JSON.parse(line.slice(6)); // Remove 'data: ' prefix
+        for await (const streamEvent of stream) {
+          if (streamEvent.type === 'message_start') {
+            sendSSE({ type: 'thinking', content: 'Starting to process your request...' });
+          }
+          else if (streamEvent.type === 'content_block_delta' && streamEvent.delta.type === 'text_delta') {
+            const text = streamEvent.delta.text;
+            // Accumulate text
+            toolBuffer += text;
             
-            if (data.type === 'message_start') {
-              sendSSE({ type: 'thinking', content: 'Starting to process your request...' });
-            }
-            else if (data.type === 'content_block_delta' && data.delta.type === 'text_delta') {
-              const text = data.delta.text;
-              // Accumulate text
-              toolBuffer += text;
-              
-              // Forward Claude's text and add to conversation
-              const thinkingMessage = { 
-                type: 'thinking', 
-                content: text 
-              };
-              sendSSE(thinkingMessage);
-              
-              // Add to messages for final response
-              messages.push({
-                role: 'thinking',
-                content: text
-              });
-            }
-            else if (data.type === 'message_stop') {
-              // Process message completion
-              if (toolBuffer.trim()) {
-                // Check for tool calls
-                const toolCalls = toolBuffer.match(/<tool>.*?<\/tool>\s*<parameters>.*?<\/parameters>/gs);
-                if (toolCalls) {
-                  for (const toolCall of toolCalls) {
-                    const toolMatch = toolCall.match(/<tool>(.*?)<\/tool>\s*<parameters>(.*?)<\/parameters>/s);
-                    if (toolMatch) {
-                      const toolName = toolMatch[1];
-                      const params = JSON.parse(toolMatch[2]);
+            // Forward Claude's text
+            sendSSE({ 
+              type: 'thinking', 
+              content: text 
+            });
+          }
+          else if (streamEvent.type === 'message_stop') {
+            // Process message completion
+            if (toolBuffer.trim()) {
+              // Check for tool calls
+              const toolCalls = toolBuffer.match(/<tool>.*?<\/tool>\s*<parameters>.*?<\/parameters>/gs);
+              if (toolCalls) {
+                hasToolCalls = true;
+                for (const toolCall of toolCalls) {
+                  const toolMatch = toolCall.match(/<tool>(.*?)<\/tool>\s*<parameters>(.*?)<\/parameters>/s);
+                  if (toolMatch) {
+                    const toolName = toolMatch[1];
+                    const params = JSON.parse(toolMatch[2]);
 
-                      try {
-                        // Execute tool
-                        const toolResult = await executeMcpTool('college-data', toolName, params);
-                        const toolResponse = JSON.parse(toolResult.content[0].text);
-                        
-                        // Send tool use and response
-                        sendSSE({ 
-                          type: 'thinking', 
-                          content: `Using ${toolName} tool...`,
-                          toolData: JSON.stringify(params, null, 2)
-                        });
-                        sendSSE({ 
-                          type: 'thinking',
-                          content: `Tool result:`,
-                          toolData: JSON.stringify(toolResponse, null, 2)
-                        });
+                    try {
+                      // Execute tool
+                      const toolResult = await executeMcpTool('college-data', toolName, params);
+                      const toolResponse = JSON.parse(toolResult.content[0].text);
+                      
+                      // Send tool use and response
+                      sendSSE({ 
+                        type: 'thinking', 
+                        content: `Using ${toolName} tool...`,
+                        toolData: JSON.stringify(params, null, 2)
+                      });
+                      sendSSE({ 
+                        type: 'thinking',
+                        content: `Tool result:`,
+                        toolData: JSON.stringify(toolResponse, null, 2)
+                      });
 
-                        // Add tool result to conversation as a user message
-                        messages.push({
-                          role: 'user',
-                          content: `Tool ${toolName} returned: ${JSON.stringify(toolResponse, null, 2)}`
-                        });
-
-                        // Add tool result and continue processing the same stream
-                        messages.push({
-                          role: 'user',
-                          content: `Tool ${toolName} returned: ${JSON.stringify(toolResponse, null, 2)}`
-                        });
-                        
-                        // Reset tool buffer and continue processing
-                        toolBuffer = '';
-                        
-                        // Send the tool result to the client
-                        sendSSE({ 
-                          type: 'thinking',
-                          content: `Analyzing the results from ${toolName}...`
-                        });
-                      } catch (error) {
-                        console.error(`Error executing tool ${toolName}:`, error);
-                        sendSSE({ 
-                          type: 'thinking',
-                          content: `Error using ${toolName}: ${error.message}`
-                        });
-                      }
+                      // Add tool result to conversation
+                      currentMessages.push({
+                        role: 'user',
+                        content: `Tool ${toolName} returned: ${JSON.stringify(toolResponse, null, 2)}`
+                      });
+                      
+                      // Reset tool buffer
+                      toolBuffer = '';
+                      
+                      // Send the tool result to the client
+                      sendSSE({ 
+                        type: 'thinking',
+                        content: `Analyzing the results from ${toolName}...`
+                      });
+                    } catch (error) {
+                      console.error(`Error executing tool ${toolName}:`, error);
+                      sendSSE({ 
+                        type: 'thinking',
+                        content: `Error using ${toolName}: ${error.message}`
+                      });
                     }
                   }
-                } else {
-                  // No tool calls, send final response
-                  messages.push({
-                    role: 'assistant',
-                    content: toolBuffer
-                  });
-                  sendSSE({ 
-                    type: 'response',
-                    content: toolBuffer
-                  });
                 }
-
-                // Save chat history if we have both student ID and chat data
-                if (currentChat?.id && studentData?.id) {
-                  try {
-                    const updatedChat = {
-                      ...currentChat,
-                      messages: messages.filter(msg => msg.role !== 'thinking'),
-                      updatedAt: new Date().toISOString()
-                    };
-                    await executeMcpTool('student-data', 'save_chat', { 
-                      studentId: studentData.id,
-                      chat: updatedChat
-                    });
-                  } catch (error) {
-                    console.error('Failed to save chat:', error);
-                    // Continue processing even if save fails
-                  }
-                }
+              } else {
+                // No tool calls, send final response
+                currentMessages.push({
+                  role: 'assistant',
+                  content: toolBuffer
+                });
+                sendSSE({ 
+                  type: 'response',
+                  content: toolBuffer
+                });
               }
+            }
 
-              // Send completion
-              sendSSE({ type: 'complete' });
-              toolBuffer = '';
+            // Send completion for this stream
+            sendSSE({ type: 'complete' });
+            toolBuffer = '';
+          }
+          else if (streamEvent.type === 'error') {
+            sendSSE({ type: 'error', content: streamEvent.error.message });
+          }
+        }
+
+        return { hasToolCalls, messages: currentMessages };
+      } catch (error) {
+        console.error('Backend - Error in stream processing:', error);
+        sendSSE({ type: 'error', content: error.message });
+        throw error; // Re-throw to be caught by outer try-catch
+      }
+    };
+
+    try {
+      let currentMessages = messages;
+      let continueProcessing = true;
+
+      while (continueProcessing) {
+        const result = await processStream(currentMessages);
+        currentMessages = result.messages;
+        continueProcessing = result.hasToolCalls;
+
+        if (!continueProcessing) {
+          // Save final chat history if we have both student ID and chat data
+          if (currentChat?.id && studentData?.id) {
+            try {
+              const updatedChat = {
+                ...currentChat,
+                messages: currentMessages.filter(msg => msg.role !== 'thinking'),
+                updatedAt: new Date().toISOString()
+              };
+              await executeMcpTool('student-data', 'save_chat', { 
+                studentId: studentData.id,
+                chat: updatedChat
+              });
+            } catch (error) {
+              console.error('Failed to save chat:', error);
+              // Continue even if save fails
             }
-            else if (data.type === 'error') {
-              sendSSE({ type: 'error', content: data.content });
-            }
-          } catch (error) {
-            console.error('Backend - Error parsing SSE data:', error);
           }
         }
       }
     } catch (error) {
-      console.error('Backend - Error processing stream:', error);
+      console.error('Backend - Error processing chat:', error);
       sendSSE({ type: 'error', content: error.message });
-    } finally {
-      reader.releaseLock();
     }
   } catch (error) {
     console.error('Backend - Claude chat error:', error);

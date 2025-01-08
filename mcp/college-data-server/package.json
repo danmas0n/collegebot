@@ -20,12 +20,12 @@
     "@modelcontextprotocol/sdk": "0.6.0",
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
-    "pdf-parse": "^1.1.1",
+    "pdf2json": "^3.1.5",
     "puppeteer-core": "^23.11.1",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
-    "typescript": "^5.3.3"
+    "typescript": "^5.7.2"
   }
 }

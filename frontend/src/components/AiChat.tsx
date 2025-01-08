@@ -30,9 +30,22 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const { apiKey, isConfigured, setApiKey } = useClaudeContext();
   const { currentStudent, data: studentData } = useWizard();
   const paperRef = useRef<HTMLDivElement>(null);
+
+  const handleCancel = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setIsLoading(false);
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: 'Response cancelled by user.'
+      }]);
+    }
+  };
   
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(!isConfigured);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -67,7 +80,11 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         historyLength: messages.length
       });
 
+      const controller = new AbortController();
+      setAbortController(controller);
+      
       const response = await fetch('/api/chat/claude', {
+        signal: controller.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,6 +200,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setAbortController(null);
     }
   };
 
@@ -275,21 +293,26 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
             }}
             disabled={isLoading}
           />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSendMessage}
-            disabled={isLoading}
-            sx={{ minWidth: 100 }}
-          >
-            {isLoading ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              <>
-                <SendIcon />
-              </>
-            )}
-          </Button>
+          {isLoading ? (
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleCancel}
+              sx={{ minWidth: 100 }}
+            >
+              Cancel
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSendMessage}
+              disabled={!input.trim()}
+              sx={{ minWidth: 100 }}
+            >
+              <SendIcon />
+            </Button>
+          )}
         </Box>
       </Box>
     </>

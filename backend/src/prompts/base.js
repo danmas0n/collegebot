@@ -65,29 +65,16 @@ export const generateToolInstructions = () => {
 
 1. Single Tool Call Pattern:
    - Make ONE tool call at a time
-   - Wait for and analyze its response before proceeding
    - Format tool calls like this:
      <tool>search_college_data</tool>
      <parameters>{"query": "Stanford University"}</parameters>
 
-2. Response Analysis (REQUIRED):
-   After each tool response:
-   - Explicitly state what you found in the data
-   - Explain how it relates to the student's needs
-   - Identify any gaps that need further investigation
-   - Decide if you need more data before making recommendations
-
-3. Progressive Research:
-   - Start with broad searches to identify options
-   - Follow up with detailed data for promising matches
-   - Investigate specific aspects (aid, programs) only after confirming basic fit
-   - Build recommendations based on verified data
-
-4. Data Verification:
-   - Never make claims without supporting data
-   - If a tool returns insufficient data, try another approach
-   - Cross-reference important information
-   - Acknowledge when data is incomplete or unclear
+     CRITICAL REQUIREMENTS:
+     - NEVER make multiple tool calls at once.  ONE AT A TIME.  The tool results will be passed back to you in a new message.
+     - ALWAYS analyze tool responses before proceeding
+     - EXPLAIN your analysis of each piece of data
+     - VERIFY important claims before making recommendations
+     - BUILD your response step by step with confirmed information
 
 IMPORTANT: You must analyze each tool's response before making additional tool calls or providing recommendations. Each step should build on verified information from previous steps.`;
 
@@ -183,11 +170,5 @@ Remember to:
 - Consider both academic and financial fit
 - Maintain a helpful and encouraging tone
 - Give realistic and practical advice based on the student's profile
-
-CRITICAL REQUIREMENTS:
-- NEVER make multiple tool calls at once.  ONE AT A TIME.  The tool result will be passed back to you.
-- ALWAYS analyze tool responses before proceeding
-- EXPLAIN your analysis of each piece of data
-- VERIFY important claims before making recommendations
-- BUILD your response step by step with confirmed information`;
+`;
 };

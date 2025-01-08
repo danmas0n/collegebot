@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useWizard } from '../../contexts/WizardContext';
 import {
   Box,
   Typography,
@@ -21,6 +22,7 @@ interface DataSource {
 }
 
 export const DataCollectionStage: React.FC = () => {
+  const { updateData } = useWizard();
   const [dataSources, setDataSources] = useState<DataSource[]>([
     {
       id: 'cds',
@@ -80,7 +82,13 @@ export const DataCollectionStage: React.FC = () => {
           s.id === 'scholarships' ? { ...s, status: 'complete' } : s
         ));
 
-        // Keep visual progress complete without updating data
+        // Update wizard data with completion status
+        updateData({
+          dataCollection: {
+            status: 'complete',
+            sources: dataSources
+          }
+        });
       } catch (error) {
         console.error('Error collecting data:', error);
         setDataSources(prev => prev.map(s => 
