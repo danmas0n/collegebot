@@ -9,6 +9,21 @@ import {
 import fs from 'fs/promises';
 import path from 'path';
 
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'thinking';
+  content: string;
+  toolData?: string;
+  timestamp: string;
+}
+
+interface Chat {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Student {
   id: string;
   name: string;
@@ -52,6 +67,7 @@ interface Student {
         deadline: string;
         eligibility: string;
       }>;
+      chats: Chat[];
     };
   };
 }
@@ -97,6 +113,60 @@ class StudentDataServer {
                   }
                 },
                 required: ['id']
+              }
+            },
+            get_chats: {
+              description: 'Get all chats for a student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  }
+                },
+                required: ['studentId']
+              }
+            },
+            save_chat: {
+              description: 'Save or update a chat',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  chat: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      title: { type: 'string' },
+                      messages: { type: 'array' },
+                      createdAt: { type: 'string' },
+                      updatedAt: { type: 'string' }
+                    },
+                    required: ['id', 'title', 'messages', 'createdAt', 'updatedAt']
+                  }
+                },
+                required: ['studentId', 'chat']
+              }
+            },
+            delete_chat: {
+              description: 'Delete a chat',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  chatId: {
+                    type: 'string',
+                    description: 'Chat ID'
+                  }
+                },
+                required: ['studentId', 'chatId']
               }
             }
           }
@@ -210,6 +280,119 @@ class StudentDataServer {
           } catch (error) {
             console.error('Error deleting student:', error);
             throw new McpError(ErrorCode.InternalError, 'Failed to delete student');
+          }
+        }
+
+        case 'get_chats': {
+          const args = request.params.arguments;
+          if (!args?.studentId) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID is required');
+          }
+
+          try {
+            const data = await this.readData();
+            const student = data.students.find(s => s.id === args.studentId);
+            if (!student) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            return {
+              content: [{ 
+                type: 'text', 
+                text: JSON.stringify(student.data.recommendations?.chats || [])
+              }],
+            };
+          } catch (error) {
+            console.error('Error getting chats:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to get chats');
+          }
+        }
+
+        case 'save_chat': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.chat) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and chat are required');
+          }
+
+          // Type check the chat object
+          const chat = args.chat as Chat;
+          if (!chat.id || !chat.title || !Array.isArray(chat.messages) || 
+              !chat.createdAt || !chat.updatedAt) {
+            throw new McpError(ErrorCode.InvalidParams, 'Invalid chat data');
+          }
+
+          try {
+            const data = await this.readData();
+            const studentIndex = data.students.findIndex(s => s.id === args.studentId);
+            if (studentIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            // Initialize recommendations and chats if they don't exist
+            if (!data.students[studentIndex].data.recommendations) {
+              data.students[studentIndex].data.recommendations = {
+                colleges: [],
+                chats: []
+              };
+            }
+            if (!data.students[studentIndex].data.recommendations.chats) {
+              data.students[studentIndex].data.recommendations.chats = [];
+            }
+
+            const chats = data.students[studentIndex].data.recommendations.chats;
+            const chatIndex = chats.findIndex(c => c.id === chat.id);
+
+            if (chatIndex >= 0) {
+              chats[chatIndex] = chat;
+            } else {
+              chats.push(chat);
+            }
+
+            await this.writeData(data);
+            return {
+              content: [{ type: 'text', text: 'Chat saved successfully' }],
+            };
+          } catch (error) {
+            console.error('Error saving chat:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to save chat');
+          }
+        }
+
+        case 'delete_chat': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.chatId) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and chat ID are required');
+          }
+
+          try {
+            const data = await this.readData();
+            const studentIndex = data.students.findIndex(s => s.id === args.studentId);
+            if (studentIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            // Ensure recommendations exists
+            if (!data.students[studentIndex].data.recommendations) {
+              data.students[studentIndex].data.recommendations = {
+                colleges: [],
+                chats: []
+              };
+            }
+
+            // Filter out the chat to delete
+            data.students[studentIndex].data.recommendations.chats = 
+              data.students[studentIndex].data.recommendations.chats?.filter(
+                c => c.id !== args.chatId
+              ) || [];
+
+            await this.writeData(data);
+
+            return {
+              content: [{ type: 'text', text: 'Chat deleted successfully' }],
+            };
+          } catch (error) {
+            console.error('Error deleting chat:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to delete chat');
           }
         }
 

@@ -370,7 +370,7 @@ app.delete('/api/chat/claude/chat', async (req, res) => {
 app.post('/api/chat/claude/message', async (req, res) => {
   try {
     console.log('Backend - Claude chat request received');
-    const { message, studentData, studentName, history } = req.body;
+    const { message, studentData, studentName, history, currentChat } = req.body;
     const apiKey = req.headers['x-api-key'] || req.headers['x-claude-api-key'];
 
     console.log('Backend - Request details:', {
@@ -457,7 +457,8 @@ app.post('/api/chat/claude/message', async (req, res) => {
     // Process the stream
     const reader = claudeResponse.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
+    let lineBuffer = '';
+    let toolBuffer = '';
 
     try {
       while (true) {
@@ -465,9 +466,9 @@ app.post('/api/chat/claude/message', async (req, res) => {
         if (done) break;
 
         // Append new data to buffer and split into lines
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep last partial line in buffer
+        lineBuffer += decoder.decode(value, { stream: true });
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop() || ''; // Keep last partial line in buffer
 
         for (const line of lines) {
           if (!line.trim() || !line.startsWith('data: ')) continue;
@@ -480,80 +481,114 @@ app.post('/api/chat/claude/message', async (req, res) => {
             }
             else if (data.type === 'content_block_delta' && data.delta.type === 'text_delta') {
               const text = data.delta.text;
-              const toolCallMatch = text.match(/<tool>(.*?)<\/tool>\s*<parameters>(.*?)<\/parameters>/s);
+              // Accumulate text
+              toolBuffer += text;
               
-              if (toolCallMatch) {
-                const toolName = toolCallMatch[1];
-                const params = JSON.parse(toolCallMatch[2]);
+              // Forward Claude's text and add to conversation
+              const thinkingMessage = { 
+                type: 'thinking', 
+                content: text 
+              };
+              sendSSE(thinkingMessage);
+              
+              // Add to messages for final response
+              messages.push({
+                role: 'thinking',
+                content: text
+              });
+            }
+            else if (data.type === 'message_stop') {
+              // Process message completion
+              if (toolBuffer.trim()) {
+                // Check for tool calls
+                const toolCalls = toolBuffer.match(/<tool>.*?<\/tool>\s*<parameters>.*?<\/parameters>/gs);
+                if (toolCalls) {
+                  for (const toolCall of toolCalls) {
+                    const toolMatch = toolCall.match(/<tool>(.*?)<\/tool>\s*<parameters>(.*?)<\/parameters>/s);
+                    if (toolMatch) {
+                      const toolName = toolMatch[1];
+                      const params = JSON.parse(toolMatch[2]);
 
-                try {
-                  // Log tool call
-                  console.log('Backend - Tool call:', {
-                    tool: toolName,
-                    params: params
-                  });
+                      try {
+                        // Execute tool
+                        const toolResult = await executeMcpTool('college-data', toolName, params);
+                        const toolResponse = JSON.parse(toolResult.content[0].text);
+                        
+                        // Send tool use and response
+                        sendSSE({ 
+                          type: 'thinking', 
+                          content: `Using ${toolName} tool...`,
+                          toolData: JSON.stringify(params, null, 2)
+                        });
+                        sendSSE({ 
+                          type: 'thinking',
+                          content: `Tool result:`,
+                          toolData: JSON.stringify(toolResponse, null, 2)
+                        });
 
-                  // Execute tool
-                  const toolResult = await executeMcpTool('college-data', toolName, params);
-                  const toolResponse = JSON.parse(toolResult.content[0].text);
-                  
-                  // Send tool use and response
-                  const toolUseMessage = { 
-                    type: 'thinking', 
-                    content: `Using ${toolName} tool...`,
-                    toolData: JSON.stringify(params, null, 2)
-                  };
-                  sendSSE(toolUseMessage);
-                  console.log('Backend - Tool use message:', toolUseMessage);
+                        // Add tool result to conversation as a user message
+                        messages.push({
+                          role: 'user',
+                          content: `Tool ${toolName} returned: ${JSON.stringify(toolResponse, null, 2)}`
+                        });
 
-                  const toolResultMessage = { 
-                    type: 'thinking',
-                    content: `Tool result:`,
-                    toolData: JSON.stringify(toolResponse, null, 2)
-                  };
-                  sendSSE(toolResultMessage);
-                  console.log('Backend - Tool result message:', toolResultMessage);
-
-                  // Add to conversation
+                        // Add tool result and continue processing the same stream
+                        messages.push({
+                          role: 'user',
+                          content: `Tool ${toolName} returned: ${JSON.stringify(toolResponse, null, 2)}`
+                        });
+                        
+                        // Reset tool buffer and continue processing
+                        toolBuffer = '';
+                        
+                        // Send the tool result to the client
+                        sendSSE({ 
+                          type: 'thinking',
+                          content: `Analyzing the results from ${toolName}...`
+                        });
+                      } catch (error) {
+                        console.error(`Error executing tool ${toolName}:`, error);
+                        sendSSE({ 
+                          type: 'thinking',
+                          content: `Error using ${toolName}: ${error.message}`
+                        });
+                      }
+                    }
+                  }
+                } else {
+                  // No tool calls, send final response
                   messages.push({
                     role: 'assistant',
-                    content: `Tool result:\n${JSON.stringify(toolResponse, null, 2)}`
+                    content: toolBuffer
                   });
-                } catch (error) {
-                  console.error(`Error executing tool ${toolName}:`, error);
                   sendSSE({ 
-                    type: 'thinking',
-                    content: `Error using ${toolName}: ${error.message}`
+                    type: 'response',
+                    content: toolBuffer
                   });
                 }
-              } else {
-                // Forward Claude's text
-                const thinkingMessage = { type: 'thinking', content: text };
-                sendSSE(thinkingMessage);
-                
-                // Log complete thinking messages (sentences)
-                if (text.match(/[.!?]\s*$/)) {
-                  console.log('Backend - Complete thinking message:', thinkingMessage);
+
+                // Save chat history if we have both student ID and chat data
+                if (currentChat?.id && studentData?.id) {
+                  try {
+                    const updatedChat = {
+                      ...currentChat,
+                      messages: messages.filter(msg => msg.role !== 'thinking'),
+                      updatedAt: new Date().toISOString()
+                    };
+                    await executeMcpTool('student-data', 'save_chat', { 
+                      studentId: studentData.id,
+                      chat: updatedChat
+                    });
+                  } catch (error) {
+                    console.error('Failed to save chat:', error);
+                    // Continue processing even if save fails
+                  }
                 }
-                
-                // Also add to messages for final response
-                messages.push({
-                  role: 'assistant',
-                  content: text
-                });
               }
-            }
-            else if (data.type === 'message_delta' && data.delta.role === 'assistant') {
-              // This is the final response
-              const lastMessage = messages[messages.length - 1];
-              if (lastMessage && lastMessage.role === 'assistant') {
-                const responseMessage = {
-                  type: 'response',
-                  content: lastMessage.content
-                };
-                sendSSE(responseMessage);
-                console.log('Backend - Final response:', responseMessage);
-              }
+
+              // Send completion
+              sendSSE({ type: 'complete' });
+              toolBuffer = '';
             }
             else if (data.type === 'error') {
               sendSSE({ type: 'error', content: data.content });

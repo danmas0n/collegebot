@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   TextField,
@@ -32,6 +32,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
   const [isLoading, setIsLoading] = useState(false);
   const { apiKey, isConfigured, setApiKey } = useClaudeContext();
   const { currentStudent, data: studentData } = useWizard();
+  const paperRef = useRef<HTMLDivElement>(null);
   
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(!isConfigured);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -126,7 +127,14 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     role: 'thinking',
                     content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : '')
                   };
-                  setMessages(prev => [...prev, thinkingMessage]);
+                  setMessages(prev => {
+                    const newMessages = [...prev, thinkingMessage] as AiChatMessage[];
+                    paperRef.current?.scrollTo({
+                      top: paperRef.current.scrollHeight,
+                      behavior: 'auto'
+                    });
+                    return newMessages;
+                  });
                   break;
 
                 case 'content_block_delta':
@@ -136,19 +144,16 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     setMessages(prev => {
                       const newMessages = [...prev];
                       const lastMessage = newMessages[newMessages.length - 1];
-                      if (lastMessage?.role === 'assistant') {
-                        console.log('Frontend - Updating existing assistant message');
-                        return [
-                          ...newMessages.slice(0, -1),
-                          { ...lastMessage, content: currentMessage }
-                        ];
-                      } else {
-                        console.log('Frontend - Creating new assistant message');
-                        return [...newMessages, {
-                          role: 'assistant',
-                          content: currentMessage
-                        }];
-                      }
+                      const updatedMessages = lastMessage?.role === 'assistant'
+                        ? [...newMessages.slice(0, -1), { ...lastMessage, content: currentMessage }]
+                        : [...newMessages, { role: 'assistant' as const, content: currentMessage }];
+                      
+                      paperRef.current?.scrollTo({
+                        top: paperRef.current.scrollHeight,
+                        behavior: 'auto'
+                      });
+                      
+                      return updatedMessages;
                     });
                   }
                   break;
@@ -210,6 +215,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
           Ask about your colleges
         </Typography>
         <Paper
+          ref={paperRef}
           elevation={0}
           sx={{
             flex: 1,
@@ -238,8 +244,8 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     backgroundColor: 
                     message.role === 'user' ? 'primary.main' : 
                     message.role === 'thinking' ? 'grey.100' : 'background.paper',
-                  color: message.role === 'user' ? 'white' : 'text.primary',
-                  pl: message.role === 'thinking' ? 4 : 2 // Indent thinking messages
+                    color: message.role === 'user' ? 'white' : 'text.primary',
+                    pl: message.role === 'thinking' ? 4 : 2 // Indent thinking messages
                   }}
                 >
                   <Typography sx={{ 

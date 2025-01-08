@@ -48,6 +48,7 @@ export const RecommendationsStage: React.FC = () => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assistantMessageBuffer, setAssistantMessageBuffer] = useState('');
 
   // Load chats when component mounts or student changes
   useEffect(() => {
@@ -179,6 +180,7 @@ export const RecommendationsStage: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
+    setAssistantMessageBuffer('');
 
     try {
       // Add user message immediately
@@ -188,13 +190,14 @@ export const RecommendationsStage: React.FC = () => {
         timestamp: new Date().toISOString()
       };
 
+      // Save initial user message
       const updatedChat: Chat = {
         ...activeChat,
         messages: [...activeChat.messages, userMessage],
         updatedAt: new Date().toISOString()
       };
       setCurrentChat(updatedChat);
-      activeChat = updatedChat;
+      await saveChat(updatedChat);
 
       const response = await fetch('/api/chat/claude/message', {
         method: 'POST',
@@ -206,7 +209,8 @@ export const RecommendationsStage: React.FC = () => {
           message: currentMessage,
           studentData: data,
           studentName: currentStudent?.name,
-          history: activeChat.messages
+          history: updatedChat.messages,
+          currentChat: updatedChat
         })
       });
 
@@ -286,12 +290,35 @@ export const RecommendationsStage: React.FC = () => {
                   }
                   break;
 
-                case 'response':
-                  // Clear any thinking message and show final response
-                  currentThinkingMessage = '';
+                case 'content_block_delta':
+                  if (data.delta.type === 'text_delta') {
+                    // Accumulate text
+                    setAssistantMessageBuffer(prev => prev + data.delta.text);
+                    
+                    // Update UI with thinking message
+                    const thinkingMessage: Message = {
+                      role: 'thinking',
+                      content: assistantMessageBuffer + data.delta.text,
+                      timestamp: new Date().toISOString()
+                    };
+                    const updatedChat: Chat = {
+                      ...activeChat,
+                      messages: [
+                        ...activeChat.messages.filter(msg => msg.role !== 'thinking'),
+                        thinkingMessage
+                      ],
+                      updatedAt: new Date().toISOString()
+                    };
+                    setCurrentChat(updatedChat);
+                    activeChat = updatedChat;
+                  }
+                  break;
+
+                case 'message_stop':
+                  // Create final message from accumulated text
                   const assistantMessage: Message = {
                     role: 'assistant',
-                    content: data.content,
+                    content: assistantMessageBuffer,
                     timestamp: new Date().toISOString()
                   };
                   const updatedChat: Chat = {
@@ -303,6 +330,7 @@ export const RecommendationsStage: React.FC = () => {
                   setCurrentChat(updatedChat);
                   activeChat = updatedChat;
                   await saveChat(updatedChat);
+                  setIsLoading(false);
                   break;
 
                 case 'error':
