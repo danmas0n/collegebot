@@ -58,10 +58,15 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         throw new Error('Claude API key not configured');
       }
 
-      console.log('Sending request with API key:', apiKey.substring(0, 4) + '...');
-      console.log('isConfigured:', isConfigured);
+      console.log('Frontend - Sending request with API key:', apiKey.substring(0, 4) + '...');
+      console.log('Frontend - isConfigured:', isConfigured);
+      console.log('Frontend - Request payload:', {
+        message: input,
+        studentName: currentStudent?.name || 'Student',
+        historyLength: messages.length
+      });
 
-      const response: Response = await fetch('/api/chat/claude', {
+      const response = await fetch('/api/chat/claude', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,17 +80,95 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         }),
       });
 
+      console.log('Frontend - Response status:', response.status);
+      console.log('Frontend - Response headers:', Object.fromEntries(response.headers.entries()));
+      
       if (!response.ok) {
-        throw new Error('Failed to get AI response');
+        throw new Error(`Failed to get AI response: ${response.status} ${response.statusText}`);
       }
 
-      const responseData: ClaudeResponse = await response.json();
-      const aiMessage: AiChatMessage = {
-        role: 'assistant',
-        content: responseData.response,
-      };
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response stream available');
+      }
 
-      setMessages(prev => [...prev, aiMessage]);
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentMessage = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue;
+
+            try {
+              console.log('Frontend - Received SSE line:', line);
+              const data = JSON.parse(line.slice(6));
+              console.log('Frontend - Parsed SSE data:', data);
+
+              console.log('Frontend - Processing event:', data);
+              switch (data.type) {
+                case 'message_start':
+                  console.log('Frontend - Starting new message');
+                  currentMessage = '';
+                  break;
+
+                case 'thinking':
+                  console.log('Frontend - Adding thinking message');
+                  const thinkingMessage: AiChatMessage = {
+                    role: 'thinking',
+                    content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : '')
+                  };
+                  setMessages(prev => [...prev, thinkingMessage]);
+                  break;
+
+                case 'content_block_delta':
+                  if (data.delta?.type === 'text_delta') {
+                    console.log('Frontend - Received text delta:', data.delta.text);
+                    currentMessage += data.delta.text;
+                    setMessages(prev => {
+                      const newMessages = [...prev];
+                      const lastMessage = newMessages[newMessages.length - 1];
+                      if (lastMessage?.role === 'assistant') {
+                        console.log('Frontend - Updating existing assistant message');
+                        return [
+                          ...newMessages.slice(0, -1),
+                          { ...lastMessage, content: currentMessage }
+                        ];
+                      } else {
+                        console.log('Frontend - Creating new assistant message');
+                        return [...newMessages, {
+                          role: 'assistant',
+                          content: currentMessage
+                        }];
+                      }
+                    });
+                  }
+                  break;
+
+                case 'message_stop':
+                  // Reset current message for next stream
+                  currentMessage = '';
+                  break;
+
+                case 'error':
+                  throw new Error(data.content);
+              }
+            } catch (error) {
+              console.error('Error parsing SSE data:', error);
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
     } catch (error) {
       console.error('Chat error:', error);
       const errorMessage: AiChatMessage = {
@@ -152,12 +235,20 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   sx={{
                     p: 2,
                     maxWidth: '80%',
-                    backgroundColor:
-                      message.role === 'user' ? 'primary.main' : 'background.paper',
-                    color: message.role === 'user' ? 'white' : 'text.primary',
+                    backgroundColor: 
+                    message.role === 'user' ? 'primary.main' : 
+                    message.role === 'thinking' ? 'grey.100' : 'background.paper',
+                  color: message.role === 'user' ? 'white' : 'text.primary',
+                  pl: message.role === 'thinking' ? 4 : 2 // Indent thinking messages
                   }}
                 >
-                  <Typography>{message.content}</Typography>
+                  <Typography sx={{ 
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
+                    fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit'
+                  }}>
+                    {message.content}
+                  </Typography>
                 </Paper>
               </ListItem>
             ))}

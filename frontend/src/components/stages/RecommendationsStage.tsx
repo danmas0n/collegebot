@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -14,19 +14,149 @@ import {
   ListItemText,
   CircularProgress,
   Alert,
+  Grid,
+  Card,
+  CardContent,
+  IconButton,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useWizard } from '../../contexts/WizardContext';
 import { useClaudeContext } from '../../contexts/ClaudeContext';
+
+interface Message {
+  role: 'user' | 'assistant' | 'thinking';
+  content: string;
+  toolData?: string;
+  timestamp: string;
+}
+
+interface Chat {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export const RecommendationsStage: React.FC = () => {
   const { data, currentStudent } = useWizard();
   const { apiKey, setApiKey, isConfigured } = useClaudeContext();
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant' | 'thinking', content: string }>>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load chats when component mounts or student changes
+  useEffect(() => {
+    if (currentStudent?.id) {
+      loadChats().then(loadedChats => {
+        if (loadedChats.length === 0) {
+          // Create a new chat if there are none
+          const newChat = createNewChat();
+          setCurrentChat(newChat);
+        } else {
+          // Select the most recent chat
+          setCurrentChat(loadedChats[loadedChats.length - 1]);
+        }
+      });
+    }
+  }, [currentStudent?.id]);
+
+  const loadChats = async (): Promise<Chat[]> => {
+    try {
+      const response = await fetch('/api/chat/claude/chats', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey || ''
+        },
+        body: JSON.stringify({
+          studentId: currentStudent?.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load chats');
+      }
+
+      const data = await response.json();
+      const loadedChats = data.chats;
+      setChats(loadedChats);
+      return loadedChats;
+    } catch (error) {
+      console.error('Error loading chats:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load chats');
+      return []; // Return empty array on error
+    }
+  };
+
+  const createNewChat = (): Chat => {
+    const newChat: Chat = {
+      id: crypto.randomUUID(),
+      title: `Chat ${chats.length + 1}`,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    const updatedChats = [...chats, newChat];
+    setChats(updatedChats);
+    setCurrentChat(newChat);
+    return newChat;
+  };
+
+  const deleteChat = async (chatId: string) => {
+    try {
+      const response = await fetch('/api/chat/claude/chat', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey || ''
+        },
+        body: JSON.stringify({
+          studentId: currentStudent?.id,
+          chatId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete chat');
+      }
+
+      setChats(prev => prev.filter(c => c.id !== chatId));
+      if (currentChat?.id === chatId) {
+        setCurrentChat(null);
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete chat');
+    }
+  };
+
+  const saveChat = async (chat: Chat) => {
+    try {
+      const response = await fetch('/api/chat/claude/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey || ''
+        },
+        body: JSON.stringify({
+          studentId: currentStudent?.id,
+          chat
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save chat');
+      }
+    } catch (error) {
+      console.error('Error saving chat:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save chat');
+    }
+  };
 
   const handleConfigureApiKey = () => {
     if (newApiKey.trim()) {
@@ -39,11 +169,34 @@ export const RecommendationsStage: React.FC = () => {
   const handleSendMessage = async () => {
     if (!currentMessage.trim() || !apiKey) return;
 
+    let activeChat: Chat;
+    if (!currentChat) {
+      activeChat = createNewChat();
+      await new Promise(resolve => setTimeout(resolve, 0)); // Let state update
+    } else {
+      activeChat = currentChat;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/chat/claude', {
+      // Add user message immediately
+      const userMessage: Message = {
+        role: 'user',
+        content: currentMessage,
+        timestamp: new Date().toISOString()
+      };
+
+      const updatedChat: Chat = {
+        ...activeChat,
+        messages: [...activeChat.messages, userMessage],
+        updatedAt: new Date().toISOString()
+      };
+      setCurrentChat(updatedChat);
+      activeChat = updatedChat;
+
+      const response = await fetch('/api/chat/claude/message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -53,7 +206,7 @@ export const RecommendationsStage: React.FC = () => {
           message: currentMessage,
           studentData: data,
           studentName: currentStudent?.name,
-          history: messages
+          history: activeChat.messages
         })
       });
 
@@ -61,21 +214,110 @@ export const RecommendationsStage: React.FC = () => {
         throw new Error('Failed to get response from Claude');
       }
 
-      const result = await response.json();
-      
-      // Add user message
-      setMessages(prev => [...prev, { role: 'user', content: currentMessage }]);
-
-      // Add thinking messages if available
-      if (result.thinking) {
-        for (const thought of result.thinking) {
-          setMessages(prev => [...prev, { role: 'thinking', content: thought }]);
-        }
+      if (!response.body) {
+        throw new Error('No response body received');
       }
 
-      // Add final response
-      setMessages(prev => [...prev, { role: 'assistant', content: result.response }]);
-      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let currentThinkingMessage = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue;
+
+            try {
+              const data = JSON.parse(line.slice(5)); // Remove 'data: '
+
+              switch (data.type) {
+                case 'thinking':
+                  if (data.toolData) {
+                    // Tool-related message
+                    const thinkingMessage: Message = {
+                      role: 'thinking',
+                      content: data.content,
+                      toolData: data.toolData,
+                      timestamp: new Date().toISOString()
+                    };
+                    const updatedChat: Chat = {
+                      ...activeChat,
+                      messages: [...activeChat.messages, thinkingMessage],
+                      updatedAt: new Date().toISOString()
+                    };
+                    setCurrentChat(updatedChat);
+                    activeChat = updatedChat;
+                    currentThinkingMessage = '';
+                  } else {
+                    // Regular thinking update
+                    if (currentThinkingMessage) {
+                      const updatedChat: Chat = {
+                        ...activeChat,
+                        messages: activeChat.messages.map((msg, i) => 
+                          i === activeChat.messages.length - 1 && msg.role === 'thinking'
+                            ? { ...msg, content: msg.content + data.content }
+                            : msg
+                        ),
+                        updatedAt: new Date().toISOString()
+                      };
+                      setCurrentChat(updatedChat);
+                      activeChat = updatedChat;
+                    } else {
+                      const thinkingMessage: Message = {
+                        role: 'thinking',
+                        content: data.content,
+                        timestamp: new Date().toISOString()
+                      };
+                      const updatedChat: Chat = {
+                        ...activeChat,
+                        messages: [...activeChat.messages, thinkingMessage],
+                        updatedAt: new Date().toISOString()
+                      };
+                      setCurrentChat(updatedChat);
+                      activeChat = updatedChat;
+                      currentThinkingMessage = data.content;
+                    }
+                  }
+                  break;
+
+                case 'response':
+                  // Clear any thinking message and show final response
+                  currentThinkingMessage = '';
+                  const assistantMessage: Message = {
+                    role: 'assistant',
+                    content: data.content,
+                    timestamp: new Date().toISOString()
+                  };
+                  const updatedChat: Chat = {
+                    ...activeChat,
+                    messages: activeChat.messages.filter(msg => msg.role !== 'thinking'),
+                    updatedAt: new Date().toISOString()
+                  };
+                  updatedChat.messages.push(assistantMessage);
+                  setCurrentChat(updatedChat);
+                  activeChat = updatedChat;
+                  await saveChat(updatedChat);
+                  break;
+
+                case 'error':
+                  setError(data.content);
+                  break;
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e);
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
       setCurrentMessage('');
     } catch (error) {
       console.error('Chat error:', error);
@@ -84,6 +326,52 @@ export const RecommendationsStage: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const renderMessage = (msg: Message, index: number) => (
+    <Grid container spacing={2} key={index}>
+      <Grid item xs={msg.toolData ? 8 : 12}>
+        <ListItem
+          sx={{
+            bgcolor: msg.role === 'assistant' ? 'action.hover' : 
+                   msg.role === 'thinking' ? 'grey.100' : 'transparent',
+            borderRadius: 1,
+            mb: 1,
+            pl: msg.role === 'thinking' ? 4 : 2
+          }}
+        >
+          <ListItemText
+            primary={
+              msg.role === 'assistant' ? 'AI Assistant' : 
+              msg.role === 'thinking' ? 'Thinking...' : 'You'
+            }
+            secondary={msg.content}
+            secondaryTypographyProps={{
+              style: { whiteSpace: 'pre-wrap' }
+            }}
+          />
+        </ListItem>
+      </Grid>
+      {msg.toolData && (
+        <Grid item xs={4}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Tool Data
+              </Typography>
+              <Typography variant="body2" component="pre" sx={{ 
+                whiteSpace: 'pre-wrap',
+                fontSize: '0.75rem',
+                maxHeight: '200px',
+                overflow: 'auto'
+              }}>
+                {msg.toolData}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      )}
+    </Grid>
+  );
 
   if (!isConfigured) {
     return (
@@ -153,33 +441,59 @@ export const RecommendationsStage: React.FC = () => {
         </Alert>
       )}
 
-      <Box sx={{ mb: 3, maxHeight: '400px', overflowY: 'auto' }}>
-        <List>
-          {messages.map((msg, index) => (
-            <ListItem
-              key={index}
-              sx={{
-                bgcolor: msg.role === 'assistant' ? 'action.hover' : 
-                       msg.role === 'thinking' ? 'grey.100' : 'transparent',
-                borderRadius: 1,
-                mb: 1,
-                pl: msg.role === 'thinking' ? 4 : 2 // Indent thinking messages
-              }}
-            >
-              <ListItemText
-                primary={
-                  msg.role === 'assistant' ? 'AI Assistant' : 
-                  msg.role === 'thinking' ? 'Thinking...' : 'You'
-                }
-                secondary={msg.content}
-                secondaryTypographyProps={{
-                  style: { whiteSpace: 'pre-wrap' }
-                }}
-              />
-            </ListItem>
-          ))}
-        </List>
-      </Box>
+      <Grid container spacing={2}>
+        {/* Chat List */}
+        <Grid item xs={3}>
+          <Paper elevation={0} sx={{ p: 2, height: '100%' }}>
+            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">Chats</Typography>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={createNewChat}
+              >
+                New Chat
+              </Button>
+            </Box>
+            <List>
+              {chats.map((chat) => (
+                <ListItem
+                  key={chat.id}
+                  sx={{ cursor: 'pointer' }}
+                  selected={currentChat?.id === chat.id}
+                  onClick={() => {
+                    console.log('Selecting chat:', chat.id);
+                    setCurrentChat(chat);
+                  }}
+                  secondaryAction={
+                    <IconButton
+                      edge="end"
+                      aria-label="delete"
+                      onClick={() => deleteChat(chat.id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  }
+                >
+                  <ListItemText
+                    primary={chat.title}
+                    secondary={new Date(chat.updatedAt).toLocaleDateString()}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+        </Grid>
+
+        {/* Chat Messages */}
+        <Grid item xs={9}>
+          <Box sx={{ mb: 3, height: '400px', overflowY: 'auto' }}>
+            <List>
+              {currentChat?.messages.map((msg, index) => renderMessage(msg, index))}
+            </List>
+          </Box>
+        </Grid>
+      </Grid>
 
       <Box sx={{ display: 'flex', gap: 1 }}>
         <TextField

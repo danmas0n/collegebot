@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import { generatePrompt } from './prompts/prompt.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -331,56 +332,77 @@ app.delete('/api/students/:id', async (req, res) => {
   }
 });
 
-app.post('/api/chat/claude', async (req, res) => {
+// Chat management endpoints
+app.post('/api/chat/claude/chats', async (req, res) => {
   try {
+    const { studentId } = req.body;
+    const result = await executeMcpTool('student-data', 'get_chats', { studentId });
+    const chats = JSON.parse(result.content[0].text);
+    res.json({ chats });
+  } catch (error) {
+    console.error('Error getting chats:', error);
+    res.status(500).json({ error: 'Failed to get chats' });
+  }
+});
+
+app.post('/api/chat/claude/chat', async (req, res) => {
+  try {
+    const { studentId, chat } = req.body;
+    await executeMcpTool('student-data', 'save_chat', { studentId, chat });
+    res.json({ message: 'Chat saved successfully' });
+  } catch (error) {
+    console.error('Error saving chat:', error);
+    res.status(500).json({ error: 'Failed to save chat' });
+  }
+});
+
+app.delete('/api/chat/claude/chat', async (req, res) => {
+  try {
+    const { studentId, chatId } = req.body;
+    await executeMcpTool('student-data', 'delete_chat', { studentId, chatId });
+    res.json({ message: 'Chat deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    res.status(500).json({ error: 'Failed to delete chat' });
+  }
+});
+
+app.post('/api/chat/claude/message', async (req, res) => {
+  try {
+    console.log('Backend - Claude chat request received');
     const { message, studentData, studentName, history } = req.body;
-    console.log('Received headers:', req.headers);
     const apiKey = req.headers['x-api-key'] || req.headers['x-claude-api-key'];
 
+    console.log('Backend - Request details:', {
+      hasMessage: !!message,
+      messageLength: message?.length,
+      studentName,
+      historyLength: history?.length,
+      hasApiKey: !!apiKey,
+      hasStudentData: !!studentData
+    });
+
     if (!apiKey) {
-      console.error('Missing API key header');
+      console.error('Backend - Missing API key');
       throw new Error('API key header is required');
     }
 
-    console.log('API key present:', apiKey.substring(0, 4) + '...');
+    // Set up SSE response
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
 
-    // Prepare the system message
-    const systemPrompt = `You are an AI college advisor helping a student named ${studentName}. 
-You have access to their profile data and can use tools to fetch college information as needed.
+    // Helper function to send SSE data
+    const sendSSE = (data) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
 
-Student Profile:
-${JSON.stringify(studentData, null, 2)}
+    // Generate the system prompt
+    console.log('Backend - Generating system prompt');
+    const systemPrompt = generatePrompt(studentName, studentData);
+    console.log('Backend - System prompt length:', systemPrompt.length);
 
-Available tools:
-
-1. search_college_data
-Description: Search for college data sources and information
-Parameters:
-- query (string, required): Search query for college data
-- includeWebSearch (boolean, optional): Whether to include web search results
-
-2. get_cds_data
-Description: Get Common Data Set information for a specific college
-Parameters:
-- collegeName (string, required): Name of the college
-- year (string, optional): Academic year (e.g., "2022-2023")
-
-3. get_cds_content
-Description: Get the full content of a stored CDS file
-Parameters:
-- collegeName (string, required): Name of the college
-
-To use these tools, format your response like this:
-<tool>search_college_data</tool>
-<parameters>{"query": "Stanford University"}</parameters>
-
-You can make multiple tool calls in your response if needed. After each tool call, I will provide you with the result, and you can continue with your response.
-
-When answering questions about colleges, first search for relevant colleges if needed, then get their CDS data to provide accurate information. Focus on helping the student find colleges that match their profile, interests, and budget. Use the student's profile data to personalize your recommendations.
-
-For questions about financial aid, scholarships, or costs, make sure to look up the specific sections in the CDS data. For admission-related questions, consider both the student's academic profile and the college's admission statistics.`;
-
-    // Prepare the conversation messages
+    // Prepare conversation messages
     const messages = [
       ...history.map(msg => ({
         role: msg.role,
@@ -392,8 +414,8 @@ For questions about financial aid, scholarships, or costs, make sure to look up 
       }
     ];
 
-    // Call Claude API
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    console.log('Backend - Preparing Claude API request');
+    const claudeRequest = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -405,90 +427,150 @@ For questions about financial aid, scholarships, or costs, make sure to look up 
         max_tokens: 4096,
         messages,
         temperature: 0.7,
-        system: systemPrompt
+        system: systemPrompt,
+        stream: true
       })
+    };
+    console.log('Backend - Claude request config:', {
+      url: 'https://api.anthropic.com/v1/messages',
+      headers: Object.keys(claudeRequest.headers),
+      bodyLength: claudeRequest.body.length
+    });
+
+    // Call Claude API with streaming enabled
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', claudeRequest);
+    
+    console.log('Backend - Claude API response:', {
+      status: claudeResponse.status,
+      headers: Object.fromEntries(claudeResponse.headers.entries())
     });
 
     if (!claudeResponse.ok) {
       const errorText = await claudeResponse.text();
+      console.error('Backend - Claude API error:', {
+        status: claudeResponse.status,
+        error: errorText
+      });
       throw new Error(`Failed to get response from Claude API: ${errorText}`);
     }
 
-    const result = await claudeResponse.json();
-    console.log('Claude initial response:', result.content[0].text);
-    let response = result.content[0].text;
-    let thinking = [`Initial response: ${response}`];
+    // Process the stream
+    const reader = claudeResponse.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    // Check for tool calls in the response
-    const toolCalls = response.match(/<tool>.*?<\/tool>\s*<parameters>.*?<\/parameters>/gs);
-    
-    if (toolCalls) {
-      // Create a new message array with the tool results
-      const updatedMessages = [...messages];
-      
-      for (const toolCall of toolCalls) {
-        const toolMatch = toolCall.match(/<tool>(.*?)<\/tool>/);
-        const paramsMatch = toolCall.match(/<parameters>(.*?)<\/parameters>/);
-        
-        if (toolMatch && paramsMatch) {
-          const toolName = toolMatch[1];
-          const params = JSON.parse(paramsMatch[1]);
-          
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // Append new data to buffer and split into lines
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep last partial line in buffer
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+
           try {
-            // Execute the tool
-            const toolResult = await executeMcpTool('college-data', toolName, params);
-            const toolResponse = JSON.parse(toolResult.content[0].text);
+            const data = JSON.parse(line.slice(6)); // Remove 'data: ' prefix
             
-            // Add the tool call and result to the conversation
-            updatedMessages.push({
-              role: 'assistant',
-              content: `I'll use the ${toolName} tool with these parameters:\n${JSON.stringify(params, null, 2)}`
-            });
-            
-            updatedMessages.push({
-              role: 'user',
-              content: `Tool result:\n${JSON.stringify(toolResponse, null, 2)}`
-            });
+            if (data.type === 'message_start') {
+              sendSSE({ type: 'thinking', content: 'Starting to process your request...' });
+            }
+            else if (data.type === 'content_block_delta' && data.delta.type === 'text_delta') {
+              const text = data.delta.text;
+              const toolCallMatch = text.match(/<tool>(.*?)<\/tool>\s*<parameters>(.*?)<\/parameters>/s);
+              
+              if (toolCallMatch) {
+                const toolName = toolCallMatch[1];
+                const params = JSON.parse(toolCallMatch[2]);
+
+                try {
+                  // Log tool call
+                  console.log('Backend - Tool call:', {
+                    tool: toolName,
+                    params: params
+                  });
+
+                  // Execute tool
+                  const toolResult = await executeMcpTool('college-data', toolName, params);
+                  const toolResponse = JSON.parse(toolResult.content[0].text);
+                  
+                  // Send tool use and response
+                  const toolUseMessage = { 
+                    type: 'thinking', 
+                    content: `Using ${toolName} tool...`,
+                    toolData: JSON.stringify(params, null, 2)
+                  };
+                  sendSSE(toolUseMessage);
+                  console.log('Backend - Tool use message:', toolUseMessage);
+
+                  const toolResultMessage = { 
+                    type: 'thinking',
+                    content: `Tool result:`,
+                    toolData: JSON.stringify(toolResponse, null, 2)
+                  };
+                  sendSSE(toolResultMessage);
+                  console.log('Backend - Tool result message:', toolResultMessage);
+
+                  // Add to conversation
+                  messages.push({
+                    role: 'assistant',
+                    content: `Tool result:\n${JSON.stringify(toolResponse, null, 2)}`
+                  });
+                } catch (error) {
+                  console.error(`Error executing tool ${toolName}:`, error);
+                  sendSSE({ 
+                    type: 'thinking',
+                    content: `Error using ${toolName}: ${error.message}`
+                  });
+                }
+              } else {
+                // Forward Claude's text
+                const thinkingMessage = { type: 'thinking', content: text };
+                sendSSE(thinkingMessage);
+                
+                // Log complete thinking messages (sentences)
+                if (text.match(/[.!?]\s*$/)) {
+                  console.log('Backend - Complete thinking message:', thinkingMessage);
+                }
+                
+                // Also add to messages for final response
+                messages.push({
+                  role: 'assistant',
+                  content: text
+                });
+              }
+            }
+            else if (data.type === 'message_delta' && data.delta.role === 'assistant') {
+              // This is the final response
+              const lastMessage = messages[messages.length - 1];
+              if (lastMessage && lastMessage.role === 'assistant') {
+                const responseMessage = {
+                  type: 'response',
+                  content: lastMessage.content
+                };
+                sendSSE(responseMessage);
+                console.log('Backend - Final response:', responseMessage);
+              }
+            }
+            else if (data.type === 'error') {
+              sendSSE({ type: 'error', content: data.content });
+            }
           } catch (error) {
-            console.error(`Error executing tool ${toolName}:`, error);
-            updatedMessages.push({
-              role: 'user',
-              content: `Error executing ${toolName}: ${error.message}`
-            });
+            console.error('Backend - Error parsing SSE data:', error);
           }
         }
       }
-      
-      // Get final response from Claude with tool results
-      const finalResponse = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 4096,
-          messages: updatedMessages,
-          temperature: 0.7,
-          system: systemPrompt
-        })
-      });
-
-      if (!finalResponse.ok) {
-        throw new Error('Failed to get final response from Claude API');
-      }
-
-      const finalResult = await finalResponse.json();
-      console.log('Claude final response:', finalResult.content[0].text);
-      response = finalResult.content[0].text;
-      thinking.push(`Final response: ${response}`);
+    } catch (error) {
+      console.error('Backend - Error processing stream:', error);
+      sendSSE({ type: 'error', content: error.message });
+    } finally {
+      reader.releaseLock();
     }
-
-    res.json({ response, thinking });
   } catch (error) {
-    console.error('Claude chat error:', error);
+    console.error('Backend - Claude chat error:', error);
     res.status(500).json({ error: 'Failed to process chat request' });
   }
 });

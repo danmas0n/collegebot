@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Stepper, Step, StepLabel, Button } from '@mui/material';
+import { Box, Stepper, Step, StepLabel, Button, styled } from '@mui/material';
 import { useWizard } from '../contexts/WizardContext';
 import { WizardStage } from '../types/wizard';
 
@@ -32,7 +32,20 @@ export const WizardStepper: React.FC = () => {
       <Stepper activeStep={currentIndex} sx={{ mb: 4 }}>
         {stages.filter(stage => stage.key !== 'student-selection').map(({ key, label }) => (
           <Step key={key} completed={stages.indexOf({ key, label }) < currentIndex}>
-            <StepLabel>{label}</StepLabel>
+            <StepLabel
+              sx={{
+                cursor: 'pointer',
+                '&:hover': {
+                  '& .MuiStepLabel-label': {
+                    color: 'primary.main',
+                    textDecoration: 'underline'
+                  }
+                }
+              }}
+              onClick={() => goToStage(key)}
+            >
+              {label}
+            </StepLabel>
           </Step>
         ))}
       </Stepper>

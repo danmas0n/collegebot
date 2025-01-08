@@ -13,8 +13,6 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import PendingIcon from '@mui/icons-material/Pending';
-import { useWizard } from '../../contexts/WizardContext';
-
 interface DataSource {
   id: string;
   name: string;
@@ -23,7 +21,6 @@ interface DataSource {
 }
 
 export const DataCollectionStage: React.FC = () => {
-  const { data, updateData } = useWizard();
   const [dataSources, setDataSources] = useState<DataSource[]>([
     {
       id: 'cds',
@@ -83,13 +80,7 @@ export const DataCollectionStage: React.FC = () => {
           s.id === 'scholarships' ? { ...s, status: 'complete' } : s
         ));
 
-        // Update wizard data
-        updateData({
-          dataCollection: {
-            status: 'complete',
-            progress: 100
-          }
-        });
+        // Keep visual progress complete without updating data
       } catch (error) {
         console.error('Error collecting data:', error);
         setDataSources(prev => prev.map(s => 
@@ -101,7 +92,7 @@ export const DataCollectionStage: React.FC = () => {
     };
 
     processDataSources();
-  }, [updateData]);
+  }, []);
 
   const getStatusIcon = (status: DataSource['status']) => {
     switch (status) {

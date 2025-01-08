@@ -89,11 +89,30 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [currentStudent]);
 
+  const findFirstIncompleteStage = useCallback((studentData: WizardData): WizardStage => {
+    // Check each stage's requirements
+    if (!studentData.studentProfile.graduationYear || !studentData.studentProfile.highSchool) {
+      return 'student-profile';
+    }
+    if (!studentData.collegeInterests.colleges?.length && !studentData.collegeInterests.majors?.length) {
+      return 'college-interests';
+    }
+    if (!studentData.budgetInfo.yearlyBudget) {
+      return 'budget';
+    }
+    if (!studentData.dataCollection?.status || studentData.dataCollection.status !== 'complete') {
+      return 'data-collection';
+    }
+    // If all stages are complete, go to recommendations
+    return 'recommendations';
+  }, []);
+
   const selectStudent = useCallback((student: Student) => {
     setCurrentStudent(student);
     setData(student.data);
-    setCurrentStage('student-profile');
-  }, []);
+    const firstIncompleteStage = findFirstIncompleteStage(student.data);
+    setCurrentStage(firstIncompleteStage);
+  }, [findFirstIncompleteStage]);
 
   const createStudent = useCallback(async (name: string) => {
     const newStudent: Student = {
