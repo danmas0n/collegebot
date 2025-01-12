@@ -145,7 +145,30 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : '')
                   };
                   setMessages(prev => {
-                    const newMessages = [...prev, thinkingMessage] as AiChatMessage[];
+                    // Replace the last message if it was also a thinking message
+                    const newMessages = prev[prev.length - 1]?.role === 'thinking' 
+                      ? [...prev.slice(0, -1), thinkingMessage]
+                      : [...prev, thinkingMessage];
+                    paperRef.current?.scrollTo({
+                      top: paperRef.current.scrollHeight,
+                      behavior: 'auto'
+                    });
+                    return newMessages;
+                  });
+                  break;
+
+                case 'response':
+                  console.log('Frontend - Adding answer message');
+                  const answerMessage: AiChatMessage = {
+                    role: 'answer',
+                    content: data.content
+                  };
+                  setMessages(prev => {
+                    // If the last message was a thinking message, replace it
+                    // This handles the case where thinking and answer are part of the same response
+                    const newMessages = prev[prev.length - 1]?.role === 'thinking'
+                      ? [...prev.slice(0, -1), answerMessage]
+                      : [...prev, answerMessage];
                     paperRef.current?.scrollTo({
                       top: paperRef.current.scrollHeight,
                       behavior: 'auto'
@@ -158,20 +181,29 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   if (data.delta?.type === 'text_delta') {
                     console.log('Frontend - Received text delta:', data.delta.text);
                     currentMessage += data.delta.text;
-                    setMessages(prev => {
-                      const newMessages = [...prev];
-                      const lastMessage = newMessages[newMessages.length - 1];
-                      const updatedMessages = lastMessage?.role === 'assistant'
-                        ? [...newMessages.slice(0, -1), { ...lastMessage, content: currentMessage }]
-                        : [...newMessages, { role: 'assistant' as const, content: currentMessage }];
-                      
-                      paperRef.current?.scrollTo({
-                        top: paperRef.current.scrollHeight,
-                        behavior: 'auto'
+                    
+                    // Only update if we have accumulated non-tag content
+                    if (currentMessage.trim() && 
+                        !currentMessage.includes('<thinking>') &&
+                        !currentMessage.includes('<answer>') &&
+                        !currentMessage.includes('<tool>')) {
+                      setMessages(prev => {
+                        const lastMessage = prev[prev.length - 1];
+                        // Update or add as thinking message
+                        const updatedMessages = lastMessage?.role === 'thinking'
+                          ? [...prev.slice(0, -1), { ...lastMessage, content: currentMessage }]
+                          : [...prev, { role: 'thinking' as const, content: currentMessage }];
+                        
+                        paperRef.current?.scrollTo({
+                          top: paperRef.current.scrollHeight,
+                          behavior: 'auto'
+                        });
+                        
+                        return updatedMessages;
                       });
-                      
-                      return updatedMessages;
-                    });
+                      // Clear buffer since we've handled this content
+                      currentMessage = '';
+                    }
                   }
                   break;
 
@@ -194,7 +226,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
     } catch (error) {
       console.error('Chat error:', error);
       const errorMessage: AiChatMessage = {
-        role: 'assistant',
+        role: 'system',
         content: error instanceof Error ? error.message : 'Sorry, I encountered an error while processing your request.',
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -260,10 +292,13 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     p: 2,
                     maxWidth: '80%',
                     backgroundColor: 
-                    message.role === 'user' ? 'primary.main' : 
-                    message.role === 'thinking' ? 'grey.100' : 'background.paper',
+                      message.role === 'user' ? 'primary.main' : 
+                      message.role === 'thinking' ? 'grey.100' :
+                      message.role === 'answer' ? 'success.light' :
+                      'background.paper',
                     color: message.role === 'user' ? 'white' : 'text.primary',
-                    pl: message.role === 'thinking' ? 4 : 2 // Indent thinking messages
+                    pl: message.role === 'thinking' ? 4 : 2, // Indent thinking messages
+                    fontStyle: message.role === 'thinking' ? 'italic' : 'normal'
                   }}
                 >
                   <Typography sx={{ 

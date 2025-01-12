@@ -45,8 +45,8 @@ const createMcpClient = async (serverName) => {
       args = ['../mcp/student-data-server/build/index.js'];
       break;
     case 'fetch':
-      command = 'npx';
-      args = ['-y', '@modelcontextprotocol/server-fetch'];
+      command = 'uvx';
+      args = ['@modelcontextprotocol/mcp-server-fetch'];
       break;
     case 'memory':
       command = 'npx';
@@ -445,40 +445,82 @@ app.post('/api/chat/claude/message', async (req, res) => {
           max_tokens: 4096,
           messages: currentMessages,
           system: systemPrompt,
-          temperature: 0.7
+          temperature: 0
         });
 
         for await (const streamEvent of stream) {
           if (streamEvent.type === 'message_start') {
-            sendSSE({ type: 'thinking', content: 'Starting to process your request...' });
+            // Do nothing for now
+            // sendSSE({ type: 'thinking', content: '<start>\n' });
           }
           else if (streamEvent.type === 'content_block_delta' && streamEvent.delta.type === 'text_delta') {
             const text = streamEvent.delta.text;
             // Accumulate text
             toolBuffer += text;
             
-            // Forward Claude's text
-            sendSSE({ 
-              type: 'thinking', 
-              content: text 
-            });
+            // Process any complete thinking tags
+            let thinkingMatch;
+            while ((thinkingMatch = toolBuffer.match(/<thinking>(.*?)<\/thinking>/s))) {
+              sendSSE({ 
+                type: 'thinking', 
+                content: thinkingMatch[1].trim()
+              });
+              toolBuffer = toolBuffer.replace(thinkingMatch[0], '');
+            }
+
+            // Process any complete answer tags
+            let answerMatch;
+            while ((answerMatch = toolBuffer.match(/<answer>(.*?)<\/answer>/s))) {
+              sendSSE({ 
+                type: 'response', 
+                content: answerMatch[1].trim()
+              });
+              toolBuffer = toolBuffer.replace(answerMatch[0], '');
+            }
+
+            // If we have text that's not part of a tag, send it as thinking
+            if (!toolBuffer.includes('<thinking>') && 
+                !toolBuffer.includes('<answer>') && 
+                !toolBuffer.includes('<tool>') &&
+                toolBuffer.trim()) {
+              sendSSE({ 
+                type: 'thinking', 
+                content: toolBuffer.trim()
+              });
+              toolBuffer = '';
+            }
           }
           else if (streamEvent.type === 'message_stop') {
             // Process message completion
             if (toolBuffer.trim()) {
               // Check for tool calls
-              const toolCalls = toolBuffer.match(/<tool>.*?<\/tool>\s*<parameters>.*?<\/parameters>/gs);
+              const toolCalls = toolBuffer.match(/<tool>[\s\S]*?<name>.*?<\/name>[\s\S]*?<parameters>.*?<\/parameters>[\s\S]*?<\/tool>/gs);
               if (toolCalls) {
                 hasToolCalls = true;
                 for (const toolCall of toolCalls) {
-                  const toolMatch = toolCall.match(/<tool>(.*?)<\/tool>\s*<parameters>(.*?)<\/parameters>/s);
+                  const toolMatch = toolCall.match(/<name>(.*?)<\/name>[\s\S]*?<parameters>(.*?)<\/parameters>/s);
                   if (toolMatch) {
                     const toolName = toolMatch[1];
                     const params = JSON.parse(toolMatch[2]);
 
                     try {
+                      // Determine which MCP server to use based on tool name
+                      let serverName;
+                      switch (toolName) {
+                        case 'search_college_data':
+                        case 'get_cds_data':
+                        case 'get_cds_content':
+                          serverName = 'college-data';
+                          break;
+                        case 'fetch':
+                          serverName = 'fetch';
+                          break;
+                        default:
+                          throw new Error(`Unknown tool: ${toolName}`);
+                      }
+
                       // Execute tool
-                      const toolResult = await executeMcpTool('college-data', toolName, params);
+                      const toolResult = await executeMcpTool(serverName, toolName, params);
                       const toolResponse = JSON.parse(toolResult.content[0].text);
                       
                       // Send tool use and response
@@ -516,16 +558,6 @@ app.post('/api/chat/claude/message', async (req, res) => {
                     }
                   }
                 }
-              } else {
-                // No tool calls, send final response
-                currentMessages.push({
-                  role: 'assistant',
-                  content: toolBuffer
-                });
-                sendSSE({ 
-                  type: 'response',
-                  content: toolBuffer
-                });
               }
             }
 
