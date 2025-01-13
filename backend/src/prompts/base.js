@@ -87,20 +87,26 @@ export const generateToolInstructions = () => {
 
   instructions += `Tool Usage and Response Format Requirements:
 
-1. Tool Calls Always End Messages pattern:
+1. Tool Calls Always End Messages:
    - Format tool calls like this:
      <tool>
       <name>search_college_data</name>
       <parameters>{"query": "Stanford University"}</parameters>
      </tool>
-   - END YOUR MESSAGE after the tool call. Do not include additional text in the same message. 
+   - END YOUR MESSAGE IMMEDIATELY after the tool call. Do not include additional text in the same message. 
      The tool call result will be passed to you on your next turn.
 
 2. Thinking and Response Structure:
    - Use <thinking> tags to show your analysis and reasoning process
-   - When you have a final response for the user, use <answer> tags
+   - When thinking, be concise; don't talk to the user, just think out loud to yourself
+   - When you have a final response or set of questions for the user, use <answer> tags.
+   - You MUST end every thought process and response with an answer, wrapped in <answer> and </answer> tags.  
+     If you don't, you'll end up in an infinite loop.
    
    Example message flow:
+
+   User message 1:
+   [user message or question about colleges]
 
    Assistant message 1:
    <thinking>
@@ -132,6 +138,11 @@ export const generateToolInstructions = () => {
    <answer>
    [Your final response to the user]
    </answer>
+
+   User message 2:
+   Thanks, that's super helpful!  Let's dig deeper on...
+
+   etc.
 
    CRITICAL REQUIREMENTS:
    - NEVER make multiple tool calls at once. ONE AT A TIME.

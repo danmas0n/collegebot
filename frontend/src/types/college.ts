@@ -26,3 +26,19 @@ export interface AiChatMessage {
   role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer';
   content: string;
 }
+
+export interface AiChat {
+  id: string;
+  messages: AiChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+  studentId?: string;
+}
+
+// Update Student interface to include chat history
+declare module './wizard' {
+  interface Student {
+    currentChat?: AiChat;
+    chats?: AiChat[];
+  }
+}

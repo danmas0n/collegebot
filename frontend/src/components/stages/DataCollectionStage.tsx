@@ -14,12 +14,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import PendingIcon from '@mui/icons-material/Pending';
-interface DataSource {
-  id: string;
-  name: string;
-  status: 'pending' | 'in-progress' | 'complete' | 'error';
-  message?: string;
-}
+import { DataSource } from '../../types/wizard';
 
 export const DataCollectionStage: React.FC = () => {
   const { updateData } = useWizard();

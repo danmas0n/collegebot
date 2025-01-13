@@ -1,0 +1,99 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Paper,
+  Typography,
+  IconButton,
+  Box,
+  Collapse
+} from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { AiChatMessage } from '../types/college';
+
+interface CollapsibleMessageProps {
+  message: AiChatMessage;
+  isLatest: boolean;
+}
+
+export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message, isLatest }) => {
+  const [expanded, setExpanded] = useState(true);
+  const isCollapsible = message.role === 'thinking';
+  
+  // Auto-collapse thinking messages when they're no longer the latest
+  useEffect(() => {
+    if (isCollapsible && !isLatest) {
+      setExpanded(false);
+    }
+  }, [isCollapsible, isLatest]);
+
+  // Get preview text (first line or first 50 characters)
+  const getPreviewText = () => {
+    const text = message.content;
+    const firstLine = text.split('\n')[0];
+    return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+  };
+
+  return (
+    <Paper
+      elevation={1}
+      sx={{
+        p: 2,
+        maxWidth: '80%',
+        backgroundColor: 
+          message.role === 'user' ? 'primary.main' : 
+          message.role === 'thinking' ? 'grey.100' :
+          message.role === 'answer' ? 'success.light' :
+          'background.paper',
+        color: message.role === 'user' ? 'white' : 'text.primary',
+        pl: message.role === 'thinking' ? 4 : 2,
+        fontStyle: message.role === 'thinking' ? 'italic' : 'normal'
+      }}
+    >
+      {isCollapsible ? (
+        <Box>
+          <Box display="flex" alignItems="center">
+            <IconButton
+              onClick={() => setExpanded(!expanded)}
+              sx={{
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s',
+                mr: 1,
+                p: 0.5
+              }}
+              size="small"
+            >
+              <ExpandMoreIcon />
+            </IconButton>
+            {!expanded && (
+              <Typography sx={{ 
+                whiteSpace: 'pre-wrap',
+                fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
+                fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit',
+                opacity: 0.8
+              }}>
+                {getPreviewText()}
+              </Typography>
+            )}
+          </Box>
+          <Collapse in={expanded}>
+            <Typography sx={{ 
+              whiteSpace: 'pre-wrap',
+              fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
+              fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit',
+              mt: 1
+            }}>
+              {message.content}
+            </Typography>
+          </Collapse>
+        </Box>
+      ) : (
+        <Typography sx={{ 
+          whiteSpace: 'pre-wrap',
+          fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
+          fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit'
+        }}>
+          {message.content}
+        </Typography>
+      )}
+    </Paper>
+  );
+};

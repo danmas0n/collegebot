@@ -6,11 +6,15 @@ export type WizardStage =
   | 'data-collection'
   | 'recommendations';
 
+import { AiChat } from './college';
+
 export interface Student {
   id: string;
   name: string;
   lastUpdated: string;
   data: WizardData;
+  currentChat?: AiChat;
+  chats?: AiChat[];
 }
 
 export interface StudentProfile {
@@ -39,6 +43,13 @@ export interface BudgetInfo {
   };
 }
 
+export interface DataSource {
+  id: string;
+  name: string;
+  status: 'pending' | 'in-progress' | 'complete' | 'error';
+  message?: string;
+}
+
 export interface WizardData {
   studentProfile: StudentProfile;
   collegeInterests: CollegeInterests;
@@ -46,6 +57,7 @@ export interface WizardData {
   dataCollection?: {
     status: 'pending' | 'in-progress' | 'complete';
     progress?: number;
+    sources?: DataSource[];
   };
   recommendations?: {
     colleges: Array<{

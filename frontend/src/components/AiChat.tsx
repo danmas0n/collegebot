@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   Box,
   TextField,
@@ -17,6 +17,7 @@ import SendIcon from '@mui/icons-material/Send';
 import { College, AiChatMessage } from '../types/college';
 import { useClaudeContext } from '../contexts/ClaudeContext';
 import { useWizard } from '../contexts/WizardContext';
+import { CollapsibleMessage } from './CollapsibleMessage';
 
 interface AiChatProps {
   consideredColleges: College[];
@@ -128,7 +129,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         setAbortController(controller);
       });
       
-      const response = await fetch('/api/chat/claude', {
+      const response = await fetch('/api/chat/claude/message', {
         signal: controller.signal,
         method: 'POST',
         headers: {
@@ -140,6 +141,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
           studentData,
           studentName: currentStudent?.name || 'Student',
           history: messages,
+          currentChat: currentStudent?.currentChat
         }),
       });
 
@@ -273,14 +275,6 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   });
                   
                   updateState(() => {
-                    // First clear any remaining thinking messages
-                    setMessages(prev => {
-                      const newMessages = prev.filter(msg => msg.role !== 'thinking');
-                      console.log('Frontend - Filtered messages:', newMessages);
-                      return newMessages;
-                    });
-
-                    // Then clear loading state and abort controller
                     setIsLoading(false);
                     setAbortController(null);
                   });
@@ -370,29 +364,10 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   mb: 1,
                 }}
               >
-                <Paper
-                  elevation={1}
-                  sx={{
-                    p: 2,
-                    maxWidth: '80%',
-                    backgroundColor: 
-                      message.role === 'user' ? 'primary.main' : 
-                      message.role === 'thinking' ? 'grey.100' :
-                      message.role === 'answer' ? 'success.light' :
-                      'background.paper',
-                    color: message.role === 'user' ? 'white' : 'text.primary',
-                    pl: message.role === 'thinking' ? 4 : 2, // Indent thinking messages
-                    fontStyle: message.role === 'thinking' ? 'italic' : 'normal'
-                  }}
-                >
-                  <Typography sx={{ 
-                    whiteSpace: 'pre-wrap',
-                    fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
-                    fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit'
-                  }}>
-                    {message.content}
-                  </Typography>
-                </Paper>
+                <CollapsibleMessage 
+                  message={message} 
+                  isLatest={index === messages.length - 1 && isLoading}
+                />
               </ListItem>
             ))}
           </List>

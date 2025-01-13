@@ -46,7 +46,8 @@ const createMcpClient = async (serverName) => {
       break;
     case 'fetch':
       command = 'uvx';
-      args = ['@modelcontextprotocol/mcp-server-fetch'];
+      // temporary -- when mcp 1.1.4 is released remove --with
+      args = ['--with','mcp==1.1.2','mcp-server-fetch'];
       break;
     case 'memory':
       command = 'npx';
@@ -435,23 +436,42 @@ app.post('/api/chat/claude/message', async (req, res) => {
       baseURL: 'https://api.anthropic.com'
     });
 
-    // Prepare conversation messages
-    const messages = [
-      ...history.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      })),
-      {
-        role: 'user',
-        content: message
-      }
-    ];
+    // Create user message with timestamp for local storage
+    const userMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString()
+    };
+
+    // Create initial messages array with user message
+    const initialMessages = [...(currentChat?.messages || []), userMessage];
+
+    // Update active chat with user message
+    if (currentChat?.id) {
+      const updatedChat = {
+        ...currentChat,
+        messages: initialMessages,
+        updatedAt: new Date().toISOString(),
+        studentId: studentData?.id || currentChat?.studentId
+      };
+      await executeMcpTool('student-data', 'save_chat', { 
+        studentId: studentData?.id || currentChat?.studentId,
+        chat: updatedChat
+      });
+    }
+
+    // Prepare messages for Claude (without timestamps and mapping roles)
+    const claudeMessages = initialMessages.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content
+    }));
 
     // Helper function to process a single stream
     const processStream = async (currentMessages) => {
       console.log('Backend - Starting Claude stream');
       let toolBuffer = '';
       let hasToolCalls = false;
+      let savedAnswer = null;
       
       try {
         const stream = await anthropic.messages.stream({
@@ -503,16 +523,25 @@ app.post('/api/chat/claude/message', async (req, res) => {
                   type: 'thinking', 
                   content: thinkingMatch[1].trim()
                 });
+                console.log('Backend - Found complete thinking tag:', thinkingMatch[1].trim());
                 toolBuffer = toolBuffer.replace(thinkingMatch[0], '');
               }
 
               // Process any complete answer tags
               let answerMatch;
               while ((answerMatch = toolBuffer.match(/<answer>(.*?)<\/answer>/s))) {
+                const answerContent = answerMatch[1].trim();
+                savedAnswer = answerContent;
+                // Add answer message to conversation (without timestamp for Claude)
+                currentMessages.push({
+                  role: 'answer',
+                  content: answerContent
+                });
                 sendSSE({ 
                   type: 'response', 
-                  content: answerMatch[1].trim()
+                  content: answerContent
                 });
+                console.log('Backend - Found complete answer tag:', answerContent);
                 toolBuffer = toolBuffer.replace(answerMatch[0], '');
               }
             }
@@ -531,8 +560,7 @@ app.post('/api/chat/claude/message', async (req, res) => {
           }
           else if (streamEvent.type === 'message_stop') {
             console.log('Backend - Message complete');
-            console.log('Backend - Complete message from Claude:', toolBuffer);
-            
+             
             // First, check if there's any non-tool content to send
             const beforeToolContent = toolBuffer.split('<tool>')[0].trim();
             if (beforeToolContent) {
@@ -559,82 +587,108 @@ app.post('/api/chat/claude/message', async (req, res) => {
                 console.log('Backend - Processing tool call:', toolCall);
                 
                 try {
-                  const nameMatch = toolContent.match(/<name>(.*?)<\/name>/);
-                  const paramsMatch = toolContent.match(/<parameters>(.*?)(?:<\/parameters>|>)/);
+                  const nameMatch = toolContent.match(/<name>(.*?)<\/name>/s);
+                  const paramsMatch = toolContent.match(/<parameters>([\s\S]*?)<\/parameters>/);
+                  
+                  console.log('Backend - Tool call parsing:', {
+                    nameMatch: nameMatch?.[1],
+                    paramsMatch: paramsMatch?.[1]?.trim()
+                  });
                   
                   if (!nameMatch || !paramsMatch) {
                     throw new Error('Malformed tool call - missing name or parameters');
                   }
 
-                  const toolName = nameMatch[1];
-                  const params = JSON.parse(paramsMatch[1]);
-                  console.log('Backend - Valid tool call found:', { toolName, params });
+                  const toolName = nameMatch[1].trim();
+                  
+                  try {
+                    const params = JSON.parse(paramsMatch[1].trim());
+                    console.log('Backend - Valid tool call found:', { toolName, params });
 
-                  // Determine which MCP server to use
-                  let serverName;
-                  switch (toolName) {
-                    case 'search_college_data':
-                    case 'get_cds_data':
-                    case 'get_cds_content':
-                      serverName = 'college-data';
-                      break;
-                    case 'fetch':
-                      serverName = 'fetch';
-                      break;
-                    default:
-                      throw new Error(`Unknown tool: ${toolName}`);
-                  }
-
-                  // Send tool use notification
-                  sendSSE({ 
-                    type: 'thinking', 
-                    content: `Using ${toolName} tool...`,
-                    toolData: JSON.stringify(params, null, 2)
-                  });
-
-                  // Execute tool
-                  console.log('Backend - Starting tool execution:', { serverName, toolName, params });
-                  const toolResult = await executeMcpTool(serverName, toolName, params);
-                  console.log('Backend - Tool execution successful, processing result');
-
-                  // Process tool result
-                  if (toolResult?.content?.[0]?.text) {
-                    // Add tool result to conversation for Claude
-                    currentMessages.push({
-                      role: 'user',
-                      content: `Tool ${toolName} returned: ${toolResult.content[0].text}`
-                    });
-
-                    // Send tool result to frontend
-                    try {
-                      // Try to parse as JSON for pretty printing
-                      const parsedResult = JSON.parse(toolResult.content[0].text);
-                      sendSSE({ 
-                        type: 'thinking',
-                        content: `Tool ${toolName} result:`,
-                        toolData: JSON.stringify(parsedResult, null, 2)
-                      });
-                    } catch {
-                      // If parsing fails, send as-is
-                      sendSSE({ 
-                        type: 'thinking',
-                        content: `Tool ${toolName} result:`,
-                        toolData: toolResult.content[0].text
-                      });
+                    // Determine which MCP server to use
+                    let serverName;
+                    switch (toolName) {
+                      case 'search_college_data':
+                      case 'get_cds_data':
+                      case 'get_cds_content':
+                        serverName = 'college-data';
+                        break;
+                      case 'fetch':
+                        serverName = 'fetch';
+                        break;
+                      default:
+                        throw new Error(`Unknown tool: ${toolName}`);
                     }
 
-                    // Remove processed tool call from buffer and any whitespace
-                    toolBuffer = toolBuffer.replace(toolCall, '').trim();
-                    console.log('Backend - Updated buffer after tool call:', toolBuffer);
-                  } else {
-                    console.error('Backend - Invalid tool result format:', toolResult);
-                    throw new Error('Invalid tool result format');
+                    // Send tool use notification
+                    sendSSE({ 
+                      type: 'thinking', 
+                      content: `Using ${toolName} tool...`,
+                      toolData: JSON.stringify(params, null, 2)
+                    });
+
+                    // Execute tool
+                    console.log('Backend - Starting tool execution:', { serverName, toolName, params });
+                    const toolResult = await executeMcpTool(serverName, toolName, params);
+                    console.log('Backend - Tool execution successful, processing result');
+
+                    // Process tool result
+                    if (toolResult?.content?.[0]?.text) {
+                      // Add tool result to conversation for Claude (without timestamp)
+                      currentMessages.push({
+                        role: 'user',
+                        content: `Tool ${toolName} returned: ${toolResult.content[0].text}`
+                      });
+
+                      // Send tool result to frontend
+                      try {
+                        // Try to parse as JSON for pretty printing
+                        const parsedResult = JSON.parse(toolResult.content[0].text);
+                        sendSSE({ 
+                          type: 'thinking',
+                          content: `Tool ${toolName} result:`,
+                          toolData: JSON.stringify(parsedResult, null, 2)
+                        });
+                      } catch {
+                        // If parsing fails, send as-is
+                        sendSSE({ 
+                          type: 'thinking',
+                          content: `Tool ${toolName} result:`,
+                          toolData: toolResult.content[0].text
+                        });
+                      }
+
+                      // Remove processed tool call from buffer and any whitespace
+                      toolBuffer = toolBuffer.replace(toolCall, '').trim();
+                      console.log('Backend - Updated buffer after tool call:', toolBuffer);
+                    } else {
+                      console.error('Backend - Invalid tool result format:', toolResult);
+                      throw new Error('Invalid tool result format');
+                    }
+                  } catch (error) {
+                    console.error(`Error executing tool:`, error);
+                    // Add error message to conversation for Claude
+                    currentMessages.push({
+                      role: 'user',
+                      content: `Tool ${toolName} error: ${error.message}`
+                    });
+                    // Send error to frontend
+                    sendSSE({ 
+                      type: 'thinking',
+                      content: `Error executing tool: ${error.message}`
+                    });
                   }
                 } catch (error) {
-                  console.error(`Error executing tool:`, error);
+                  console.error(`Error parsing tool call:`, error);
+                  // Add error message to conversation for Claude
+                  currentMessages.push({
+                    role: 'user',
+                    content: `Tool call error: ${error.message}`
+                  });
+                  // Send error to frontend
                   sendSSE({ 
                     type: 'thinking',
-                    content: `Error executing tool: ${error.message}`
+                    content: `Error parsing tool call: ${error.message}`
                   });
                 }
               }
@@ -653,30 +707,20 @@ app.post('/api/chat/claude/message', async (req, res) => {
             }
 
             // Check for complete tags
-            const answerMatch = toolBuffer.match(/<answer>([\s\S]*?)<\/answer>/);
             const remainingToolCalls = toolBuffer.match(/<tool>[\s\S]*?<\/tool>/g);
             
             console.log('Backend - Message analysis:', {
               remainingToolCalls: remainingToolCalls?.length || 0,
-              hasCompleteAnswer: !!answerMatch,
+              hasCompleteAnswer: !!savedAnswer,
               bufferLength: toolBuffer.length
             });
 
-            if (answerMatch) {
-              console.log('Backend - Found complete answer:', answerMatch[0]);
-            }
-
-            if (remainingToolCalls) {
-              // Still have tool calls to process
-              console.log('Backend - Tool calls remaining, continuing processing');
-              hasToolCalls = true;
-            } else if (!answerMatch) {
-              // No tool calls but waiting for complete answer
-              console.log('Backend - Waiting for complete answer');
+            // Only continue if we have tool calls and haven't found an answer yet
+            if (remainingToolCalls || !savedAnswer) {
+              console.log('Backend - Tool calls remaining or no answer yet, continuing processing');
               hasToolCalls = true;
             } else {
-              // No more tool calls and have complete answer
-              console.log('Backend - Processing complete with answer');
+              console.log('Backend - Processing complete - either found answer or no more tool calls');
               hasToolCalls = false;
             }
             toolBuffer = toolBuffer.trim();
@@ -695,7 +739,7 @@ app.post('/api/chat/claude/message', async (req, res) => {
     };
 
     try {
-      let currentMessages = messages;
+      let currentMessages = claudeMessages;
       let continueProcessing = true;
 
       while (continueProcessing) {
@@ -718,11 +762,19 @@ app.post('/api/chat/claude/message', async (req, res) => {
           // Save final chat history if we have both student ID and chat data
           if (currentChat?.id && studentData?.id) {
             try {
+              // Add timestamps to messages before saving
+              const messagesWithTimestamps = currentMessages.map(msg => ({
+                ...msg,
+                timestamp: new Date().toISOString()
+              }));
+
               const updatedChat = {
                 ...currentChat,
-                messages: currentMessages.filter(msg => msg.role !== 'thinking'),
-                updatedAt: new Date().toISOString()
+                messages: messagesWithTimestamps,
+                updatedAt: new Date().toISOString(),
+                studentId: studentData?.id || currentChat?.studentId
               };
+              console.log('Backend - Saving complete chat history with messages:', messagesWithTimestamps.length);
               await executeMcpTool('student-data', 'save_chat', { 
                 studentId: studentData.id,
                 chat: updatedChat

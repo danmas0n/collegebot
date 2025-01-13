@@ -22,12 +22,12 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useWizard } from '../../contexts/WizardContext';
 import { useClaudeContext } from '../../contexts/ClaudeContext';
+import { AiChatMessage } from '../../types/college';
+import { CollapsibleMessage } from '../CollapsibleMessage';
 
-interface Message {
-  role: 'user' | 'assistant' | 'thinking';
-  content: string;
-  toolData?: string;
+interface Message extends AiChatMessage {
   timestamp: string;
+  toolData?: string;
 }
 
 interface Chat {
@@ -36,6 +36,7 @@ interface Chat {
   messages: Message[];
   createdAt: string;
   updatedAt: string;
+  studentId?: string;
 }
 
 export const RecommendationsStage: React.FC = () => {
@@ -100,7 +101,8 @@ export const RecommendationsStage: React.FC = () => {
       title: `Chat ${chats.length + 1}`,
       messages: [],
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      studentId: currentStudent?.id
     };
     const updatedChats = [...chats, newChat];
     setChats(updatedChats);
@@ -194,9 +196,11 @@ export const RecommendationsStage: React.FC = () => {
       const updatedChat: Chat = {
         ...activeChat,
         messages: [...activeChat.messages, userMessage],
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        studentId: currentStudent?.id
       };
       setCurrentChat(updatedChat);
+      activeChat = updatedChat; // Update activeChat reference
       await saveChat(updatedChat);
 
       const response = await fetch('/api/chat/claude/message', {
@@ -207,7 +211,10 @@ export const RecommendationsStage: React.FC = () => {
         },
         body: JSON.stringify({
           message: currentMessage,
-          studentData: data,
+          studentData: {
+            ...data,
+            id: currentStudent?.id
+          },
           studentName: currentStudent?.name,
           history: updatedChat.messages,
           currentChat: updatedChat
@@ -246,14 +253,14 @@ export const RecommendationsStage: React.FC = () => {
                     // Tool-related message
                     const thinkingMessage: Message = {
                       role: 'thinking',
-                      content: data.content,
-                      toolData: data.toolData,
+                      content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : ''),
                       timestamp: new Date().toISOString()
                     };
                     const updatedChat: Chat = {
                       ...activeChat,
                       messages: [...activeChat.messages, thinkingMessage],
-                      updatedAt: new Date().toISOString()
+                      updatedAt: new Date().toISOString(),
+                      studentId: currentStudent?.id
                     };
                     setCurrentChat(updatedChat);
                     activeChat = updatedChat;
@@ -268,7 +275,8 @@ export const RecommendationsStage: React.FC = () => {
                             ? { ...msg, content: msg.content + data.content }
                             : msg
                         ),
-                        updatedAt: new Date().toISOString()
+                        updatedAt: new Date().toISOString(),
+                        studentId: currentStudent?.id
                       };
                       setCurrentChat(updatedChat);
                       activeChat = updatedChat;
@@ -281,7 +289,8 @@ export const RecommendationsStage: React.FC = () => {
                       const updatedChat: Chat = {
                         ...activeChat,
                         messages: [...activeChat.messages, thinkingMessage],
-                        updatedAt: new Date().toISOString()
+                        updatedAt: new Date().toISOString(),
+                        studentId: currentStudent?.id
                       };
                       setCurrentChat(updatedChat);
                       activeChat = updatedChat;
@@ -304,10 +313,11 @@ export const RecommendationsStage: React.FC = () => {
                     const updatedChat: Chat = {
                       ...activeChat,
                       messages: [
-                        ...activeChat.messages.filter(msg => msg.role !== 'thinking'),
+                        ...activeChat.messages,
                         thinkingMessage
                       ],
-                      updatedAt: new Date().toISOString()
+                      updatedAt: new Date().toISOString(),
+                      studentId: currentStudent?.id
                     };
                     setCurrentChat(updatedChat);
                     activeChat = updatedChat;
@@ -315,22 +325,39 @@ export const RecommendationsStage: React.FC = () => {
                   break;
 
                 case 'message_stop':
-                  // Create final message from accumulated text
-                  const assistantMessage: Message = {
-                    role: 'assistant',
-                    content: assistantMessageBuffer,
-                    timestamp: new Date().toISOString()
-                  };
+                  // Keep all messages including thinking messages
                   const updatedChat: Chat = {
                     ...activeChat,
-                    messages: activeChat.messages.filter(msg => msg.role !== 'thinking'),
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
+                    studentId: currentStudent?.id
                   };
-                  updatedChat.messages.push(assistantMessage);
                   setCurrentChat(updatedChat);
                   activeChat = updatedChat;
                   await saveChat(updatedChat);
                   setIsLoading(false);
+                  break;
+
+                case 'response':
+                  console.log('Frontend - Received response event');
+                  const answerMessage: Message = {
+                    role: 'answer',
+                    content: data.content,
+                    timestamp: new Date().toISOString()
+                  };
+                  const updatedChatWithAnswer: Chat = {
+                    ...activeChat,
+                    messages: [...activeChat.messages, answerMessage],
+                    updatedAt: new Date().toISOString(),
+                    studentId: currentStudent?.id
+                  };
+                  setCurrentChat(updatedChatWithAnswer);
+                  activeChat = updatedChatWithAnswer;
+                  break;
+
+                case 'complete':
+                  console.log('Frontend - Received complete event');
+                  setIsLoading(false);
+                  await saveChat(activeChat);
                   break;
 
                 case 'error':
@@ -355,51 +382,23 @@ export const RecommendationsStage: React.FC = () => {
     }
   };
 
-  const renderMessage = (msg: Message, index: number) => (
-    <Grid container spacing={2} key={index}>
-      <Grid item xs={msg.toolData ? 8 : 12}>
-        <ListItem
-          sx={{
-            bgcolor: msg.role === 'assistant' ? 'action.hover' : 
-                   msg.role === 'thinking' ? 'grey.100' : 'transparent',
-            borderRadius: 1,
-            mb: 1,
-            pl: msg.role === 'thinking' ? 4 : 2
-          }}
-        >
-          <ListItemText
-            primary={
-              msg.role === 'assistant' ? 'AI Assistant' : 
-              msg.role === 'thinking' ? 'Thinking...' : 'You'
-            }
-            secondary={msg.content}
-            secondaryTypographyProps={{
-              style: { whiteSpace: 'pre-wrap' }
-            }}
+  const renderMessage = (msg: Message, index: number) => {
+    // If message has tool data, combine it with the content
+    const messageContent = msg.toolData 
+      ? `${msg.content}\n\nTool Data:\n${msg.toolData}`
+      : msg.content;
+
+    return (
+      <Grid container spacing={2} key={index}>
+        <Grid item xs={12}>
+          <CollapsibleMessage 
+            message={{ ...msg, content: messageContent }}
+            isLatest={index === (currentChat?.messages?.length ?? 0) - 1 && isLoading}
           />
-        </ListItem>
-      </Grid>
-      {msg.toolData && (
-        <Grid item xs={4}>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Tool Data
-              </Typography>
-              <Typography variant="body2" component="pre" sx={{ 
-                whiteSpace: 'pre-wrap',
-                fontSize: '0.75rem',
-                maxHeight: '200px',
-                overflow: 'auto'
-              }}>
-                {msg.toolData}
-              </Typography>
-            </CardContent>
-          </Card>
         </Grid>
-      )}
-    </Grid>
-  );
+      </Grid>
+    );
+  };
 
   if (!isConfigured) {
     return (
