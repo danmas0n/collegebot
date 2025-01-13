@@ -163,23 +163,29 @@ app.post('/api/search', async (req, res) => {
         throw new Error('Invalid response format from college-data server');
       }
 
-      const data = JSON.parse(result.content[0].text);
-      console.log('Backend - Successfully extracted data from response');
-      console.log('Backend - Data structure:', {
-        hasQuery: 'query' in data,
-        resultsLength: data.results?.length
-      });
-      
-      // Store results in memory if we have any
-      if (data.results && Array.isArray(data.results)) {
-        console.log('Backend - Storing', data.results.length, 'results in memory');
-        for (const college of data.results) {
-          await storeCollegeData(college);
+      try {
+        const data = JSON.parse(result.content[0].text);
+        console.log('Backend - Successfully extracted data from response');
+        console.log('Backend - Data structure:', {
+          hasQuery: 'query' in data,
+          resultsLength: data.results?.length
+        });
+        
+        // Store results in memory if we have any
+        if (data.results && Array.isArray(data.results)) {
+          console.log('Backend - Storing', data.results.length, 'results in memory');
+          for (const college of data.results) {
+            await storeCollegeData(college);
+          }
         }
-      }
 
-      console.log('Backend - Sending successful response');
-      res.json(data);
+        console.log('Backend - Sending successful response');
+        res.json(data);
+      } catch (error) {
+        // If parsing fails, send the raw text
+        console.log('Backend - Sending raw response');
+        res.json({ text: result.content[0].text });
+      }
     } catch (error) {
       console.error('Search error:', error);
       res.status(500).json({ 
@@ -315,8 +321,12 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/students', async (req, res) => {
   try {
     const result = await executeMcpTool('student-data', 'get_students', {});
-    const students = JSON.parse(result.content[0].text);
-    res.json(students);
+      try {
+        const students = JSON.parse(result.content[0].text);
+        res.json(students);
+      } catch {
+        res.json({ text: result.content[0].text });
+      }
   } catch (error) {
     console.error('Error getting students:', error);
     res.status(500).json({ error: 'Failed to get students' });
@@ -350,8 +360,12 @@ app.post('/api/chat/claude/chats', async (req, res) => {
   try {
     const { studentId } = req.body;
     const result = await executeMcpTool('student-data', 'get_chats', { studentId });
-    const chats = JSON.parse(result.content[0].text);
-    res.json({ chats });
+      try {
+        const chats = JSON.parse(result.content[0].text);
+        res.json({ chats });
+      } catch {
+        res.json({ text: result.content[0].text });
+      }
   } catch (error) {
     console.error('Error getting chats:', error);
     res.status(500).json({ error: 'Failed to get chats' });
@@ -450,120 +464,222 @@ app.post('/api/chat/claude/message', async (req, res) => {
 
         for await (const streamEvent of stream) {
           if (streamEvent.type === 'message_start') {
-            // Do nothing for now
-            // sendSSE({ type: 'thinking', content: '<start>\n' });
+            console.log('Backend - Message start');
+            toolBuffer = '';
           }
           else if (streamEvent.type === 'content_block_delta' && streamEvent.delta.type === 'text_delta') {
             const text = streamEvent.delta.text;
+            //console.log('Backend - Received text delta:', text);
+            
             // Accumulate text
             toolBuffer += text;
             
-            // Process any complete thinking tags
-            let thinkingMatch;
-            while ((thinkingMatch = toolBuffer.match(/<thinking>(.*?)<\/thinking>/s))) {
-              sendSSE({ 
-                type: 'thinking', 
-                content: thinkingMatch[1].trim()
-              });
-              toolBuffer = toolBuffer.replace(thinkingMatch[0], '');
+            // Check for any partial or incomplete tags
+            const hasOpenTag = toolBuffer.includes('<');
+            const hasCloseTag = toolBuffer.includes('>');
+            const hasPartialTag = hasOpenTag && (
+              // Check for incomplete tag structure
+              !hasCloseTag ||
+              // Check for incomplete tool tags
+              (toolBuffer.includes('<tool') && !toolBuffer.includes('</tool>')) ||
+              // Check for incomplete thinking tags
+              (toolBuffer.includes('<thinking') && !toolBuffer.includes('</thinking>')) ||
+              // Check for incomplete answer tags
+              (toolBuffer.includes('<answer') && !toolBuffer.includes('</answer>'))
+            );
+            /*console.log('Backend - Buffer analysis:', {
+              hasOpenTag,
+              hasCloseTag,
+              hasPartialTag,
+              bufferLength: toolBuffer.length,
+              bufferContent: toolBuffer
+            });*/
+
+            if (!hasPartialTag) {
+              // Process any complete thinking tags
+              let thinkingMatch;
+              while ((thinkingMatch = toolBuffer.match(/<thinking>(.*?)<\/thinking>/s))) {
+                sendSSE({ 
+                  type: 'thinking', 
+                  content: thinkingMatch[1].trim()
+                });
+                toolBuffer = toolBuffer.replace(thinkingMatch[0], '');
+              }
+
+              // Process any complete answer tags
+              let answerMatch;
+              while ((answerMatch = toolBuffer.match(/<answer>(.*?)<\/answer>/s))) {
+                sendSSE({ 
+                  type: 'response', 
+                  content: answerMatch[1].trim()
+                });
+                toolBuffer = toolBuffer.replace(answerMatch[0], '');
+              }
             }
 
-            // Process any complete answer tags
-            let answerMatch;
-            while ((answerMatch = toolBuffer.match(/<answer>(.*?)<\/answer>/s))) {
-              sendSSE({ 
-                type: 'response', 
-                content: answerMatch[1].trim()
-              });
-              toolBuffer = toolBuffer.replace(answerMatch[0], '');
-            }
-
-            // If we have text that's not part of a tag, send it as thinking
-            if (!toolBuffer.includes('<thinking>') && 
-                !toolBuffer.includes('<answer>') && 
-                !toolBuffer.includes('<tool>') &&
-                toolBuffer.trim()) {
+            // Only send non-tag content if we're sure it's not part of a tag
+            if (!toolBuffer.includes('<') && toolBuffer.trim()) {
+              console.log('Backend - Safe to send as thinking:', toolBuffer.trim());
               sendSSE({ 
                 type: 'thinking', 
                 content: toolBuffer.trim()
               });
               toolBuffer = '';
+            } else {
+              //console.log('Backend - Accumulating content for potential tags');
             }
           }
           else if (streamEvent.type === 'message_stop') {
-            // Process message completion
-            if (toolBuffer.trim()) {
-              // Check for tool calls
-              const toolCalls = toolBuffer.match(/<tool>[\s\S]*?<name>.*?<\/name>[\s\S]*?<parameters>.*?<\/parameters>[\s\S]*?<\/tool>/gs);
-              if (toolCalls) {
-                hasToolCalls = true;
-                for (const toolCall of toolCalls) {
-                  const toolMatch = toolCall.match(/<name>(.*?)<\/name>[\s\S]*?<parameters>(.*?)<\/parameters>/s);
-                  if (toolMatch) {
-                    const toolName = toolMatch[1];
-                    const params = JSON.parse(toolMatch[2]);
+            console.log('Backend - Message complete');
+            console.log('Backend - Complete message from Claude:', toolBuffer);
+            
+            // First, check if there's any non-tool content to send
+            const beforeToolContent = toolBuffer.split('<tool>')[0].trim();
+            if (beforeToolContent) {
+              console.log('Backend - Sending remaining content before tool call:', beforeToolContent);
+              sendSSE({ 
+                type: 'thinking', 
+                content: beforeToolContent
+              });
+            }
 
+            // Check if we have any complete tool calls
+            console.log('Backend - Message buffer:', toolBuffer);
+            const toolCallMatches = Array.from(toolBuffer.matchAll(/<tool>([\s\S]*?)<\/tool>/g));
+            console.log('Backend - Found tool calls:', toolCallMatches.length);
+            
+            if (toolCallMatches.length > 0) {
+              console.log('Backend - Processing complete tool calls');
+              hasToolCalls = true;
+              
+              // Process each complete tool call
+              for (const match of toolCallMatches) {
+                const toolCall = match[0]; // Full tool tag content
+                const toolContent = match[1]; // Content between tool tags
+                console.log('Backend - Processing tool call:', toolCall);
+                
+                try {
+                  const nameMatch = toolContent.match(/<name>(.*?)<\/name>/);
+                  const paramsMatch = toolContent.match(/<parameters>(.*?)(?:<\/parameters>|>)/);
+                  
+                  if (!nameMatch || !paramsMatch) {
+                    throw new Error('Malformed tool call - missing name or parameters');
+                  }
+
+                  const toolName = nameMatch[1];
+                  const params = JSON.parse(paramsMatch[1]);
+                  console.log('Backend - Valid tool call found:', { toolName, params });
+
+                  // Determine which MCP server to use
+                  let serverName;
+                  switch (toolName) {
+                    case 'search_college_data':
+                    case 'get_cds_data':
+                    case 'get_cds_content':
+                      serverName = 'college-data';
+                      break;
+                    case 'fetch':
+                      serverName = 'fetch';
+                      break;
+                    default:
+                      throw new Error(`Unknown tool: ${toolName}`);
+                  }
+
+                  // Send tool use notification
+                  sendSSE({ 
+                    type: 'thinking', 
+                    content: `Using ${toolName} tool...`,
+                    toolData: JSON.stringify(params, null, 2)
+                  });
+
+                  // Execute tool
+                  console.log('Backend - Starting tool execution:', { serverName, toolName, params });
+                  const toolResult = await executeMcpTool(serverName, toolName, params);
+                  console.log('Backend - Tool execution successful, processing result');
+
+                  // Process tool result
+                  if (toolResult?.content?.[0]?.text) {
+                    // Add tool result to conversation for Claude
+                    currentMessages.push({
+                      role: 'user',
+                      content: `Tool ${toolName} returned: ${toolResult.content[0].text}`
+                    });
+
+                    // Send tool result to frontend
                     try {
-                      // Determine which MCP server to use based on tool name
-                      let serverName;
-                      switch (toolName) {
-                        case 'search_college_data':
-                        case 'get_cds_data':
-                        case 'get_cds_content':
-                          serverName = 'college-data';
-                          break;
-                        case 'fetch':
-                          serverName = 'fetch';
-                          break;
-                        default:
-                          throw new Error(`Unknown tool: ${toolName}`);
-                      }
-
-                      // Execute tool
-                      const toolResult = await executeMcpTool(serverName, toolName, params);
-                      const toolResponse = JSON.parse(toolResult.content[0].text);
-                      
-                      // Send tool use and response
-                      sendSSE({ 
-                        type: 'thinking', 
-                        content: `Using ${toolName} tool...`,
-                        toolData: JSON.stringify(params, null, 2)
-                      });
+                      // Try to parse as JSON for pretty printing
+                      const parsedResult = JSON.parse(toolResult.content[0].text);
                       sendSSE({ 
                         type: 'thinking',
-                        content: `Tool result:`,
-                        toolData: JSON.stringify(toolResponse, null, 2)
+                        content: `Tool ${toolName} result:`,
+                        toolData: JSON.stringify(parsedResult, null, 2)
                       });
-
-                      // Add tool result to conversation
-                      currentMessages.push({
-                        role: 'user',
-                        content: `Tool ${toolName} returned: ${JSON.stringify(toolResponse, null, 2)}`
-                      });
-                      
-                      // Reset tool buffer
-                      toolBuffer = '';
-                      
-                      // Send the tool result to the client
+                    } catch {
+                      // If parsing fails, send as-is
                       sendSSE({ 
                         type: 'thinking',
-                        content: `Analyzing the results from ${toolName}...`
-                      });
-                    } catch (error) {
-                      console.error(`Error executing tool ${toolName}:`, error);
-                      sendSSE({ 
-                        type: 'thinking',
-                        content: `Error using ${toolName}: ${error.message}`
+                        content: `Tool ${toolName} result:`,
+                        toolData: toolResult.content[0].text
                       });
                     }
+
+                    // Remove processed tool call from buffer and any whitespace
+                    toolBuffer = toolBuffer.replace(toolCall, '').trim();
+                    console.log('Backend - Updated buffer after tool call:', toolBuffer);
+                  } else {
+                    console.error('Backend - Invalid tool result format:', toolResult);
+                    throw new Error('Invalid tool result format');
                   }
+                } catch (error) {
+                  console.error(`Error executing tool:`, error);
+                  sendSSE({ 
+                    type: 'thinking',
+                    content: `Error executing tool: ${error.message}`
+                  });
                 }
               }
             }
 
-            // Send completion for this stream
-            sendSSE({ type: 'complete' });
-            toolBuffer = '';
+            // Check for any remaining content after tool calls
+            if (toolCallMatches.length > 0) {
+              const afterToolContent = toolBuffer.split('</tool>').pop()?.trim();
+              if (afterToolContent) {
+                console.log('Backend - Sending remaining content after tool calls:', afterToolContent);
+                sendSSE({ 
+                  type: 'thinking', 
+                  content: afterToolContent
+                });
+              }
+            }
+
+            // Check for complete tags
+            const answerMatch = toolBuffer.match(/<answer>([\s\S]*?)<\/answer>/);
+            const remainingToolCalls = toolBuffer.match(/<tool>[\s\S]*?<\/tool>/g);
+            
+            console.log('Backend - Message analysis:', {
+              remainingToolCalls: remainingToolCalls?.length || 0,
+              hasCompleteAnswer: !!answerMatch,
+              bufferLength: toolBuffer.length
+            });
+
+            if (answerMatch) {
+              console.log('Backend - Found complete answer:', answerMatch[0]);
+            }
+
+            if (remainingToolCalls) {
+              // Still have tool calls to process
+              console.log('Backend - Tool calls remaining, continuing processing');
+              hasToolCalls = true;
+            } else if (!answerMatch) {
+              // No tool calls but waiting for complete answer
+              console.log('Backend - Waiting for complete answer');
+              hasToolCalls = true;
+            } else {
+              // No more tool calls and have complete answer
+              console.log('Backend - Processing complete with answer');
+              hasToolCalls = false;
+            }
+            toolBuffer = toolBuffer.trim();
           }
           else if (streamEvent.type === 'error') {
             sendSSE({ type: 'error', content: streamEvent.error.message });
@@ -583,11 +699,22 @@ app.post('/api/chat/claude/message', async (req, res) => {
       let continueProcessing = true;
 
       while (continueProcessing) {
+        console.log('Backend - Processing message with current state:', {
+          messageCount: currentMessages.length,
+          continueProcessing
+        });
+        
         const result = await processStream(currentMessages);
         currentMessages = result.messages;
         continueProcessing = result.hasToolCalls;
 
         if (!continueProcessing) {
+          console.log('Backend - All processing complete');
+          
+          // Send final completion event
+          console.log('Backend - Sending completion event');
+          sendSSE({ type: 'complete' });
+
           // Save final chat history if we have both student ID and chat data
           if (currentChat?.id && studentData?.id) {
             try {

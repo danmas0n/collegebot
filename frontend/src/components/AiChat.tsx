@@ -34,16 +34,57 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
   const { apiKey, isConfigured, setApiKey } = useClaudeContext();
   const { currentStudent, data: studentData } = useWizard();
   const paperRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef(true);
+
+  // Cleanup function to handle unmounting during a request
+  React.useEffect(() => {
+    return () => {
+      console.log('Frontend - Component unmounting');
+      isMounted.current = false;
+      if (abortController) {
+        console.log('Frontend - Aborting request during unmount');
+        abortController.abort();
+        // Don't update state here since component is unmounting
+      }
+    };
+  }, [abortController]);
+
+  // Separate effect to handle abort controller cleanup
+  React.useEffect(() => {
+    if (!isLoading && abortController) {
+      console.log('Frontend - Cleaning up abort controller after loading complete');
+      setAbortController(null);
+    }
+  }, [isLoading, abortController]);
+
+  const updateState = (updates: () => void) => {
+    if (isMounted.current) {
+      updates();
+    }
+  };
 
   const handleCancel = () => {
     if (abortController) {
+      console.log('Frontend - Cancelling request');
       abortController.abort();
-      setAbortController(null);
-      setIsLoading(false);
-      setMessages(prev => [...prev, {
-        role: 'system',
-        content: 'Response cancelled by user.'
-      }]);
+      
+      // Group state updates to avoid race conditions
+      updateState(() => {
+        // First clear loading state and abort controller
+        setIsLoading(false);
+        setAbortController(null);
+
+        // Then add cancellation message
+        setMessages(prev => {
+          const newMessages = prev.filter(msg => msg.role !== 'thinking');
+          return [...newMessages, {
+            role: 'system',
+            content: 'Response cancelled by user.'
+          }];
+        });
+      });
+      
+      console.log('Frontend - Request cancelled');
     }
   };
   
@@ -63,9 +104,11 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
       content: input,
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
+    updateState(() => {
+      setMessages(prev => [...prev, userMessage]);
+      setInput('');
+      setIsLoading(true);
+    });
 
     try {
       if (!isConfigured || !apiKey) {
@@ -81,7 +124,9 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
       });
 
       const controller = new AbortController();
-      setAbortController(controller);
+      updateState(() => {
+        setAbortController(controller);
+      });
       
       const response = await fetch('/api/chat/claude', {
         signal: controller.signal,
@@ -144,16 +189,18 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     role: 'thinking',
                     content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : '')
                   };
-                  setMessages(prev => {
-                    // Replace the last message if it was also a thinking message
-                    const newMessages = prev[prev.length - 1]?.role === 'thinking' 
-                      ? [...prev.slice(0, -1), thinkingMessage]
-                      : [...prev, thinkingMessage];
-                    paperRef.current?.scrollTo({
-                      top: paperRef.current.scrollHeight,
-                      behavior: 'auto'
+                  updateState(() => {
+                    setMessages(prev => {
+                      // Replace the last message if it was also a thinking message
+                      const newMessages = prev[prev.length - 1]?.role === 'thinking' 
+                        ? [...prev.slice(0, -1), thinkingMessage]
+                        : [...prev, thinkingMessage];
+                      paperRef.current?.scrollTo({
+                        top: paperRef.current.scrollHeight,
+                        behavior: 'auto'
+                      });
+                      return newMessages;
                     });
-                    return newMessages;
                   });
                   break;
 
@@ -163,17 +210,19 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     role: 'answer',
                     content: data.content
                   };
-                  setMessages(prev => {
-                    // If the last message was a thinking message, replace it
-                    // This handles the case where thinking and answer are part of the same response
-                    const newMessages = prev[prev.length - 1]?.role === 'thinking'
-                      ? [...prev.slice(0, -1), answerMessage]
-                      : [...prev, answerMessage];
-                    paperRef.current?.scrollTo({
-                      top: paperRef.current.scrollHeight,
-                      behavior: 'auto'
+                  updateState(() => {
+                    setMessages(prev => {
+                      // If the last message was a thinking message, replace it
+                      // This handles the case where thinking and answer are part of the same response
+                      const newMessages = prev[prev.length - 1]?.role === 'thinking'
+                        ? [...prev.slice(0, -1), answerMessage]
+                        : [...prev, answerMessage];
+                      paperRef.current?.scrollTo({
+                        top: paperRef.current.scrollHeight,
+                        behavior: 'auto'
+                      });
+                      return newMessages;
                     });
-                    return newMessages;
                   });
                   break;
 
@@ -187,19 +236,21 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                         !currentMessage.includes('<thinking>') &&
                         !currentMessage.includes('<answer>') &&
                         !currentMessage.includes('<tool>')) {
-                      setMessages(prev => {
-                        const lastMessage = prev[prev.length - 1];
-                        // Update or add as thinking message
-                        const updatedMessages = lastMessage?.role === 'thinking'
-                          ? [...prev.slice(0, -1), { ...lastMessage, content: currentMessage }]
-                          : [...prev, { role: 'thinking' as const, content: currentMessage }];
-                        
-                        paperRef.current?.scrollTo({
-                          top: paperRef.current.scrollHeight,
-                          behavior: 'auto'
+                      updateState(() => {
+                        setMessages(prev => {
+                          const lastMessage = prev[prev.length - 1];
+                          // Update or add as thinking message
+                          const updatedMessages = lastMessage?.role === 'thinking'
+                            ? [...prev.slice(0, -1), { ...lastMessage, content: currentMessage }]
+                            : [...prev, { role: 'thinking' as const, content: currentMessage }];
+                          
+                          paperRef.current?.scrollTo({
+                            top: paperRef.current.scrollHeight,
+                            behavior: 'auto'
+                          });
+                          
+                          return updatedMessages;
                         });
-                        
-                        return updatedMessages;
                       });
                       // Clear buffer since we've handled this content
                       currentMessage = '';
@@ -212,6 +263,31 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   currentMessage = '';
                   break;
 
+                case 'complete':
+                  console.log('Frontend - Received complete event');
+                  console.log('Frontend - Current state:', {
+                    isLoading,
+                    hasAbortController: !!abortController,
+                    messageCount: messages.length,
+                    thinkingMessages: messages.filter(msg => msg.role === 'thinking').length
+                  });
+                  
+                  updateState(() => {
+                    // First clear any remaining thinking messages
+                    setMessages(prev => {
+                      const newMessages = prev.filter(msg => msg.role !== 'thinking');
+                      console.log('Frontend - Filtered messages:', newMessages);
+                      return newMessages;
+                    });
+
+                    // Then clear loading state and abort controller
+                    setIsLoading(false);
+                    setAbortController(null);
+                  });
+
+                  console.log('Frontend - State updates complete');
+                  break;
+
                 case 'error':
                   throw new Error(data.content);
               }
@@ -221,18 +297,26 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
           }
         }
       } finally {
+        console.log('Frontend - Stream ended, cleaning up');
         reader.releaseLock();
+        // Ensure loading state is cleared when stream ends
+        updateState(() => {
+          setIsLoading(false);
+          setAbortController(null);
+        });
       }
     } catch (error) {
       console.error('Chat error:', error);
-      const errorMessage: AiChatMessage = {
-        role: 'system',
-        content: error instanceof Error ? error.message : 'Sorry, I encountered an error while processing your request.',
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-      setAbortController(null);
+      updateState(() => {
+        const errorMessage: AiChatMessage = {
+          role: 'system',
+          content: error instanceof Error ? error.message : 'Sorry, I encountered an error while processing your request.',
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        // Ensure loading state is cleared on error
+        setIsLoading(false);
+        setAbortController(null);
+      });
     }
   };
 
