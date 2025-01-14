@@ -16,7 +16,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'x-api-key']
 }));
 app.use(morgan('dev'));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -470,8 +470,10 @@ app.post('/api/chat/claude/message', async (req, res) => {
     const processStream = async (currentMessages) => {
       console.log('Backend - Starting Claude stream');
       let toolBuffer = '';
+      let messageContent = '';
       let hasToolCalls = false;
       let savedAnswer = null;
+      let continueProcessing = true;
       
       try {
         const stream = await anthropic.messages.stream({
@@ -546,12 +548,16 @@ app.post('/api/chat/claude/message', async (req, res) => {
               }
             }
 
-            // Only send non-tag content if we're sure it's not part of a tag
+            // Handle non-tag content
             if (!toolBuffer.includes('<') && toolBuffer.trim()) {
-              console.log('Backend - Safe to send as thinking:', toolBuffer.trim());
+              const content = toolBuffer.trim();
+              console.log('Backend - thinking:', content);
+              // Accumulate content for potential answer
+              messageContent += content + '\n';
+              // Send as thinking for UI updates
               sendSSE({ 
                 type: 'thinking', 
-                content: toolBuffer.trim()
+                content: content
               });
               toolBuffer = '';
             } else {
@@ -715,13 +721,39 @@ app.post('/api/chat/claude/message', async (req, res) => {
               bufferLength: toolBuffer.length
             });
 
-            // Only continue if we have tool calls and haven't found an answer yet
-            if (remainingToolCalls || !savedAnswer) {
-              console.log('Backend - Tool calls remaining or no answer yet, continuing processing');
+            // Determine if we should continue processing
+            if (remainingToolCalls) {
+              // Continue if there are more tool calls to process
+              console.log('Backend - Tool calls remaining, continuing processing');
               hasToolCalls = true;
-            } else {
-              console.log('Backend - Processing complete - either found answer or no more tool calls');
+              continueProcessing = true;
+            } else if (toolCallMatches.length > 0) {
+              // Continue if we just processed tool calls (wait for Claude's response)
+              console.log('Backend - Just processed tool calls, waiting for Claude response');
               hasToolCalls = false;
+              continueProcessing = true;
+            } else {
+              // If no tool calls and we have content, treat it as a question
+              if (messageContent.trim() && !savedAnswer) {
+                console.log('Backend - No tool calls, treating content as question');
+                const questionMessage = {
+                  role: 'question',
+                  content: messageContent.trim(),
+                  timestamp: new Date().toISOString()
+                };
+                currentMessages.push({
+                  role: 'question',
+                  content: messageContent.trim()
+                });
+                sendSSE({ 
+                  type: 'response', 
+                  content: messageContent.trim()
+                });
+              }
+              // Stop processing
+              console.log('Backend - No tool calls, treating as complete');
+              hasToolCalls = false;
+              continueProcessing = false;
             }
             toolBuffer = toolBuffer.trim();
           }
@@ -730,7 +762,7 @@ app.post('/api/chat/claude/message', async (req, res) => {
           }
         }
 
-        return { hasToolCalls, messages: currentMessages };
+        return { hasToolCalls, messages: currentMessages, continueProcessing };
       } catch (error) {
         console.error('Backend - Error in stream processing:', error);
         sendSSE({ type: 'error', content: error.message });
@@ -750,7 +782,7 @@ app.post('/api/chat/claude/message', async (req, res) => {
         
         const result = await processStream(currentMessages);
         currentMessages = result.messages;
-        continueProcessing = result.hasToolCalls;
+        continueProcessing = result.continueProcessing;
 
         if (!continueProcessing) {
           console.log('Backend - All processing complete');

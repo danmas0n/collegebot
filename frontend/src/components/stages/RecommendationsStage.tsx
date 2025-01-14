@@ -203,6 +203,42 @@ export const RecommendationsStage: React.FC = () => {
       activeChat = updatedChat; // Update activeChat reference
       await saveChat(updatedChat);
 
+      // Clear input field after message is saved
+      const messageToSend = currentMessage;
+      setCurrentMessage('');
+
+      // Find index of last user message before current one
+      const lastUserMessageIndex = updatedChat.messages
+        .slice(0, -1) // Exclude current message
+        .map((msg, i) => ({ msg, i }))
+        .filter(({ msg }) => msg.role === 'user')
+        .pop()?.i;
+
+      // Filter messages for Claude
+      const filteredMessages = updatedChat.messages
+        // Group messages by exchange (between user messages)
+        .reduce<Message[]>((acc, msg, i) => {
+          if (msg.role === 'user') {
+            // Always keep user messages
+            acc.push(msg);
+          } else if (msg.role === 'answer' || msg.role === 'question') {
+            // For answer/question messages, replace any previous answer/question
+            // in the current exchange
+            const lastMsg = acc[acc.length - 1];
+            if (lastMsg && lastMsg.role !== 'user') {
+              acc[acc.length - 1] = msg;
+            } else {
+              acc.push(msg);
+            }
+          }
+          return acc;
+        }, [])
+        // Map to Claude format
+        .map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.content
+        }));
+
       const response = await fetch('/api/chat/claude/message', {
         method: 'POST',
         headers: {
@@ -210,13 +246,13 @@ export const RecommendationsStage: React.FC = () => {
           'x-api-key': apiKey
         },
         body: JSON.stringify({
-          message: currentMessage,
+          message: messageToSend,
           studentData: {
             ...data,
             id: currentStudent?.id
           },
           studentName: currentStudent?.name,
-          history: updatedChat.messages,
+          history: filteredMessages,
           currentChat: updatedChat
         })
       });
@@ -232,6 +268,8 @@ export const RecommendationsStage: React.FC = () => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let currentThinkingMessage = '';
+      let hasToolCalls = false;
+      let messageContent = '';
 
       try {
         while (true) {
@@ -250,6 +288,7 @@ export const RecommendationsStage: React.FC = () => {
               switch (data.type) {
                 case 'thinking':
                   if (data.toolData) {
+                    hasToolCalls = true;
                     // Tool-related message
                     const thinkingMessage: Message = {
                       role: 'thinking',
@@ -301,19 +340,19 @@ export const RecommendationsStage: React.FC = () => {
 
                 case 'content_block_delta':
                   if (data.delta.type === 'text_delta') {
-                    // Accumulate text
-                    setAssistantMessageBuffer(prev => prev + data.delta.text);
+                    // Accumulate text for potential question
+                    messageContent += data.delta.text;
                     
                     // Update UI with thinking message
                     const thinkingMessage: Message = {
                       role: 'thinking',
-                      content: assistantMessageBuffer + data.delta.text,
+                      content: messageContent,
                       timestamp: new Date().toISOString()
                     };
                     const updatedChat: Chat = {
                       ...activeChat,
                       messages: [
-                        ...activeChat.messages,
+                        ...activeChat.messages.filter(msg => msg.role !== 'thinking'),
                         thinkingMessage
                       ],
                       updatedAt: new Date().toISOString(),
@@ -325,15 +364,26 @@ export const RecommendationsStage: React.FC = () => {
                   break;
 
                 case 'message_stop':
-                  // Keep all messages including thinking messages
-                  const updatedChat: Chat = {
-                    ...activeChat,
-                    updatedAt: new Date().toISOString(),
-                    studentId: currentStudent?.id
-                  };
-                  setCurrentChat(updatedChat);
-                  activeChat = updatedChat;
-                  await saveChat(updatedChat);
+                  // If no tool calls were made, treat the accumulated content as a question
+                  if (!hasToolCalls && messageContent.trim()) {
+                    const questionMessage: Message = {
+                      role: 'question',
+                      content: messageContent,
+                      timestamp: new Date().toISOString()
+                    };
+                    const updatedChatWithQuestion: Chat = {
+                      ...activeChat,
+                      messages: [
+                        ...activeChat.messages.filter(msg => msg.role !== 'thinking'),
+                        questionMessage
+                      ],
+                      updatedAt: new Date().toISOString(),
+                      studentId: currentStudent?.id
+                    };
+                    setCurrentChat(updatedChatWithQuestion);
+                    activeChat = updatedChatWithQuestion;
+                  }
+                  await saveChat(activeChat);
                   setIsLoading(false);
                   break;
 
@@ -372,8 +422,6 @@ export const RecommendationsStage: React.FC = () => {
       } finally {
         reader.releaseLock();
       }
-
-      setCurrentMessage('');
     } catch (error) {
       console.error('Chat error:', error);
       setError(error instanceof Error ? error.message : 'Failed to send message');

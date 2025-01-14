@@ -23,7 +23,7 @@ export interface WordCloudWord {
 }
 
 export interface AiChatMessage {
-  role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer';
+  role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer' | 'question';
   content: string;
 }
 

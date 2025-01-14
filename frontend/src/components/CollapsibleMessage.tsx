@@ -41,9 +41,10 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
         backgroundColor: 
           message.role === 'user' ? 'primary.main' : 
           message.role === 'thinking' ? 'grey.100' :
-          message.role === 'answer' ? 'success.light' :
+          message.role === 'answer' ? 'success.main' :
+          message.role === 'question' ? 'info.main' :
           'background.paper',
-        color: message.role === 'user' ? 'white' : 'text.primary',
+        color: message.role === 'user' || message.role === 'answer' || message.role === 'question' ? 'white' : 'text.primary',
         pl: message.role === 'thinking' ? 4 : 2,
         fontStyle: message.role === 'thinking' ? 'italic' : 'normal'
       }}
