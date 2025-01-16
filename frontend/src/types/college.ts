@@ -35,10 +35,4 @@ export interface AiChat {
   studentId?: string;
 }
 
-// Update Student interface to include chat history
-declare module './wizard' {
-  interface Student {
-    currentChat?: AiChat;
-    chats?: AiChat[];
-  }
-}
+// Chat history is now handled through StudentWithChats interface in wizard.ts

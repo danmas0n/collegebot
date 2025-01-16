@@ -1,4 +1,54 @@
+import { researchInstructions } from './research.js';
+
 export const AVAILABLE_TOOLS = [
+  {
+    name: 'create_entities',
+    description: 'Create multiple new entities in the knowledge graph',
+    parameters: [
+      {
+        name: 'entities',
+        type: 'array',
+        description: 'Array of entities to create, each with name, entityType, and observations array',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_relations',
+    description: 'Create multiple new relations between entities in the knowledge graph',
+    parameters: [
+      {
+        name: 'relations',
+        type: 'array',
+        description: 'Array of relations to create, each with from, to, and relationType',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'add_observations',
+    description: 'Add new observations to existing entities',
+    parameters: [
+      {
+        name: 'observations',
+        type: 'array',
+        description: 'Array of objects with entityName and contents (array of observations)',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'delete_entities',
+    description: 'Remove entities and their relations from the knowledge graph',
+    parameters: [
+      {
+        name: 'entityNames',
+        type: 'array',
+        description: 'Array of entity names to delete',
+        required: true
+      }
+    ]
+  },
   {
     name: 'fetch',
     description: 'Fetch and extract content from a webpage URL',
@@ -154,9 +204,7 @@ export const generateToolInstructions = () => {
      and wait for the tool response.
    - VERIFY important claims with data from tools before making recommendations
    - EXPLAIN your analysis of each piece of data
-   - BUILD your response step by step with confirmed information
-
-IMPORTANT: You must analyze each tool's response before making additional tool calls or providing recommendations. Each step should build on verified information from previous steps.`;
+   - BUILD your response step by step with confirmed information`;
 
   return instructions;
 };
@@ -187,15 +235,15 @@ Research Process:
 3. Financial Fit Assessment
 - Consider budget constraints and affordability
 - Analyze merit scholarship opportunities
-- Evaluate need-based aid policies and historical data
-- Calculate potential out-of-pocket costs
+- Evaluate need-based aid policies and historical data -- much of this is contained within the Common Data Set (CDS), 
+  which you can access via your tools
 - Explain financial aid processes and opportunities
 - CRITICAL: A student's budget reflects their ability/willingness to pay, not their financial need.
   Do not assume that need-based aid will make up the shortfall.  Students want to work with you
   because they can't afford a private college counselor, which can be very expensive!
 
 4. Holistic Evaluation
-- Consider location preferences and distance from home
+- Consider location preferences if any and distance from home
 - Account for campus size, culture, and environment
 - Factor in social and cultural fit
 - Evaluate career development and internship programs
@@ -203,23 +251,22 @@ Research Process:
 Tool Usage Strategy:
 
 1. Initial Research
-- Use search_college_data to find relevant college information based on the query
-- Include both obvious matches and potential hidden gems
+- Use search_college_data to find relevant college information
+- Cast a wide net to include both obvious matches and potential hidden gems
+- Follow the Research Organization Instructions to structure findings
 
 2. Summarized Analysis
-- Use get_cds_data to extract a summary of key college data:
-  * Admission statistics and requirements
+- Use get_cds_data to extract key college statistics and information
+- Pay special attention to:
+  * Admission requirements and statistics
   * Financial aid policies and opportunities
   * Program details and outcomes
+- Structure all findings according to Research Organization Instructions
 
 3. Deep Investigation
-- Use get_cds_content for the full unparsed text of the CDS file
-- Use fetch to retrieve full content from websites or documents found in search results.  
-  Do this when the description suggests relevance, but you need more context to make a good recommendation.
-- Particularly useful for understanding:
-  * Applicant experience and perspective
-  * Anecdotal evidence of correlation between student profile and admission outcomes
-  * Vibes and culture of the college as reported by students and prospective stiudents
+- Use get_cds_content for detailed CDS analysis
+- Use fetch to retrieve and analyze web content
+- Follow Research Organization Instructions for proper knowledge structuring
 
 Format your responses clearly:
 - Use bullet points for lists
@@ -231,5 +278,8 @@ Format your responses clearly:
 Remember to:
 - Maintain a helpful and encouraging tone
 - Give realistic and practical advice based on the student's profile
+
+Research Organization Instructions:
+${researchInstructions}
 `;
 };

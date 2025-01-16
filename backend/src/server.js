@@ -318,6 +318,47 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// Memory MCP endpoints
+app.post('/api/mcp/memory/create-entities', async (req, res) => {
+  try {
+    const result = await executeMcpTool('memory', 'create_entities', req.body);
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating entities:', error);
+    res.status(500).json({ error: 'Failed to create entities' });
+  }
+});
+
+app.post('/api/mcp/memory/create-relations', async (req, res) => {
+  try {
+    const result = await executeMcpTool('memory', 'create_relations', req.body);
+    res.json(result);
+  } catch (error) {
+    console.error('Error creating relations:', error);
+    res.status(500).json({ error: 'Failed to create relations' });
+  }
+});
+
+app.post('/api/mcp/memory/read-graph', async (req, res) => {
+  try {
+    const result = await executeMcpTool('memory', 'read_graph', {});
+    res.json(JSON.parse(result.content[0].text));
+  } catch (error) {
+    console.error('Error reading graph:', error);
+    res.status(500).json({ error: 'Failed to read graph' });
+  }
+});
+
+app.post('/api/mcp/memory/delete-entities', async (req, res) => {
+  try {
+    const result = await executeMcpTool('memory', 'delete_entities', req.body);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting entities:', error);
+    res.status(500).json({ error: 'Failed to delete entities' });
+  }
+});
+
 // Student data endpoints
 app.get('/api/students', async (req, res) => {
   try {
@@ -460,11 +501,14 @@ app.post('/api/chat/claude/message', async (req, res) => {
       });
     }
 
-    // Prepare messages for Claude (without timestamps and mapping roles)
-    const claudeMessages = initialMessages.map(msg => ({
-      role: msg.role === 'user' ? 'user' : 'assistant',
-      content: msg.content
-    }));
+      // Filter and prepare messages for Claude context
+      // Only include user messages and answers, exclude thinking/tool messages
+      const claudeMessages = initialMessages
+        .filter(msg => ['user', 'question', 'answer'].includes(msg.role))
+        .map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.content
+        }));
 
     // Helper function to process a single stream
     const processStream = async (currentMessages) => {
@@ -496,19 +540,54 @@ app.post('/api/chat/claude/message', async (req, res) => {
             // Accumulate text
             toolBuffer += text;
             
+            // Helper function to find complete tag content, including handling unclosed tags
+            const findCompleteTagContent = (tagName) => {
+              const startTag = `<${tagName}>`;
+              const endTag = `</${tagName}>`;
+              const startIndex = toolBuffer.indexOf(startTag);
+              if (startIndex === -1) return null;
+
+              // Get the content after the start tag
+              const contentStart = startIndex + startTag.length;
+              let content = toolBuffer.slice(contentStart);
+
+              // Look for either the closing tag or the start of a new top-level tag
+              const endIndex = content.indexOf(endTag);
+              const nextThinkingIndex = content.indexOf('<thinking>');
+              const nextToolIndex = content.indexOf('<tool>');
+              const nextAnswerIndex = content.indexOf('<answer>');
+
+              // Find the earliest occurrence of either a closing tag or a new top-level tag
+              let cutoff = endIndex;
+              if (nextThinkingIndex !== -1 && (cutoff === -1 || nextThinkingIndex < cutoff)) cutoff = nextThinkingIndex;
+              if (nextToolIndex !== -1 && (cutoff === -1 || nextToolIndex < cutoff)) cutoff = nextToolIndex;
+              if (nextAnswerIndex !== -1 && (cutoff === -1 || nextAnswerIndex < cutoff)) cutoff = nextAnswerIndex;
+
+              // If we found either a closing tag or a new top-level tag
+              if (cutoff !== -1) {
+                return {
+                  fullMatch: toolBuffer.slice(startIndex, contentStart + cutoff + (endIndex !== -1 ? endTag.length : 0)),
+                  content: content.slice(0, cutoff).trim()
+                };
+              }
+
+              // If we've reached the end of the buffer and this is an answer tag,
+              // treat the remaining content as complete
+              if (tagName === 'answer' && content.length > 0) {
+                return {
+                  fullMatch: toolBuffer.slice(startIndex),
+                  content: content.trim()
+                };
+              }
+              
+              // For other tags or empty content, consider the tag incomplete
+              return null;
+            };
+
             // Check for any partial or incomplete tags
             const hasOpenTag = toolBuffer.includes('<');
             const hasCloseTag = toolBuffer.includes('>');
-            const hasPartialTag = hasOpenTag && (
-              // Check for incomplete tag structure
-              !hasCloseTag ||
-              // Check for incomplete tool tags
-              (toolBuffer.includes('<tool') && !toolBuffer.includes('</tool>')) ||
-              // Check for incomplete thinking tags
-              (toolBuffer.includes('<thinking') && !toolBuffer.includes('</thinking>')) ||
-              // Check for incomplete answer tags
-              (toolBuffer.includes('<answer') && !toolBuffer.includes('</answer>'))
-            );
+            const hasPartialTag = hasOpenTag && !hasCloseTag;
             /*console.log('Backend - Buffer analysis:', {
               hasOpenTag,
               hasCloseTag,
@@ -518,21 +597,21 @@ app.post('/api/chat/claude/message', async (req, res) => {
             });*/
 
             if (!hasPartialTag) {
-              // Process any complete thinking tags
-              let thinkingMatch;
-              while ((thinkingMatch = toolBuffer.match(/<thinking>(.*?)<\/thinking>/s))) {
+              // Process thinking tags
+              let thinkingResult;
+              while ((thinkingResult = findCompleteTagContent('thinking'))) {
                 sendSSE({ 
                   type: 'thinking', 
-                  content: thinkingMatch[1].trim()
+                  content: thinkingResult.content
                 });
-                console.log('Backend - Found complete thinking tag:', thinkingMatch[1].trim());
-                toolBuffer = toolBuffer.replace(thinkingMatch[0], '');
+                console.log('Backend - Found complete thinking tag:', thinkingResult.content);
+                toolBuffer = toolBuffer.replace(thinkingResult.fullMatch, '');
               }
 
-              // Process any complete answer tags
-              let answerMatch;
-              while ((answerMatch = toolBuffer.match(/<answer>(.*?)<\/answer>/s))) {
-                const answerContent = answerMatch[1].trim();
+              // Process answer tags
+              let answerResult;
+              while ((answerResult = findCompleteTagContent('answer'))) {
+                const answerContent = answerResult.content;
                 savedAnswer = answerContent;
                 // Add answer message to conversation (without timestamp for Claude)
                 currentMessages.push({
@@ -544,7 +623,7 @@ app.post('/api/chat/claude/message', async (req, res) => {
                   content: answerContent
                 });
                 console.log('Backend - Found complete answer tag:', answerContent);
-                toolBuffer = toolBuffer.replace(answerMatch[0], '');
+                toolBuffer = toolBuffer.replace(answerResult.fullMatch, '');
               }
             }
 
@@ -567,19 +646,54 @@ app.post('/api/chat/claude/message', async (req, res) => {
           else if (streamEvent.type === 'message_stop') {
             console.log('Backend - Message complete');
              
-            // First, check if there's any non-tool content to send
-            const beforeToolContent = toolBuffer.split('<tool>')[0].trim();
-            if (beforeToolContent) {
-              console.log('Backend - Sending remaining content before tool call:', beforeToolContent);
-              sendSSE({ 
-                type: 'thinking', 
-                content: beforeToolContent
-              });
+            // Process any final content in the buffer
+            if (toolBuffer.includes('<answer>')) {
+              // If we have an unclosed answer tag at the end, process it
+              const answerResult = findCompleteTagContent('answer');
+              if (answerResult) {
+                const answerContent = answerResult.content;
+                savedAnswer = answerContent;
+                currentMessages.push({
+                  role: 'answer',
+                  content: answerContent
+                });
+                sendSSE({ 
+                  type: 'response', 
+                  content: answerContent
+                });
+                console.log('Backend - Found final answer tag:', answerContent);
+                toolBuffer = toolBuffer.replace(answerResult.fullMatch, '');
+              }
+            }
+            
+            // Process any remaining content as a question if it's not empty and not just tags
+            const remainingContent = toolBuffer.trim();
+            if (remainingContent) {
+              // Remove any incomplete tags
+              const cleanContent = remainingContent.replace(/<[^>]*$/, '').trim();
+              if (cleanContent && !savedAnswer) {
+                console.log('Backend - Converting remaining content to question:', cleanContent);
+                currentMessages.push({
+                  role: 'question',
+                  content: cleanContent
+                });
+                sendSSE({ 
+                  type: 'response', 
+                  content: cleanContent
+                });
+                messageContent = '';
+                toolBuffer = '';
+              }
             }
 
-            // Check if we have any complete tool calls
+            // Check for tool calls, using the same logic for unclosed tags
             console.log('Backend - Message buffer:', toolBuffer);
-            const toolCallMatches = Array.from(toolBuffer.matchAll(/<tool>([\s\S]*?)<\/tool>/g));
+            const toolCallMatches = [];
+            let toolResult;
+            while ((toolResult = findCompleteTagContent('tool'))) {
+              toolCallMatches.push([toolResult.fullMatch, toolResult.content]);
+              toolBuffer = toolBuffer.replace(toolResult.fullMatch, '');
+            }
             console.log('Backend - Found tool calls:', toolCallMatches.length);
             
             if (toolCallMatches.length > 0) {

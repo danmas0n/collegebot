@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
 import { ClaudeProvider } from './contexts/ClaudeContext';
+import { ChatProvider } from './contexts/ChatContext';
 import { WizardStepper } from './components/WizardStepper';
 import { StudentSelectionStage } from './components/stages/StudentSelectionStage';
 import { StudentProfileStage } from './components/stages/StudentProfileStage';
@@ -15,6 +16,7 @@ import { CollegeInterestsStage } from './components/stages/CollegeInterestsStage
 import { BudgetStage } from './components/stages/BudgetStage';
 import { DataCollectionStage } from './components/stages/DataCollectionStage';
 import { RecommendationsStage } from './components/stages/RecommendationsStage';
+import { TrackingStage } from './components/stages/TrackingStage';
 
 const WizardContent: React.FC = () => {
   const { currentStage } = useWizard();
@@ -33,6 +35,8 @@ const WizardContent: React.FC = () => {
         return <DataCollectionStage />;
       case 'recommendations':
         return <RecommendationsStage />;
+      case 'tracking':
+        return <TrackingStage />;
       default:
         return null;
     }
@@ -50,19 +54,21 @@ const App: React.FC = () => {
   return (
     <ClaudeProvider>
       <WizardProvider>
-        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-          <AppBar position="static">
-            <Toolbar>
-              <Typography variant="h6" component="div">
-                CollegeBot
-              </Typography>
-            </Toolbar>
-          </AppBar>
+        <ChatProvider>
+          <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+            <AppBar position="static">
+              <Toolbar>
+                <Typography variant="h6" component="div">
+                  CollegeBot
+                </Typography>
+              </Toolbar>
+            </AppBar>
 
-          <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
-            <WizardContent />
-          </Container>
-        </Box>
+            <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
+              <WizardContent />
+            </Container>
+          </Box>
+        </ChatProvider>
       </WizardProvider>
     </ClaudeProvider>
   );

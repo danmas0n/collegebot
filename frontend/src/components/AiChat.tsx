@@ -17,6 +17,7 @@ import SendIcon from '@mui/icons-material/Send';
 import { College, AiChatMessage } from '../types/college';
 import { useClaudeContext } from '../contexts/ClaudeContext';
 import { useWizard } from '../contexts/WizardContext';
+import { useChat } from '../contexts/ChatContext';
 import { CollapsibleMessage } from './CollapsibleMessage';
 
 interface AiChatProps {
@@ -34,6 +35,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const { apiKey, isConfigured, setApiKey } = useClaudeContext();
   const { currentStudent, data: studentData } = useWizard();
+  const { currentChat, setCurrentChat } = useChat();
   const paperRef = useRef<HTMLDivElement>(null);
   const isMounted = useRef(true);
 
@@ -141,7 +143,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
           studentData,
           studentName: currentStudent?.name || 'Student',
           history: messages,
-          currentChat: currentStudent?.currentChat
+          currentChat
         }),
       });
 

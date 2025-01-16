@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
-    "start": "node build/index.js"
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755') && require('fs').chmodSync('build/migrate-chats.js', '755')\"",
+    "start": "node build/index.js",
+    "migrate": "node build/migrate-chats.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "0.6.0"

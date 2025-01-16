@@ -22,6 +22,7 @@ interface Chat {
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  studentId: string;
 }
 
 interface Student {
@@ -67,14 +68,14 @@ interface Student {
         deadline: string;
         eligibility: string;
       }>;
-      chats: Chat[];
     };
   };
 }
 
 class StudentDataServer {
   private server: Server;
-  private dataPath: string;
+  private studentsPath: string;
+  private chatsPath: string;
 
   constructor() {
     this.server = new Server(
@@ -175,7 +176,9 @@ class StudentDataServer {
     );
 
     // Store data in the user's home directory
-    this.dataPath = path.join(process.env.HOME || '', '.collegebot', 'students.json');
+    const basePath = path.join(process.env.HOME || '', '.collegebot');
+    this.studentsPath = path.join(basePath, 'students.json');
+    this.chatsPath = path.join(basePath, 'chats.json');
 
     this.setupToolHandlers();
     
@@ -186,29 +189,48 @@ class StudentDataServer {
     });
   }
 
-  private async ensureDataFile() {
+  private async ensureDataFiles() {
     try {
-      await fs.mkdir(path.dirname(this.dataPath), { recursive: true });
+      const baseDir = path.dirname(this.studentsPath);
+      await fs.mkdir(baseDir, { recursive: true });
+      
       try {
-        await fs.access(this.dataPath);
+        await fs.access(this.studentsPath);
       } catch {
-        await fs.writeFile(this.dataPath, JSON.stringify({ students: [] }));
+        await fs.writeFile(this.studentsPath, JSON.stringify({ students: [] }));
+      }
+
+      try {
+        await fs.access(this.chatsPath);
+      } catch {
+        await fs.writeFile(this.chatsPath, JSON.stringify({ chats: [] }));
       }
     } catch (error) {
-      console.error('Error ensuring data file exists:', error);
+      console.error('Error ensuring data files exist:', error);
       throw error;
     }
   }
 
-  private async readData(): Promise<{ students: Student[] }> {
-    await this.ensureDataFile();
-    const data = await fs.readFile(this.dataPath, 'utf-8');
+  private async readStudents(): Promise<{ students: Student[] }> {
+    await this.ensureDataFiles();
+    const data = await fs.readFile(this.studentsPath, 'utf-8');
     return JSON.parse(data);
   }
 
-  private async writeData(data: { students: Student[] }) {
-    await this.ensureDataFile();
-    await fs.writeFile(this.dataPath, JSON.stringify(data, null, 2));
+  private async writeStudents(data: { students: Student[] }) {
+    await this.ensureDataFiles();
+    await fs.writeFile(this.studentsPath, JSON.stringify(data, null, 2));
+  }
+
+  private async readChats(): Promise<{ chats: Chat[] }> {
+    await this.ensureDataFiles();
+    const data = await fs.readFile(this.chatsPath, 'utf-8');
+    return JSON.parse(data);
+  }
+
+  private async writeChats(data: { chats: Chat[] }) {
+    await this.ensureDataFiles();
+    await fs.writeFile(this.chatsPath, JSON.stringify(data, null, 2));
   }
 
   private setupToolHandlers() {
@@ -216,7 +238,7 @@ class StudentDataServer {
       switch (request.params.name) {
         case 'get_students':
           try {
-            const data = await this.readData();
+            const data = await this.readStudents();
             return {
               content: [
                 {
@@ -241,7 +263,7 @@ class StudentDataServer {
           }
 
           try {
-            const data = await this.readData();
+            const data = await this.readStudents();
             const index = data.students.findIndex(s => s.id === student.id);
             
             if (index >= 0) {
@@ -250,7 +272,7 @@ class StudentDataServer {
               data.students.push(student);
             }
 
-            await this.writeData(data);
+            await this.writeStudents(data);
             return {
               content: [{ type: 'text', text: 'Student saved successfully' }],
             };
@@ -271,11 +293,18 @@ class StudentDataServer {
           }
 
           try {
-            const data = await this.readData();
-            data.students = data.students.filter(s => s.id !== id);
-            await this.writeData(data);
+            // Delete student
+            const studentData = await this.readStudents();
+            studentData.students = studentData.students.filter(s => s.id !== id);
+            await this.writeStudents(studentData);
+
+            // Delete associated chats
+            const chatData = await this.readChats();
+            chatData.chats = chatData.chats.filter(c => c.studentId !== id);
+            await this.writeChats(chatData);
+
             return {
-              content: [{ type: 'text', text: 'Student deleted successfully' }],
+              content: [{ type: 'text', text: 'Student and associated chats deleted successfully' }],
             };
           } catch (error) {
             console.error('Error deleting student:', error);
@@ -290,16 +319,12 @@ class StudentDataServer {
           }
 
           try {
-            const data = await this.readData();
-            const student = data.students.find(s => s.id === args.studentId);
-            if (!student) {
-              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
-            }
-
+            const data = await this.readChats();
+            const studentChats = data.chats.filter(c => c.studentId === args.studentId);
             return {
               content: [{ 
                 type: 'text', 
-                text: JSON.stringify(student.data.recommendations?.chats || [])
+                text: JSON.stringify(studentChats)
               }],
             };
           } catch (error) {
@@ -322,33 +347,23 @@ class StudentDataServer {
           }
 
           try {
-            const data = await this.readData();
-            const studentIndex = data.students.findIndex(s => s.id === args.studentId);
-            if (studentIndex === -1) {
-              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
-            }
+            const data = await this.readChats();
+            const chatIndex = data.chats.findIndex(c => c.id === chat.id);
 
-            // Initialize recommendations and chats if they don't exist
-            if (!data.students[studentIndex].data.recommendations) {
-              data.students[studentIndex].data.recommendations = {
-                colleges: [],
-                chats: []
-              };
-            }
-            if (!data.students[studentIndex].data.recommendations.chats) {
-              data.students[studentIndex].data.recommendations.chats = [];
-            }
-
-            const chats = data.students[studentIndex].data.recommendations.chats;
-            const chatIndex = chats.findIndex(c => c.id === chat.id);
+            // Add studentId to chat
+            // Ensure studentId is a string
+            const chatWithStudent: Chat = {
+              ...chat,
+              studentId: args.studentId as string
+            };
 
             if (chatIndex >= 0) {
-              chats[chatIndex] = chat;
+              data.chats[chatIndex] = chatWithStudent;
             } else {
-              chats.push(chat);
+              data.chats.push(chatWithStudent);
             }
 
-            await this.writeData(data);
+            await this.writeChats(data);
             return {
               content: [{ type: 'text', text: 'Chat saved successfully' }],
             };
@@ -365,27 +380,9 @@ class StudentDataServer {
           }
 
           try {
-            const data = await this.readData();
-            const studentIndex = data.students.findIndex(s => s.id === args.studentId);
-            if (studentIndex === -1) {
-              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
-            }
-
-            // Ensure recommendations exists
-            if (!data.students[studentIndex].data.recommendations) {
-              data.students[studentIndex].data.recommendations = {
-                colleges: [],
-                chats: []
-              };
-            }
-
-            // Filter out the chat to delete
-            data.students[studentIndex].data.recommendations.chats = 
-              data.students[studentIndex].data.recommendations.chats?.filter(
-                c => c.id !== args.chatId
-              ) || [];
-
-            await this.writeData(data);
+            const data = await this.readChats();
+            data.chats = data.chats.filter(c => !(c.id === args.chatId && c.studentId === args.studentId));
+            await this.writeChats(data);
 
             return {
               content: [{ type: 'text', text: 'Chat deleted successfully' }],

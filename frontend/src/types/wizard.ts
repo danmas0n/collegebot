@@ -4,17 +4,14 @@ export type WizardStage =
   | 'college-interests'
   | 'budget'
   | 'data-collection'
-  | 'recommendations';
-
-import { AiChat } from './college';
+  | 'recommendations'
+  | 'tracking';
 
 export interface Student {
   id: string;
   name: string;
   lastUpdated: string;
   data: WizardData;
-  currentChat?: AiChat;
-  chats?: AiChat[];
 }
 
 export interface StudentProfile {

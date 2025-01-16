@@ -7,7 +7,8 @@ const STAGES: WizardStage[] = [
   'college-interests',
   'budget',
   'data-collection',
-  'recommendations'
+  'recommendations',
+  'tracking'
 ];
 
 const initialData: WizardData = {
@@ -107,11 +108,30 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return 'recommendations';
   }, []);
 
-  const selectStudent = useCallback((student: Student) => {
-    setCurrentStudent(student);
-    setData(student.data);
-    const firstIncompleteStage = findFirstIncompleteStage(student.data);
-    setCurrentStage(firstIncompleteStage);
+  const selectStudent = useCallback(async (student: Student) => {
+    try {
+      setCurrentStudent(student);
+      setData(student.data);
+      const firstIncompleteStage = findFirstIncompleteStage(student.data);
+      setCurrentStage(firstIncompleteStage);
+
+      // Load student's chats
+      const response = await fetch('/api/chat/claude/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: student.id })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to load chats:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error selecting student:', error);
+      // Still set the student even if chat loading fails
+      setCurrentStudent(student);
+      setData(student.data);
+      setCurrentStage(findFirstIncompleteStage(student.data));
+    }
   }, [findFirstIncompleteStage]);
 
   const createStudent = useCallback(async (name: string) => {
@@ -177,6 +197,8 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       case 'data-collection':
         return data.dataCollection?.status === 'complete';
       case 'recommendations':
+        return true;
+      case 'tracking':
         return true;
       default:
         return false;
