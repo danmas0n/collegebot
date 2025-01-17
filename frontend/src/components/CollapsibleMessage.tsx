@@ -25,9 +25,26 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
     }
   }, [isCollapsible, isLatest]);
 
-  // Get preview text (first line or first 50 characters)
+  // Get preview text based on message type and content
   const getPreviewText = () => {
     const text = message.content;
+    
+    // For tool usage messages
+    if (text.startsWith('Using ')) {
+      return text.split('\n')[0]; // Show the "Using tool..." line
+    }
+    
+    // For tool results
+    if (text.startsWith('Tool ')) {
+      return 'Tool result...';
+    }
+    
+    // For thinking messages
+    if (message.role === 'thinking') {
+      return 'Thinking...';
+    }
+    
+    // Default case: first line or first 50 characters
     const firstLine = text.split('\n')[0];
     return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
   };

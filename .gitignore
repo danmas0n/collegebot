@@ -41,3 +41,5 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+mcp/college-data-server/storage/*

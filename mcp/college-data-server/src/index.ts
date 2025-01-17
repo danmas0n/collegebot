@@ -76,7 +76,7 @@ class CollegeDataServer {
               }
             },
             get_cds_data: {
-              description: 'Get Common Data Set information for a specific college',
+              description: 'Get Common Data Set information and full content for a specific college',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -87,19 +87,6 @@ class CollegeDataServer {
                   year: {
                     type: 'string',
                     description: 'Academic year (e.g., "2022-2023")'
-                  }
-                },
-                required: ['collegeName']
-              }
-            },
-            get_cds_content: {
-              description: 'Get the full content of a stored CDS file',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  collegeName: {
-                    type: 'string',
-                    description: 'Name of the college'
                   }
                 },
                 required: ['collegeName']
@@ -177,7 +164,7 @@ class CollegeDataServer {
         },
         {
           name: 'get_cds_data',
-          description: 'Get Common Data Set information for a specific college',
+          description: 'Get Common Data Set information and full content for a specific college',
           inputSchema: {
             type: 'object',
             properties: {
@@ -188,20 +175,6 @@ class CollegeDataServer {
               year: {
                 type: 'string',
                 description: 'Academic year (e.g., "2022-2023")',
-              },
-            },
-            required: ['collegeName'],
-          },
-        },
-        {
-          name: 'get_cds_content',
-          description: 'Get the full content of a stored CDS file',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              collegeName: {
-                type: 'string',
-                description: 'Name of the college',
               },
             },
             required: ['collegeName'],
@@ -218,8 +191,6 @@ class CollegeDataServer {
             return await this.handleSearchCollegeData(request.params.arguments);
           case 'get_cds_data':
             return await this.handleGetCdsData(request.params.arguments);
-          case 'get_cds_content':
-            return await this.handleGetCdsContent(request.params.arguments);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -367,25 +338,39 @@ class CollegeDataServer {
       throw new McpError(ErrorCode.InvalidParams, 'Invalid college name parameter');
     }
 
+    // First try to find college in memory
     let college = this.colleges.get(args.collegeName);
+    
+    // If not in memory, try to find existing stored file
     if (!college) {
-      // If college not found in memory, try to search for CDS files
-      const results = await this.searchCDSFiles(args.collegeName);
-      if (results.length === 0) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
-          `No CDS data found for college: ${args.collegeName}`
-        );
+      const files = fs.readdirSync(STORAGE_DIR);
+      const collegeFilePattern = new RegExp(`^${args.collegeName.replace(/[^a-zA-Z0-9]/g, '_')}_\\d+\\.(pdf|html)$`);
+      const matchingFiles = files.filter(f => collegeFilePattern.test(f));
+      
+      if (matchingFiles.length > 0) {
+        // Use most recent file based on timestamp in filename
+        const mostRecentFile = matchingFiles.sort().pop()!;
+        college = {
+          name: args.collegeName,
+          url: '', // URL not available for restored entries
+          storedFile: path.join(STORAGE_DIR, mostRecentFile),
+          lastUpdated: new Date().toISOString()
+        };
+        this.colleges.set(args.collegeName, college);
+      } else {
+        // If no stored file, try to search for new CDS files
+        const results = await this.searchCDSFiles(args.collegeName);
+        if (results.length === 0) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `No CDS data found for college: ${args.collegeName}`
+          );
+        }
+        college = results[0]; // Use the first result
       }
-      college = results[0]; // Use the first result
     }
 
     try {
-      const college = this.colleges.get(args.collegeName);
-      if (!college) {
-        throw new Error('College data not found');
-      }
-
       let content: Buffer;
       if (college.storedFile) {
         content = fs.readFileSync(college.storedFile);
@@ -407,10 +392,12 @@ class CollegeDataServer {
       const isPDF = college.url.toLowerCase().endsWith('.pdf') || 
                    college.storedFile?.toLowerCase().endsWith('.pdf');
       
+      let fullText: string;
       let sections;
+
       if (isPDF) {
         const pdfParser = new PDFParser();
-        const pdfText = await new Promise<string>((resolve, reject) => {
+        fullText = await new Promise<string>((resolve, reject) => {
           pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
             const pages = pdfData.Pages || [];
             const text = pages.map((page: any) => {
@@ -425,12 +412,14 @@ class CollegeDataServer {
           pdfParser.on('pdfParser_dataError', reject);
           pdfParser.parseBuffer(content);
         });
-        sections = this.parseCDSContent(pdfText);
       } else {
         // Handle HTML content
         const $ = cheerio.load(content);
-        sections = this.parseCDSContent($.text());
+        fullText = $.text();
       }
+
+      // Parse sections from the full text
+      sections = this.parseCDSContent(fullText);
 
       return {
         content: [
@@ -442,6 +431,7 @@ class CollegeDataServer {
                 year: args.year || 'latest',
                 url: college.url,
                 sections,
+                fullText,
                 hasStoredFile: !!college.storedFile
               },
               null,
@@ -454,67 +444,6 @@ class CollegeDataServer {
       throw new McpError(
         ErrorCode.InternalError,
         `Error fetching CDS data: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  private async handleGetCdsContent(args: any) {
-    if (!args.collegeName || typeof args.collegeName !== 'string') {
-      throw new McpError(ErrorCode.InvalidParams, 'Invalid college name parameter');
-    }
-
-    const college = this.colleges.get(args.collegeName);
-    if (!college || !college.storedFile) {
-      throw new McpError(
-        ErrorCode.InvalidRequest,
-        `No stored CDS file found for college: ${args.collegeName}`
-      );
-    }
-
-    try {
-      const content = fs.readFileSync(college.storedFile);
-      const isPDF = college.storedFile.toLowerCase().endsWith('.pdf');
-
-      if (isPDF) {
-        const pdfParser = new PDFParser();
-        const pdfText = await new Promise<string>((resolve, reject) => {
-          pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
-            const pages = pdfData.Pages || [];
-            const text = pages.map((page: any) => {
-              const texts = page.Texts || [];
-              return texts.map((text: any) => {
-                const runs = text.R || [];
-                return runs.map((r: any) => r.T || '').join(' ');
-              }).join(' ');
-            }).join('\n');
-            resolve(decodeURIComponent(text));
-          });
-          pdfParser.on('pdfParser_dataError', reject);
-          pdfParser.parseBuffer(content);
-        });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: pdfText
-            }
-          ]
-        };
-      } else {
-        // For HTML files, return the raw content
-        return {
-          content: [
-            {
-              type: 'text',
-              text: content.toString()
-            }
-          ]
-        };
-      }
-    } catch (error) {
-      throw new McpError(
-        ErrorCode.InternalError,
-        `Error reading CDS content: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

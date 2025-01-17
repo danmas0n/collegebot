@@ -24,6 +24,26 @@ import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 
+// Helper function to find complete tag content
+const findCompleteTagContent = (tagName, buffer) => {
+  const startTag = `<${tagName}>`;
+  const endTag = `</${tagName}>`;
+  const startIndex = buffer.indexOf(startTag);
+  const endIndex = buffer.indexOf(endTag);
+  
+  // Only process if we have both opening and closing tags
+  if (startIndex === -1 || endIndex === -1) return null;
+  
+  // Get the content between the tags
+  const contentStart = startIndex + startTag.length;
+  const content = buffer.slice(contentStart, endIndex);
+  
+  return {
+    fullMatch: buffer.slice(startIndex, endIndex + endTag.length),
+    content: content
+  };
+};
+
 // Helper function to create MCP client
 const createMcpClient = async (serverName) => {
   // Base environment with PATH
@@ -94,7 +114,8 @@ const executeMcpTool = async (serverName, toolName, args) => {
     const result = await client.request(request, CallToolResultSchema);
     console.log('Backend - Raw MCP response type:', typeof result);
     console.log('Backend - Raw MCP response keys:', result ? Object.keys(result) : 'null');
-    console.log('Backend - Raw MCP response:', JSON.stringify(result, null, 2));
+    const rawResponse = JSON.stringify(result, null, 2);
+    console.log('Backend - Raw MCP response:', rawResponse.slice(0, 200) + (rawResponse.length > 200 ? '...' : ''));
 
     if (!result) {
       throw new Error('MCP server returned null response');
@@ -200,37 +221,22 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
-// Helper function to get full CDS content
-const getFullCdsContent = async (collegeName) => {
-  try {
-    const result = await executeMcpTool('college-data', 'get_cds_content', {
-      collegeName
-    });
-    return result?.content?.[0]?.text || '';
-  } catch (error) {
-    console.error(`Error getting CDS content for ${collegeName}:`, error);
-    return '';
-  }
-};
-
 // Helper function to format college data for comparison
 const formatCollegeDataForComparison = async (colleges) => {
   const formattedData = [];
   
   for (const college of colleges) {
     try {
-      // Get detailed CDS data
+      // Get CDS data including sections and full content
       const cdsData = await executeMcpTool('college-data', 'get_cds_data', {
         collegeName: college.name
       });
       
-      // Get full CDS content
-      const fullContent = await getFullCdsContent(college.name);
-      
+      const parsedData = cdsData?.content?.[0]?.text ? JSON.parse(cdsData.content[0].text) : {};
       formattedData.push({
         name: college.name,
-        sections: cdsData?.content?.[0]?.text ? JSON.parse(cdsData.content[0].text).sections : {},
-        fullContent
+        sections: parsedData.sections || {},
+        fullContent: parsedData.fullText || ''
       });
     } catch (error) {
       console.error(`Error formatting data for ${college.name}:`, error);
@@ -448,7 +454,9 @@ app.post('/api/chat/claude/message', async (req, res) => {
       studentName,
       historyLength: history?.length,
       hasApiKey: !!apiKey,
-      hasStudentData: !!studentData
+      hasStudentData: !!studentData,
+      studentDataKeys: studentData ? Object.keys(studentData) : [],
+      studentDataPreview: studentData ? JSON.stringify(studentData).slice(0, 200) + '...' : null
     });
 
     if (!apiKey) {
@@ -468,7 +476,9 @@ app.post('/api/chat/claude/message', async (req, res) => {
 
     // Generate the system prompt
     console.log('Backend - Generating system prompt');
+    //console.log('Backend - Student data being passed to prompt:', JSON.stringify(studentData, null, 2));
     const systemPrompt = generatePrompt(studentName, studentData);
+    console.log('Backend - System prompt:', systemPrompt.slice(0, 500) + '...');
     console.log('Backend - System prompt length:', systemPrompt.length);
 
     // Initialize Anthropic client
@@ -484,8 +494,11 @@ app.post('/api/chat/claude/message', async (req, res) => {
       timestamp: new Date().toISOString()
     };
 
+    // Get existing messages from current chat
+    const existingMessages = currentChat?.messages || [];
+
     // Create initial messages array with user message
-    const initialMessages = [...(currentChat?.messages || []), userMessage];
+    const initialMessages = [...existingMessages, userMessage];
 
     // Update active chat with user message
     if (currentChat?.id) {
@@ -501,14 +514,20 @@ app.post('/api/chat/claude/message', async (req, res) => {
       });
     }
 
-      // Filter and prepare messages for Claude context
-      // Only include user messages and answers, exclude thinking/tool messages
-      const claudeMessages = initialMessages
-        .filter(msg => ['user', 'question', 'answer'].includes(msg.role))
-        .map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content
-        }));
+    // Filter and prepare messages for Claude context
+    // Only include user messages and answers from history, exclude thinking/tool messages
+    const claudeMessages = existingMessages
+      .filter(msg => ['user', 'question', 'answer'].includes(msg.role))
+      .map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+    
+    // Log preview of each message
+    console.log('Backend - Claude chat history preview:');
+    claudeMessages.forEach((msg, i) => {
+      console.log(`[${i}] ${msg.role}: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+    });
 
     // Helper function to process a single stream
     const processStream = async (currentMessages) => {
@@ -532,175 +551,81 @@ app.post('/api/chat/claude/message', async (req, res) => {
           if (streamEvent.type === 'message_start') {
             console.log('Backend - Message start');
             toolBuffer = '';
+            messageContent = '';
+          }
+          else if (streamEvent.type === 'content_block_start') {
+            console.log('Backend - Content block start');
           }
           else if (streamEvent.type === 'content_block_delta' && streamEvent.delta.type === 'text_delta') {
             const text = streamEvent.delta.text;
-            //console.log('Backend - Received text delta:', text);
-            
-            // Accumulate text
             toolBuffer += text;
             
-            // Helper function to find complete tag content, including handling unclosed tags
-            const findCompleteTagContent = (tagName) => {
-              const startTag = `<${tagName}>`;
-              const endTag = `</${tagName}>`;
-              const startIndex = toolBuffer.indexOf(startTag);
-              if (startIndex === -1) return null;
-
-              // Get the content after the start tag
-              const contentStart = startIndex + startTag.length;
-              let content = toolBuffer.slice(contentStart);
-
-              // Look for either the closing tag or the start of a new top-level tag
-              const endIndex = content.indexOf(endTag);
-              const nextThinkingIndex = content.indexOf('<thinking>');
-              const nextToolIndex = content.indexOf('<tool>');
-              const nextAnswerIndex = content.indexOf('<answer>');
-
-              // Find the earliest occurrence of either a closing tag or a new top-level tag
-              let cutoff = endIndex;
-              if (nextThinkingIndex !== -1 && (cutoff === -1 || nextThinkingIndex < cutoff)) cutoff = nextThinkingIndex;
-              if (nextToolIndex !== -1 && (cutoff === -1 || nextToolIndex < cutoff)) cutoff = nextToolIndex;
-              if (nextAnswerIndex !== -1 && (cutoff === -1 || nextAnswerIndex < cutoff)) cutoff = nextAnswerIndex;
-
-              // If we found either a closing tag or a new top-level tag
-              if (cutoff !== -1) {
-                return {
-                  fullMatch: toolBuffer.slice(startIndex, contentStart + cutoff + (endIndex !== -1 ? endTag.length : 0)),
-                  content: content.slice(0, cutoff).trim()
-                };
+            // Process any complete tags in the buffer
+            const processTag = (tagName, type) => {
+              let result;
+              while ((result = findCompleteTagContent(tagName, toolBuffer))) {
+                if (tagName === 'answer') {
+                  savedAnswer = result.content;
+                  currentMessages.push({
+                    role: 'answer',
+                    content: result.content
+                  });
+                  sendSSE({ 
+                    type: 'response', 
+                    content: result.content
+                  });
+                } else {
+                  sendSSE({ 
+                    type, 
+                    content: result.content
+                  });
+                }
+                console.log(`Backend - Found complete ${tagName} tag:`, result.content);
+                toolBuffer = toolBuffer.replace(result.fullMatch, '');
               }
-
-              // If we've reached the end of the buffer and this is an answer tag,
-              // treat the remaining content as complete
-              if (tagName === 'answer' && content.length > 0) {
-                return {
-                  fullMatch: toolBuffer.slice(startIndex),
-                  content: content.trim()
-                };
-              }
-              
-              // For other tags or empty content, consider the tag incomplete
-              return null;
             };
 
-            // Check for any partial or incomplete tags
-            const hasOpenTag = toolBuffer.includes('<');
-            const hasCloseTag = toolBuffer.includes('>');
-            const hasPartialTag = hasOpenTag && !hasCloseTag;
-            /*console.log('Backend - Buffer analysis:', {
-              hasOpenTag,
-              hasCloseTag,
-              hasPartialTag,
-              bufferLength: toolBuffer.length,
-              bufferContent: toolBuffer
-            });*/
+            processTag('thinking', 'thinking');
+            processTag('answer', 'response');
 
-            if (!hasPartialTag) {
-              // Process thinking tags
-              let thinkingResult;
-              while ((thinkingResult = findCompleteTagContent('thinking'))) {
-                sendSSE({ 
-                  type: 'thinking', 
-                  content: thinkingResult.content
-                });
-                console.log('Backend - Found complete thinking tag:', thinkingResult.content);
-                toolBuffer = toolBuffer.replace(thinkingResult.fullMatch, '');
-              }
-
-              // Process answer tags
-              let answerResult;
-              while ((answerResult = findCompleteTagContent('answer'))) {
-                const answerContent = answerResult.content;
-                savedAnswer = answerContent;
-                // Add answer message to conversation (without timestamp for Claude)
-                currentMessages.push({
-                  role: 'answer',
-                  content: answerContent
-                });
-                sendSSE({ 
-                  type: 'response', 
-                  content: answerContent
-                });
-                console.log('Backend - Found complete answer tag:', answerContent);
-                toolBuffer = toolBuffer.replace(answerResult.fullMatch, '');
-              }
-            }
-
-            // Handle non-tag content
-            if (!toolBuffer.includes('<') && toolBuffer.trim()) {
-              const content = toolBuffer.trim();
-              console.log('Backend - thinking:', content);
-              // Accumulate content for potential answer
-              messageContent += content + '\n';
-              // Send as thinking for UI updates
-              sendSSE({ 
-                type: 'thinking', 
-                content: content
-              });
+            // If we have non-tag content, accumulate it
+            if (!toolBuffer.includes('<')) {
+              messageContent += toolBuffer;
               toolBuffer = '';
-            } else {
-              //console.log('Backend - Accumulating content for potential tags');
             }
           }
           else if (streamEvent.type === 'message_stop') {
             console.log('Backend - Message complete');
              
-            // Process any final content in the buffer
-            if (toolBuffer.includes('<answer>')) {
-              // If we have an unclosed answer tag at the end, process it
-              const answerResult = findCompleteTagContent('answer');
-              if (answerResult) {
-                const answerContent = answerResult.content;
-                savedAnswer = answerContent;
-                currentMessages.push({
-                  role: 'answer',
-                  content: answerContent
-                });
-                sendSSE({ 
-                  type: 'response', 
-                  content: answerContent
-                });
-                console.log('Backend - Found final answer tag:', answerContent);
-                toolBuffer = toolBuffer.replace(answerResult.fullMatch, '');
-              }
-            }
-            
-            // Process any remaining content as a question if it's not empty and not just tags
-            const remainingContent = toolBuffer.trim();
-            if (remainingContent) {
-              // Remove any incomplete tags
-              const cleanContent = remainingContent.replace(/<[^>]*$/, '').trim();
-              if (cleanContent && !savedAnswer) {
-                console.log('Backend - Converting remaining content to question:', cleanContent);
-                currentMessages.push({
-                  role: 'question',
-                  content: cleanContent
-                });
-                sendSSE({ 
-                  type: 'response', 
-                  content: cleanContent
-                });
-                messageContent = '';
-                toolBuffer = '';
-              }
+            // At message_stop, check if we received any content
+            if (!toolBuffer.trim() && !messageContent.trim()) {
+              console.log('Backend - No content received, skipping processing');
+              return { hasToolCalls, messages: currentMessages, continueProcessing: false };
             }
 
-            // Check for tool calls, using the same logic for unclosed tags
+            console.log('Backend - Processing message content');
             console.log('Backend - Message buffer:', toolBuffer);
+            console.log('Backend - Message content:', messageContent);
+
+            // Combine remaining content to check for tags
+            const combinedContent = toolBuffer + messageContent;
+            toolBuffer = combinedContent;
+            messageContent = '';
+
+            // Check for complete tool calls
             const toolCallMatches = [];
             let toolResult;
-            while ((toolResult = findCompleteTagContent('tool'))) {
+            while ((toolResult = findCompleteTagContent('tool', toolBuffer))) {
               toolCallMatches.push([toolResult.fullMatch, toolResult.content]);
               toolBuffer = toolBuffer.replace(toolResult.fullMatch, '');
             }
             console.log('Backend - Found tool calls:', toolCallMatches.length);
-            
+
+            // Process any complete tool calls
             if (toolCallMatches.length > 0) {
               console.log('Backend - Processing complete tool calls');
               hasToolCalls = true;
               
-              // Process each complete tool call
               for (const match of toolCallMatches) {
                 const toolCall = match[0]; // Full tool tag content
                 const toolContent = match[1]; // Content between tool tags
@@ -814,62 +739,44 @@ app.post('/api/chat/claude/message', async (req, res) => {
               }
             }
 
-            // Check for any remaining content after tool calls
-            if (toolCallMatches.length > 0) {
-              const afterToolContent = toolBuffer.split('</tool>').pop()?.trim();
-              if (afterToolContent) {
-                console.log('Backend - Sending remaining content after tool calls:', afterToolContent);
-                sendSSE({ 
-                  type: 'thinking', 
-                  content: afterToolContent
-                });
-              }
-            }
-
-            // Check for complete tags
+            // Check for any remaining tool calls
             const remainingToolCalls = toolBuffer.match(/<tool>[\s\S]*?<\/tool>/g);
             
-            console.log('Backend - Message analysis:', {
-              remainingToolCalls: remainingToolCalls?.length || 0,
-              hasCompleteAnswer: !!savedAnswer,
-              bufferLength: toolBuffer.length
-            });
-
-            // Determine if we should continue processing
-            if (remainingToolCalls) {
-              // Continue if there are more tool calls to process
-              console.log('Backend - Tool calls remaining, continuing processing');
-              hasToolCalls = true;
+            // If we have tool calls, process them and continue
+            if (remainingToolCalls || toolCallMatches.length > 0) {
+              console.log('Backend - Message analysis:', {
+                remainingToolCalls: remainingToolCalls?.length || 0,
+                toolCallMatches: toolCallMatches.length,
+                hasCompleteAnswer: !!savedAnswer
+              });
               continueProcessing = true;
-            } else if (toolCallMatches.length > 0) {
-              // Continue if we just processed tool calls (wait for Claude's response)
-              console.log('Backend - Just processed tool calls, waiting for Claude response');
-              hasToolCalls = false;
-              continueProcessing = true;
-            } else {
-              // If no tool calls and we have content, treat it as a question
-              if (messageContent.trim() && !savedAnswer) {
-                console.log('Backend - No tool calls, treating content as question');
-                const questionMessage = {
-                  role: 'question',
-                  content: messageContent.trim(),
-                  timestamp: new Date().toISOString()
-                };
-                currentMessages.push({
-                  role: 'question',
-                  content: messageContent.trim()
-                });
-                sendSSE({ 
-                  type: 'response', 
-                  content: messageContent.trim()
-                });
-              }
-              // Stop processing
-              console.log('Backend - No tool calls, treating as complete');
-              hasToolCalls = false;
-              continueProcessing = false;
+              hasToolCalls = !!remainingToolCalls;
+              return { hasToolCalls, messages: currentMessages, continueProcessing };
             }
-            toolBuffer = toolBuffer.trim();
+
+            // No tool calls, check for remaining content
+            const remainingContent = toolBuffer.trim();
+            if (!savedAnswer && remainingContent) {
+              console.log('Backend - Converting remaining content to question:', remainingContent);
+              currentMessages.push({
+                role: 'question',
+                content: remainingContent
+              });
+              sendSSE({ 
+                type: 'response', 
+                content: remainingContent
+              });
+            }
+
+            // No more processing needed
+            console.log('Backend - Message analysis:', {
+              remainingToolCalls: 0,
+              hasCompleteAnswer: !!savedAnswer,
+              continueProcessing: false,
+              hasToolCalls: false
+            });
+            continueProcessing = false;
+            hasToolCalls = false;
           }
           else if (streamEvent.type === 'error') {
             sendSSE({ type: 'error', content: streamEvent.error.message });
@@ -894,7 +801,13 @@ app.post('/api/chat/claude/message', async (req, res) => {
           continueProcessing
         });
         
-        const result = await processStream(currentMessages);
+        // Map our roles to Claude's roles before sending
+        const claudeFormattedMessages = currentMessages.map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.content
+        }));
+        
+        const result = await processStream(claudeFormattedMessages);
         currentMessages = result.messages;
         continueProcessing = result.continueProcessing;
 
@@ -965,4 +878,4 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
-});
+                });
