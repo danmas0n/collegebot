@@ -1,6 +1,73 @@
-import { researchInstructions } from './research.js';
+import { graphInstructions } from './graph_instructions.js';
+import { recommendationsInstructions } from './recommendations_instructions.js';
+import { executeMcpTool } from '../utils/mcp.js';
 
-export const AVAILABLE_TOOLS = [
+// Tools for making college recommendations
+const RECOMMENDATION_TOOLS = [
+  {
+    name: 'search_college_data',
+    description: 'Search for college data sources and information',
+    parameters: [
+      {
+        name: 'query',
+        type: 'string',
+        description: 'Search query for college data',
+        required: true
+      },
+      {
+        name: 'includeWebSearch',
+        type: 'boolean',
+        description: 'Whether to include web search results',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'get_cds_data',
+    description: 'Get Common Data Set information and full content for a specific college',
+    parameters: [
+      {
+        name: 'collegeName',
+        type: 'string',
+        description: 'Name of the college',
+        required: true
+      },
+      {
+        name: 'year',
+        type: 'string',
+        description: 'Academic year (e.g., "2022-2023")',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'fetch',
+    description: 'Fetch and extract content from a webpage URL',
+    parameters: [
+      {
+        name: 'url',
+        type: 'string',
+        description: 'URL to fetch content from',
+        required: true
+      },
+      {
+        name: 'max_length',
+        type: 'integer',
+        description: 'Maximum number of characters to return (default: 5000)',
+        required: false
+      },
+      {
+        name: 'start_index',
+        type: 'integer',
+        description: 'Start content from this character index (default: 0)',
+        required: false
+      }
+    ]
+  }
+];
+
+// Tools for managing the knowledge graph
+const GRAPH_TOOLS = [
   {
     name: 'create_entities',
     description: 'Create multiple new entities in the knowledge graph',
@@ -110,10 +177,11 @@ export const AVAILABLE_TOOLS = [
   }
 ];
 
-export const generateToolInstructions = () => {
+export const generateToolInstructions = (mode) => {
   let instructions = 'Available tools:\n\n';
   
-  AVAILABLE_TOOLS.forEach((tool, index) => {
+  const tools = mode === 'recommendations' ? RECOMMENDATION_TOOLS : GRAPH_TOOLS;
+  tools.forEach((tool, index) => {
     instructions += `${index + 1}. ${tool.name}\n`;
     instructions += `Description: ${tool.description}\n`;
     instructions += 'Parameters:\n';
@@ -131,6 +199,7 @@ export const generateToolInstructions = () => {
       <name>search_college_data</name>
       <parameters>{"query": "Stanford University"}</parameters>
      </tool>
+   - CRITICAL: YOU MUST RETURN WELL FORMED XML.  If you don't close your tags, the system will break.
    - CRITICAL: MAKE ONE TOOL CALL AT A TIME.  END YOUR MESSAGE IMMEDIATELY after the tool call. 
      Do not include additional text in the same message.  The tool call result will be passed to you on your next turn.
 
@@ -195,11 +264,21 @@ export const generateToolInstructions = () => {
   return instructions;
 };
 
-export const generateBasePrompt = (studentName, studentData) => {
-  return `You are an AI college advisor helping a student named ${studentName}. 
-You have access to their profile data and can use tools to fetch college information from the Internet as needed.
-Your goal is to generate great recommendations for colleges and scholarships, and save them to the student's knowledge
-graph so they can keep track and build a great set of options.
+export const generateBasePrompt = async (studentName, studentData, mode = 'recommendations') => {
+  const baseInstructions = `You are an AI college advisor helping a student named ${studentName}. 
+You have access to their profile data and can use tools to fetch college information from the Internet as needed.`;
+
+  const modeSpecificInstructions = mode === 'recommendations' ? 
+    `Your goal is to generate great recommendations for colleges and scholarships that match ${studentName}'s profile and interests.
+
+${recommendationsInstructions}` :
+    `Your goal is to analyze our conversation and extract any college or scholarship recommendations we discussed,
+adding them to the student's knowledge graph to help them track their options.
+
+${graphInstructions}`;
+
+  return `${baseInstructions}
+${modeSpecificInstructions}
 
 Student Profile:
 ${JSON.stringify({
@@ -215,51 +294,13 @@ ${JSON.stringify({
   }
 }, null, 2)}
 
-${generateToolInstructions()}
+${generateToolInstructions(mode)}
 
-Research Process:
-
-1. Academic Match Analysis
-- Compare the student's GPA and test scores with data from colleges, like the Common Data Set
-- Look for colleges where they fall within the middle 50% range
-- Consider the rigor and reputation of the student's high school
-- Evaluate specific program or scholarship requirements and opportunities against the student's profile
-
-2. Interest & Career Alignment
-- Match academic interests and extracurriculars with college programs and majors
-- Look for special programs, research opportunities, and internships
-- Connect program strengths with career goals
-
-3. Financial Fit Assessment
-- Consider budget constraints and affordability when recommending schools and scholarships
-- Analyze merit scholarship opportunities
-- Evaluate need-based aid policies and historical data from the Common Data Set or other sources
-- Explain financial aid processes and opportunities
-- CRITICAL: A student's budget reflects their ability/willingness to pay, not their financial need.
-  Do not assume that need-based aid will make up the shortfall.  Students want to work with you
-  because they can't afford a private college counselor, which can be very expensive!
-
-4. Holistic Evaluation
-- Consider location preferences if any and distance from home
-- Account for campus size, culture, and environment
-- Factor in social and cultural fit
-- Evaluate career development and internship programs
-
-Tool Usage Strategy:
-
-1. Initial Research
-- Use search_college_data to find relevant college or scholarship information
-- Cast a wide net to include both obvious matches and potential hidden gems
-
-2. Detailed Analysis
-- Use get_cds_data to get both structured sections and full CDS content
-- Analyze both the parsed sections and full text for:
-  * Admission requirements and statistics
-  * Financial aid policies and opportunities
-  * Program details and outcomes
-  * Any other relevant information in the full text
-- Use fetch to retrieve and analyze additional web content as needed
-- Structure all findings according to Research Organization Instructions
+${mode === 'graph_enrichment' ? 
+  // Get current graph state for context
+  `Current Knowledge Graph State:
+${JSON.stringify(await executeMcpTool('memory', 'read_graph', {}), null, 2)}` : 
+  ''}
 
 Format your responses clearly:
 - Use bullet points for lists
@@ -267,10 +308,6 @@ Format your responses clearly:
 - Highlight key information
 - Organize information logically
 - Make complex topics understandable
-
-Remember to:
-- Maintain a helpful and encouraging tone
-- Give realistic and practical advice based on the student's profile
 
 `;
 };

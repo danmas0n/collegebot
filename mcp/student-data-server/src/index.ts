@@ -29,6 +29,10 @@ interface Student {
   id: string;
   name: string;
   lastUpdated: string;
+  processedChats?: Record<string, {
+    processedAt: string;
+    lastMessageTimestamp: string;
+  }>;
   data: {
     studentProfile: {
       graduationYear?: number;
@@ -88,7 +92,7 @@ class StudentDataServer {
           tools: {
             get_students: {
               description: 'Get all student profiles',
-              inputSchema: {}
+              inputSchema: { type: 'object', properties: {} as { [key: string]: never } }
             },
             save_student: {
               description: 'Save or update a student profile',
@@ -168,6 +172,27 @@ class StudentDataServer {
                   }
                 },
                 required: ['studentId', 'chatId']
+              }
+            },
+            mark_chat_processed: {
+              description: 'Mark a chat as processed',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  chatId: {
+                    type: 'string',
+                    description: 'Chat ID'
+                  },
+                  lastMessageTimestamp: {
+                    type: 'string',
+                    description: 'Timestamp of last processed message'
+                  }
+                },
+                required: ['studentId', 'chatId', 'lastMessageTimestamp']
               }
             }
           }
@@ -319,12 +344,28 @@ class StudentDataServer {
           }
 
           try {
+            const studentData = await this.readStudents();
+            const student = studentData.students.find(s => s.id === args.studentId);
+            if (!student) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
             const data = await this.readChats();
             const studentChats = data.chats.filter(c => c.studentId === args.studentId);
+            
+            // Add processed status to each chat
+            const chatsWithStatus = studentChats.map(chat => ({
+              ...chat,
+              processed: student.processedChats?.[chat.id] ? {
+                processedAt: student.processedChats[chat.id].processedAt,
+                lastMessageTimestamp: student.processedChats[chat.id].lastMessageTimestamp
+              } : null
+            }));
+
             return {
               content: [{ 
                 type: 'text', 
-                text: JSON.stringify(studentChats)
+                text: JSON.stringify(chatsWithStatus)
               }],
             };
           } catch (error) {
@@ -393,11 +434,48 @@ class StudentDataServer {
           }
         }
 
-        default:
-          throw new McpError(
-            ErrorCode.MethodNotFound,
-            `Unknown tool: ${request.params.name}`
-          );
+        case 'mark_chat_processed': {
+            const args = request.params.arguments;
+            if (!args?.studentId || !args?.chatId || !args?.lastMessageTimestamp) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student ID, chat ID, and timestamp are required');
+            }
+
+            try {
+              const studentData = await this.readStudents();
+              const studentIndex = studentData.students.findIndex(s => s.id === args.studentId);
+              if (studentIndex === -1) {
+                throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+              }
+
+              // Initialize or get processedChats
+              const processedChats: Record<string, {
+                processedAt: string;
+                lastMessageTimestamp: string;
+              }> = studentData.students[studentIndex].processedChats || {};
+
+              // Update processed status
+              processedChats[args.chatId as string] = {
+                processedAt: new Date().toISOString(),
+                lastMessageTimestamp: args.lastMessageTimestamp as string
+              };
+
+              // Update student data
+              studentData.students[studentIndex].processedChats = processedChats;
+              await this.writeStudents(studentData);
+              return {
+                content: [{ type: 'text', text: 'Chat marked as processed' }],
+              };
+            } catch (error) {
+              console.error('Error marking chat as processed:', error);
+              throw new McpError(ErrorCode.InternalError, 'Failed to mark chat as processed');
+            }
+        }
+
+          default:
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown tool: ${request.params.name}`
+            );
       }
     });
   }

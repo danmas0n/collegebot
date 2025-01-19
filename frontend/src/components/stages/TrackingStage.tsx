@@ -16,8 +16,12 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Snackbar,
+  LinearProgress,
 } from '@mui/material';
+import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
+import { useClaudeContext } from '../../contexts/ClaudeContext';
 import {
   ReactFlow,
   MiniMap,
@@ -160,6 +164,11 @@ const nodeTypes = {
 
 export const TrackingStage = (): JSX.Element => {
   const { currentStudent, data, updateData } = useWizard();
+  const { apiKey } = useClaudeContext();
+  const { chats, loadChats } = useChat();
+  const [processingChats, setProcessingChats] = useState(false);
+  const [processedCount, setProcessedCount] = useState(0);
+  const [totalToProcess, setTotalToProcess] = useState(0);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CustomNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -241,14 +250,14 @@ export const TrackingStage = (): JSX.Element => {
             name: student.name,
             entityType: 'student',
             observations: [
-              `GPA: ${wizardData.studentProfile.gpa}`,
-              `SAT Score: ${wizardData.studentProfile.satScore}`,
-              `ACT Score: ${wizardData.studentProfile.actScore}`,
-              `Graduation Year: ${wizardData.studentProfile.graduationYear}`,
-              `High School: ${wizardData.studentProfile.highSchool}`,
-              `Budget: ${wizardData.budgetInfo.yearlyBudget}`,
-              ...wizardData.studentProfile.extracurriculars?.map(ec => `Extracurricular: ${ec}`) || [],
-              ...wizardData.studentProfile.sports?.map(sport => `Sport: ${sport}`) || []
+              `GPA: ${student.data.studentProfile?.gpa || 'Not provided'}`,
+              `SAT Score: ${student.data.studentProfile?.satScore || 'Not provided'}`,
+              `ACT Score: ${student.data.studentProfile?.actScore || 'Not provided'}`,
+              `Graduation Year: ${student.data.studentProfile?.graduationYear || 'Not provided'}`,
+              `High School: ${student.data.studentProfile?.highSchool || 'Not provided'}`,
+              `Budget: ${student.data.budgetInfo?.yearlyBudget || 'Not provided'}`,
+              ...(student.data.studentProfile?.extracurriculars?.map(ec => `Extracurricular: ${ec}`) || []),
+              ...(student.data.studentProfile?.sports?.map(sport => `Sport: ${sport}`) || [])
             ]
           }]
         })
@@ -256,15 +265,15 @@ export const TrackingStage = (): JSX.Element => {
       console.log('TrackingStage: Student entity creation response:', await createStudentResponse.clone().json());
 
       // Create college entities and relations
-      const colleges = wizardData.recommendations?.colleges || [];
+      const colleges = student.data.recommendations?.colleges || [];
       console.log('TrackingStage: College recommendations:', colleges);
       if (colleges.length > 0) {
         const collegeEntities = colleges.map(college => ({
           name: college.name,
           entityType: 'college',
           observations: [
-            `Fit Score: ${college.fitScore}`,
-            `Reason: ${college.reason}`
+            `Fit Score: ${college.fitScore || 'Not provided'}`,
+            `Reason: ${college.reason || 'Not provided'}`
           ]
         }));
 
@@ -292,7 +301,7 @@ export const TrackingStage = (): JSX.Element => {
       }
 
       // Create major/field entities and relations
-      const majors = wizardData.collegeInterests.majors || [];
+      const majors = student.data.collegeInterests?.majors || [];
       console.log('TrackingStage: College majors:', majors);
       if (majors.length > 0) {
         const majorEntities = majors.map(major => ({
@@ -361,11 +370,119 @@ export const TrackingStage = (): JSX.Element => {
     }
   }, [setNodes, setEdges, setError, setIsLoading]);
 
+  const [processingStatus, setProcessingStatus] = useState<string>('');
+  const [processingError, setProcessingError] = useState<string | null>(null);
+  const [streamContent, setStreamContent] = useState<string>('');
+
+  const processChats = useCallback(async (unprocessedChats: any[]) => {
+    setProcessingChats(true);
+    setTotalToProcess(unprocessedChats.length);
+    setProcessedCount(0);
+    setProcessingError(null);
+    setStreamContent(''); // Clear stream content when starting new processing
+
+    for (const chat of unprocessedChats) {
+      try {
+        // Send chat to Claude for processing with SSE
+        if (!apiKey) {
+          throw new Error('Claude API key not configured');
+        }
+
+        const response = await fetch('/api/chat/claude/analyze', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey
+          },
+          body: JSON.stringify({
+            studentId: currentStudent?.id,
+            chatId: chat.id,
+            mode: 'graph_enrichment'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to process chat');
+        }
+
+        // Handle SSE response
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('No response body');
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Parse SSE data
+          const text = new TextDecoder().decode(value);
+          const lines = text.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(5));
+                // Add all content to stream display
+                const timestamp = new Date().toLocaleTimeString();
+                setStreamContent(prev => prev + `\n[${timestamp}] ` + JSON.stringify(data, null, 2));
+                
+                if (data.type === 'thinking') {
+                  setProcessingStatus(data.content);
+                } else if (data.type === 'error') {
+                  throw new Error(data.content);
+                } else if (data.type === 'complete') {
+                  // Mark chat as processed
+                  await fetch('/api/mcp/student-data/mark-chat-processed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      studentId: currentStudent?.id,
+                      chatId: chat.id,
+                      lastMessageTimestamp: chat.updatedAt
+                    })
+                  });
+
+                  setProcessedCount(prev => prev + 1);
+                  // Refresh graph after each chat is processed
+                  if (currentStudent) {
+                    await initializeKnowledgeGraph(currentStudent, data);
+                  }
+                }
+              } catch (error) {
+                console.error('Error parsing SSE data:', error);
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error('Error processing chat:', error);
+        setProcessingError(`Failed to process chat: ${error?.message || 'Unknown error'}`);
+      }
+    }
+
+    setProcessingChats(false);
+    setProcessingStatus('');
+  }, [currentStudent, data, initializeKnowledgeGraph]);
+
   useEffect(() => {
     if (currentStudent) {
-      initializeKnowledgeGraph(currentStudent, data);
+      // Load chats and initialize graph
+      loadChats(currentStudent.id).then(() => {
+        initializeKnowledgeGraph(currentStudent, data);
+      });
     }
-  }, [currentStudent, data, initializeKnowledgeGraph]);
+  }, [currentStudent, data, initializeKnowledgeGraph, loadChats]);
+
+  useEffect(() => {
+    if (currentStudent && chats.length > 0) {
+      // Find unprocessed chats
+      const unprocessedChats = chats.filter(chat => !chat.processed);
+      if (unprocessedChats.length > 0) {
+        processChats(unprocessedChats);
+      }
+    }
+  }, [currentStudent, chats, processChats]);
 
   const handleClearMemory = useCallback(async () => {
     if (!currentStudent) return;
@@ -421,15 +538,90 @@ export const TrackingStage = (): JSX.Element => {
         <Typography variant="h5">
           College Recommendations Tracker
         </Typography>
-        <Button 
-          variant="outlined" 
-          color="secondary"
-          onClick={handleClearMemory}
-          disabled={!currentStudent || isLoading}
-        >
-          Clear Memory
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined"
+            onClick={async () => {
+              if (!currentStudent?.id) return;
+              
+              try {
+                setIsLoading(true);
+                // Mark all chats as unprocessed
+                const response = await fetch('/api/chat/claude/mark-all-unprocessed', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ studentId: currentStudent.id })
+                });
+
+                if (!response.ok) {
+                  throw new Error('Failed to mark chats as unprocessed');
+                }
+
+                // Reload chats and process them
+                const loadedChats = await loadChats(currentStudent.id);
+                // Process all chats since we just marked them all as unprocessed
+                if (loadedChats.length > 0) {
+                  await processChats(loadedChats);
+                }
+              } catch (err) {
+                console.error('Failed to reprocess chats:', err);
+                setError('Failed to reprocess chats');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={!currentStudent || isLoading}
+          >
+            Reprocess Chats
+          </Button>
+          <Button 
+            variant="outlined" 
+            color="secondary"
+            onClick={handleClearMemory}
+            disabled={!currentStudent || isLoading}
+          >
+            Clear Memory
+          </Button>
+        </Box>
       </Box>
+
+      {processingChats && (
+        <Box sx={{ width: '100%', mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Processing chats ({processedCount}/{totalToProcess})
+          </Typography>
+          {processingStatus && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {processingStatus}
+            </Typography>
+          )}
+          <LinearProgress 
+            variant="determinate" 
+            value={(processedCount / totalToProcess) * 100} 
+          />
+        </Box>
+      )}
+
+      {processingError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setProcessingError(null)}>
+          {processingError}
+        </Alert>
+      )}
+
+      {/* Always show the stream box, even when empty */}
+      <Paper elevation={1} sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5' }}>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Stream Output:</Typography>
+        <Box sx={{ maxHeight: '300px', overflowY: 'auto' }}>
+          <Typography variant="caption" component="pre" sx={{ 
+            whiteSpace: 'pre-wrap', 
+            fontSize: '0.8rem',
+            fontFamily: 'monospace',
+            margin: 0
+          }}>
+            {streamContent || 'Waiting for stream...'}
+          </Typography>
+        </Box>
+      </Paper>
 
       {!currentStudent ? (
         <Typography>Please select a student first.</Typography>

@@ -4,7 +4,7 @@ import { AiChat } from '../types/college';
 interface ChatContextType {
   currentChat: AiChat | null;
   chats: AiChat[];
-  loadChats: (studentId: string) => Promise<void>;
+  loadChats: (studentId: string) => Promise<AiChat[]>;
   saveChat: (studentId: string, chat: AiChat) => Promise<void>;
   deleteChat: (studentId: string, chatId: string) => Promise<void>;
   setCurrentChat: (chat: AiChat | null) => void;
@@ -24,7 +24,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentChat, setCurrentChat] = useState<AiChat | null>(null);
   const [chats, setChats] = useState<AiChat[]>([]);
 
-  const loadChats = useCallback(async (studentId: string) => {
+  const loadChats = useCallback(async (studentId: string): Promise<AiChat[]> => {
     try {
       const response = await fetch('/api/chat/claude/chats', {
         method: 'POST',
@@ -39,6 +39,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { chats: loadedChats } = await response.json();
       setChats(loadedChats);
       setCurrentChat(null); // Reset current chat when loading new chats
+      return loadedChats;
     } catch (error) {
       console.error('Error loading chats:', error);
       throw error;
