@@ -45,7 +45,7 @@ import { WizardData } from '../../types/wizard';
 
 type NodeStatus = 'todo' | 'doing' | 'done' | null;
 
-type NodeType = 'student' | 'college' | 'major' | 'interest';
+type NodeType = 'student' | 'college' | 'major' | 'interest' | 'topic' | 'requirement' | 'achievement' | 'goal';
 
 interface CustomNodeData {
   label: string;
@@ -55,11 +55,15 @@ interface CustomNodeData {
   [key: string]: unknown;
 }
 
-const nodeColors: Record<NodeType, string> = {
+const nodeColors: Record<string, string> = {
   student: '#e91e63',
   college: '#2196f3',
   major: '#4caf50',
   interest: '#ff9800',
+  topic: '#9c27b0',    // Added purple for topics
+  requirement: '#f44336',  // Added red for requirements
+  achievement: '#795548',  // Added brown for achievements
+  goal: '#607d8b',     // Added blue-grey for goals
 };
 
 interface CustomNodeProps extends NodeProps {
@@ -96,9 +100,15 @@ const CustomNode = React.memo(({ data }: CustomNodeProps) => {
         style={{
           padding: '10px',
           borderRadius: '5px',
-          backgroundColor: nodeColors[data.nodeType],
+          backgroundColor: nodeColors[data.nodeType] || '#9e9e9e',
           color: 'white',
           cursor: 'pointer',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          minWidth: '120px',
+          maxWidth: '250px',
+          wordBreak: 'break-word',
+          border: '1px solid rgba(255,255,255,0.2)',
+          fontWeight: 500
         }}
         onClick={() => setShowMetadata(true)}
       >
@@ -158,7 +168,8 @@ const CustomNode = React.memo(({ data }: CustomNodeProps) => {
   );
 });
 
-const nodeTypes = {
+const nodeTypes: NodeTypes = {
+  default: CustomNode,
   custom: CustomNode,
 } as const;
 
@@ -202,18 +213,20 @@ export const TrackingStage = (): JSX.Element => {
 
     const nodes: Node<CustomNodeData>[] = graphData.entities.map((entity: any) => ({
       id: entity.name,
-      type: 'custom',
+      type: 'default',  // Changed from 'custom' to 'default' to match our nodeTypes configuration
       position: { x: Math.random() * 500, y: Math.random() * 500 },
       data: {
         label: entity.name,
         nodeType: entity.entityType as NodeType,
         metadata: {
+          type: entity.entityType,  // Add type to metadata for reference
           ...entity.observations.reduce((acc: any, obs: string) => {
             const [key, value] = obs.split(': ');
             return { ...acc, [key]: value };
           }, {}),
         },
       },
+      // Remove style from here since it's handled in CustomNode component
     }));
 
     const edges: Edge<any>[] = graphData.relations.map((relation: any, index: number) => ({

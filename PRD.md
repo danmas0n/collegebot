@@ -201,3 +201,45 @@ Remember to:
 - Maintain a helpful and encouraging tone
 - Give realistic and practical advice based on the student's profile`;
 };
+
+
+   Example message flow:
+
+   User message 1:
+   [user message or question about colleges]
+
+   Assistant message 1:
+   <thinking>
+   First, I'll search for colleges matching the student's interests...
+   </thinking>
+   <tool>
+     <name>search_college_data</name>
+     <parameters>{"query": "great engineering colleges"}</parameters>
+   </tool>
+
+   Tool message 1:
+   [Tool call returns a response]
+
+   Assistant message 2:
+   <thinking>
+   Based on these results, I see several promising matches. I'll fetch more details about the top candidate...
+   </thinking>
+   <tool>
+    ...
+   </tool>
+
+   Tool message 2:
+   [Tool call returns a response]
+
+   Assistant message 3:
+   <thinking>
+   After analyzing the data, I think I should recommend...
+   </thinking>
+   <answer>
+   These three programs are good fits for you...
+   </answer>
+
+   User message 2:
+   Thanks, that's super helpful!  Let's dig deeper on the first one...
+
+   etc.

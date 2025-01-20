@@ -193,69 +193,34 @@ export const generateToolInstructions = (mode) => {
 
   instructions += `Tool Usage and Response Format Requirements:
 
-1. Tool Calls Always End Messages:
+1. Tool Call Rules:
    - Format tool calls like this:
      <tool>
       <name>search_college_data</name>
       <parameters>{"query": "Stanford University"}</parameters>
      </tool>
-   - CRITICAL: YOU MUST RETURN WELL FORMED XML.  If you don't close your tags, the system will break.
-   - CRITICAL: MAKE ONE TOOL CALL AT A TIME.  END YOUR MESSAGE IMMEDIATELY after the tool call. 
-     Do not include additional text in the same message.  The tool call result will be passed to you on your next turn.
+   - You may call multiple tools in one message if you want to.
+   - To call a tool, respond with a correctly formatted <tool> tag, and then end your message.  
+     The tool call results will be passed to you on your next turn.
+   - CRITICAL: YOU MUST RETURN WELL FORMED XML AND JSON in your tool calls.  If you don't, the system will break.
+   - CRITICAL: END YOUR MESSAGE IMMEDIATELY after the tool calls.  Don't keep thinking or answering until you get the tool results.
+   - CRITICAL: DO NOT EVER FABRICATE THE RESULTS OF TOOL CALLS!!!  Even if you think you know the answer, you must call the tool.
 
-2. Thinking and Response Structure:
-   - Use <thinking> tags to show your analysis and reasoning process
-   - When thinking, be concise; don't talk to the user, just think out loud to yourself
-   - When you have a response or question for the user, use <answer> tags.
-   - You MUST end every full thought process and response (which can span multiple messages and tool calls) with 
-     an answer to the user, wrapped in <answer> and </answer> tags.  
-     CRITICAL: Please ensure that you close your </answer> tag!  
+2. Thinking, Tool and Answer Tags:
+   - Use <thinking></thinking> tags to show your analysis and reasoning process
+     - When thinking, be concise; don't talk to the user, just think out loud to yourself
+     - CRITICAL: ONLY ONE THINKING TAG PER MESSAGE!!!  If you want to think more, call a tool and then you can
+       think more when you have the results.
+   - Use <answer></answer> tags when you have a response for the user.  
+     - This can be either a summary of your findings or a question to the user on how to proceed.
+     - You can provide an <answer> in the same message as a <thinking> tag if you are done thinking and have an answer.
+     - CRITICAL: IF THERE ARE TOOL CALLS IN YOUR CURRENT MESSAGE, YOU CAN'T PROVIDE AN ANSWER.
+       YOU MUST WAIT FOR THE RESULTS AND ANSWER ON YOUR NEXT TURN.
+   - You MUST end every full thought process (which can span multiple messages and tool calls) with 
+     an <answer> to the user, wrapped in well formed <answer> and </answer> tags.  
    - Once you have sent your answer, the user will respond or ask a new question, and you can continue the conversation.
-   
-   Example message flow:
-
-   User message 1:
-   [user message or question about colleges]
-
-   Assistant message 1:
-   <thinking>
-   First, I'll search for colleges matching the student's interests...
-   </thinking>
-   <tool>
-     <name>search_college_data</name>
-     <parameters>{"query": "great engineering colleges"}</parameters>
-   </tool>
-
-   Tool message 1:
-   [Tool call returns a response]
-
-   Assistant message 2:
-   <thinking>
-   Based on these results, I see several promising matches. I'll fetch more details about the top candidate...
-   </thinking>
-   <tool>
-    ...
-   </tool>
-
-   Tool message 2:
-   [Tool call returns a response]
-
-   Assistant message 3:
-   <thinking>
-   After analyzing the data, I think I should recommend...
-   </thinking>
-   <answer>
-   These three programs are good fits for you...
-   </answer>
-
-   User message 2:
-   Thanks, that's super helpful!  Let's dig deeper on the first one...
-
-   etc.
 
    CRITICAL REQUIREMENTS:
-   - NEVER make multiple tool calls at once. ONE AT A TIME.
-   - ALWAYS analyze tool responses before proceeding
    - DO NOT RELY ON YOUR WORLD KNOWLEDGE to make recommendations.  Using your world knowledge to generate research ideas is fine.
    - VERIFY important claims with data from tools before making recommendations
    - EXPLAIN your analysis of each piece of data

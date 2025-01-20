@@ -232,7 +232,11 @@ class CollegeDataServer {
       fs.writeFileSync(filename, response.data);
       return filename;
     } catch (error) {
-      console.error('Error downloading CDS:', error);
+      if (error instanceof Error) {
+        console.error('Error downloading CDS:', error.message.slice(0, 1000));
+      } else {
+        console.error('Error downloading CDS:', String(error).slice(0, 1000));
+      }
       return null;
     }
   }

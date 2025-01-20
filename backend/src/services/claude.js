@@ -36,6 +36,7 @@ export class ClaudeService {
     let hasToolCalls = false;
     let savedAnswer = null;
     let continueProcessing = true;
+    let rawMessage = ''; // Track complete raw message
 
     try {
       // Map our roles to Claude's roles before sending
@@ -43,6 +44,11 @@ export class ClaudeService {
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content
       }));
+
+      console.log('Backend - System prompt:', {
+        preview: systemPrompt.slice(0, 1000),
+        totalLength: systemPrompt.length
+      });
 
       const stream = await this.client.messages.stream({
         model: 'claude-3-5-sonnet-20241022',
@@ -57,6 +63,7 @@ export class ClaudeService {
           console.log('Backend - Message start');
           toolBuffer = '';
           messageContent = '';
+          rawMessage = ''; // Reset raw message buffer
         }
         else if (streamEvent.type === 'content_block_start') {
           console.log('Backend - Content block start');
@@ -64,6 +71,7 @@ export class ClaudeService {
         else if (streamEvent.type === 'content_block_delta' && streamEvent.delta.type === 'text_delta') {
           const text = streamEvent.delta.text;
           toolBuffer += text;
+          rawMessage += text; // Accumulate raw message
           
           // Process any complete tags in the buffer
           const processTag = (tagName, type) => {
@@ -101,6 +109,9 @@ export class ClaudeService {
         }
         else if (streamEvent.type === 'message_stop') {
           console.log('Backend - Message complete');
+          
+          // Log complete raw message before processing
+          console.log('Backend - Complete raw message:', rawMessage);
            
           // At message_stop, check if we received any content
           if (!toolBuffer.trim() && !messageContent.trim()) {
@@ -108,9 +119,9 @@ export class ClaudeService {
             return { hasToolCalls, messages, continueProcessing: false };
           }
 
-          console.log('Backend - Processing message content');
-          console.log('Backend - Message buffer:', toolBuffer);
-          console.log('Backend - Message content:', messageContent);
+          //console.log('Backend - Processing message content');
+          //console.log('Backend - Message buffer:', toolBuffer);
+          //console.log('Backend - Message content:', messageContent);
 
           // Combine remaining content to check for tags
           const combinedContent = toolBuffer + messageContent;
@@ -134,16 +145,11 @@ export class ClaudeService {
             for (const match of toolCallMatches) {
               const toolCall = match[0]; // Full tool tag content
               const toolContent = match[1]; // Content between tool tags
-              console.log('Backend - Processing tool call:', toolCall);
+              console.log('Backend - Processing tool call:\n', toolCall);
               
               try {
                 const nameMatch = toolContent.match(/<name>(.*?)<\/name>/s);
                 const paramsMatch = toolContent.match(/<parameters>([\s\S]*?)<\/parameters>/);
-                
-                console.log('Backend - Tool call parsing:', {
-                  nameMatch: nameMatch?.[1],
-                  paramsMatch: paramsMatch?.[1]?.trim()
-                });
                 
                 if (!nameMatch || !paramsMatch) {
                   throw new Error('Malformed tool call - missing name or parameters');
@@ -153,7 +159,7 @@ export class ClaudeService {
                 
                 try {
                   const params = JSON.parse(paramsMatch[1].trim());
-                  console.log('Backend - Valid tool call found:', { toolName, params });
+                  //console.log('Backend - Valid tool call found:', { toolName, params });
 
                   // Get the appropriate server for this tool
                   const server = toolServerMap[toolName];
@@ -201,7 +207,7 @@ export class ClaudeService {
 
                     // Remove processed tool call from buffer and any whitespace
                     toolBuffer = toolBuffer.replace(toolCall, '').trim();
-                    console.log('Backend - Updated buffer after tool call:', toolBuffer);
+                    //console.log('Backend - Updated buffer after tool call:', toolBuffer);
                   } else {
                     console.error('Backend - Invalid tool result format:', toolResult);
                     throw new Error('Invalid tool result format');
