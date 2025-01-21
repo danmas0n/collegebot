@@ -73,7 +73,7 @@ export const executeMcpTool = async (serverName, toolName, args) => {
     console.log('Backend - Raw MCP response type:', typeof result);
     console.log('Backend - Raw MCP response keys:', result ? Object.keys(result) : 'null');
     const rawResponse = JSON.stringify(result, null, 2);
-    console.log('Backend - Raw MCP response:', rawResponse.slice(0, 200) + (rawResponse.length > 200 ? '...' : ''));
+    console.log('Backend - Raw MCP response:', rawResponse.slice(0, 2000) + (rawResponse.length > 2000 ? '...' : ''));
 
     if (!result) {
       throw new Error('MCP server returned null response');

@@ -118,10 +118,14 @@ router.post('/analyze', async (req, res) => {
     sendSSE({ type: 'complete' });
 
     // Mark chat as processed
-    await executeMcpTool('student-data', 'mark_chat_processed', {
+    const updatedChat = {
+      ...chat,
+      processed: true,
+      processedAt: new Date().toISOString()
+    };
+    await executeMcpTool('student-data', 'save_chat', {
       studentId,
-      chatId,
-      lastMessageTimestamp: chat.updatedAt
+      chat: updatedChat
     });
   } catch (error) {
     console.error('Error analyzing chat:', error);
@@ -131,6 +135,38 @@ router.post('/analyze', async (req, res) => {
       content: `Error analyzing chat: ${error.message}`
     });
     sendSSE({ type: 'complete' });
+  }
+});
+
+// Mark all chats as processed
+router.post('/mark-all-processed', async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
+
+    // Get all chats for the student
+    const result = await executeMcpTool('student-data', 'get_chats', { studentId });
+    const chats = JSON.parse(result.content[0].text);
+
+    // Mark each chat as processed
+    for (const chat of chats) {
+      const updatedChat = {
+        ...chat,
+        processed: true,
+        processedAt: new Date().toISOString()
+      };
+      await executeMcpTool('student-data', 'save_chat', { 
+        studentId,
+        chat: updatedChat
+      });
+    }
+
+    res.json({ message: 'All chats marked as processed' });
+  } catch (error) {
+    console.error('Error marking chats as processed:', error);
+    res.status(500).json({ error: 'Failed to mark chats as processed' });
   }
 });
 
@@ -150,7 +186,8 @@ router.post('/mark-all-unprocessed', async (req, res) => {
     for (const chat of chats) {
       const updatedChat = {
         ...chat,
-        processed: false
+        processed: false,
+        processedAt: null
       };
       await executeMcpTool('student-data', 'save_chat', { 
         studentId,

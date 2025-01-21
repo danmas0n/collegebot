@@ -33,10 +33,8 @@ export interface AiChat {
   createdAt: string;
   updatedAt: string;
   studentId?: string;
-  processed?: {
-    processedAt: string;
-    lastMessageTimestamp: string;
-  } | null;
+  processed?: boolean;
+  processedAt?: string;
 }
 
 // Chat history is now handled through StudentWithChats interface in wizard.ts

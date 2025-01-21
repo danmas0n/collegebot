@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { findCompleteTagContent } from '../utils/helpers.js';
 import { executeMcpTool } from '../utils/mcp.js';
 import { toolServerMap } from '../config/mcp-tools.js';
+import { claudeLogger as logger } from '../utils/logger.js';
 
 export class ClaudeService {
   constructor(apiKey) {
@@ -16,7 +17,7 @@ export class ClaudeService {
     let continueProcessing = true;
 
     while (continueProcessing) {
-      console.log('Backend - Processing message with current state:', {
+      logger.info('Processing message with current state', {
         messageCount: messages.length,
         continueProcessing
       });
@@ -30,7 +31,7 @@ export class ClaudeService {
   }
 
   async processSingleStream(messages, systemPrompt, sendSSE) {
-    console.log('Backend - Starting Claude stream');
+    logger.info('Starting Claude stream');
     let toolBuffer = '';
     let messageContent = '';
     let hasToolCalls = false;
@@ -45,7 +46,7 @@ export class ClaudeService {
         content: msg.content
       }));
 
-      console.log('Backend - System prompt:', {
+      logger.info('System prompt', {
         preview: systemPrompt.slice(0, 1000),
         totalLength: systemPrompt.length
       });
@@ -60,13 +61,13 @@ export class ClaudeService {
 
       for await (const streamEvent of stream) {
         if (streamEvent.type === 'message_start') {
-          console.log('Backend - Message start');
+          logger.info('Message start');
           toolBuffer = '';
           messageContent = '';
           rawMessage = ''; // Reset raw message buffer
         }
         else if (streamEvent.type === 'content_block_start') {
-          console.log('Backend - Content block start');
+          logger.info('Content block start');
         }
         else if (streamEvent.type === 'content_block_delta' && streamEvent.delta.type === 'text_delta') {
           const text = streamEvent.delta.text;
@@ -93,7 +94,7 @@ export class ClaudeService {
                   content: result.content
                 });
               }
-              console.log(`Backend - Found complete ${tagName} tag:`, result.content);
+              logger.info(`Found complete ${tagName} tag`, { content: result.content });
               toolBuffer = toolBuffer.replace(result.fullMatch, '');
             }
           };
@@ -108,20 +109,16 @@ export class ClaudeService {
           }
         }
         else if (streamEvent.type === 'message_stop') {
-          console.log('Backend - Message complete');
+          logger.info('Message complete');
           
           // Log complete raw message before processing
-          console.log('Backend - Complete raw message:', rawMessage);
+          logger.info('Complete raw message', { message: rawMessage });
            
           // At message_stop, check if we received any content
           if (!toolBuffer.trim() && !messageContent.trim()) {
-            console.log('Backend - No content received, skipping processing');
+            logger.info('No content received, skipping processing');
             return { hasToolCalls, messages, continueProcessing: false };
           }
-
-          //console.log('Backend - Processing message content');
-          //console.log('Backend - Message buffer:', toolBuffer);
-          //console.log('Backend - Message content:', messageContent);
 
           // Combine remaining content to check for tags
           const combinedContent = toolBuffer + messageContent;
@@ -135,17 +132,17 @@ export class ClaudeService {
             toolCallMatches.push([toolResult.fullMatch, toolResult.content]);
             toolBuffer = toolBuffer.replace(toolResult.fullMatch, '');
           }
-          console.log('Backend - Found tool calls:', toolCallMatches.length);
+          logger.info('Found tool calls', { count: toolCallMatches.length });
 
           // Process any complete tool calls
           if (toolCallMatches.length > 0) {
-            console.log('Backend - Processing complete tool calls');
+            logger.info('Processing complete tool calls');
             hasToolCalls = true;
             
             for (const match of toolCallMatches) {
               const toolCall = match[0]; // Full tool tag content
               const toolContent = match[1]; // Content between tool tags
-              console.log('Backend - Processing tool call:\n', toolCall);
+              logger.info('Processing tool call', { toolCall });
               
               try {
                 const nameMatch = toolContent.match(/<name>(.*?)<\/name>/s);
@@ -159,7 +156,6 @@ export class ClaudeService {
                 
                 try {
                   const params = JSON.parse(paramsMatch[1].trim());
-                  //console.log('Backend - Valid tool call found:', { toolName, params });
 
                   // Get the appropriate server for this tool
                   const server = toolServerMap[toolName];
@@ -175,9 +171,9 @@ export class ClaudeService {
                   });
 
                   // Execute tool
-                  console.log('Backend - Starting tool execution:', { server, toolName, params });
+                  logger.info('Starting tool execution', { server, toolName, params });
                   const toolResult = await executeMcpTool(server, toolName, params);
-                  console.log('Backend - Tool execution successful, processing result');
+                  logger.info('Tool execution successful, processing result');
 
                   // Process tool result
                   if (toolResult?.content?.[0]?.text) {
@@ -207,13 +203,12 @@ export class ClaudeService {
 
                     // Remove processed tool call from buffer and any whitespace
                     toolBuffer = toolBuffer.replace(toolCall, '').trim();
-                    //console.log('Backend - Updated buffer after tool call:', toolBuffer);
                   } else {
-                    console.error('Backend - Invalid tool result format:', toolResult);
+                    logger.error('Invalid tool result format', { toolResult });
                     throw new Error('Invalid tool result format');
                   }
                 } catch (error) {
-                  console.error(`Error executing tool:`, error);
+                  logger.error('Error executing tool', { error: error.message, stack: error.stack });
                   // Add error message to conversation for Claude
                   messages.push({
                     role: 'user',
@@ -226,7 +221,7 @@ export class ClaudeService {
                   });
                 }
               } catch (error) {
-                console.error(`Error parsing tool call:`, error);
+                logger.error('Error parsing tool call', { error: error.message, stack: error.stack });
                 // Add error message to conversation for Claude
                 messages.push({
                   role: 'user',
@@ -246,7 +241,7 @@ export class ClaudeService {
           
           // If we have tool calls, process them and continue
           if (remainingToolCalls || toolCallMatches.length > 0) {
-            console.log('Backend - Message analysis:', {
+            logger.info('Message analysis', {
               remainingToolCalls: remainingToolCalls?.length || 0,
               toolCallMatches: toolCallMatches.length,
               hasCompleteAnswer: !!savedAnswer
@@ -259,7 +254,7 @@ export class ClaudeService {
           // No tool calls, check for remaining content
           const remainingContent = toolBuffer.trim();
           if (!savedAnswer && remainingContent) {
-            console.log('Backend - Converting remaining content to question:', remainingContent);
+            logger.info('Converting remaining content to question', { content: remainingContent });
             messages.push({
               role: 'question',
               content: remainingContent
@@ -271,7 +266,7 @@ export class ClaudeService {
           }
 
           // No more processing needed
-          console.log('Backend - Message analysis:', {
+          logger.info('Message analysis', {
             remainingToolCalls: 0,
             hasCompleteAnswer: !!savedAnswer,
             continueProcessing: false,
@@ -287,7 +282,7 @@ export class ClaudeService {
 
       return { hasToolCalls, messages, continueProcessing };
     } catch (error) {
-      console.error('Backend - Error in stream processing:', error);
+      logger.error('Error in stream processing', { error: error.message, stack: error.stack });
       sendSSE({ type: 'error', content: error.message });
       throw error;
     }
@@ -305,7 +300,7 @@ export class ClaudeService {
       }
     ];
 
-    console.log('Backend - Messages being sent to Claude:', messages);
+    logger.info('Messages being sent to Claude', { messages });
     
     await this.processStream(messages, systemPrompt, sendSSE);
   }

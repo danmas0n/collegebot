@@ -18,10 +18,12 @@ import {
   Button,
   Snackbar,
   LinearProgress,
+  Collapse,
 } from '@mui/material';
-import { useChat } from '../../contexts/ChatContext';
-import { useWizard } from '../../contexts/WizardContext';
-import { useClaudeContext } from '../../contexts/ClaudeContext';
+import DeleteIcon from '@mui/icons-material/Delete';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import {
   ReactFlow,
   MiniMap,
@@ -37,40 +39,24 @@ import {
   NodeTypes,
   Handle,
   Position,
+  Panel,
+  useReactFlow,
+  ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import DeleteIcon from '@mui/icons-material/Delete';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
+import dagre from 'dagre';
+import { useChat } from '../../contexts/ChatContext';
+import { useWizard } from '../../contexts/WizardContext';
+import { useClaudeContext } from '../../contexts/ClaudeContext';
 import { WizardData } from '../../types/wizard';
-
-type NodeStatus = 'todo' | 'doing' | 'done' | null;
-
-type NodeType = 'student' | 'college' | 'major' | 'interest' | 'topic' | 'requirement' | 'achievement' | 'goal';
-
-interface CustomNodeData {
-  label: string;
-  nodeType: NodeType;
-  metadata?: Record<string, any>;
-  status?: NodeStatus;
-  [key: string]: unknown;
-}
-
-const nodeColors: Record<string, string> = {
-  student: '#e91e63',
-  college: '#2196f3',
-  major: '#4caf50',
-  interest: '#ff9800',
-  topic: '#9c27b0',    // Added purple for topics
-  requirement: '#f44336',  // Added red for requirements
-  achievement: '#795548',  // Added brown for achievements
-  goal: '#607d8b',     // Added blue-grey for goals
-};
+import { GraphContent } from './GraphContent';
+import { NodeType, NodeStatus, CustomNodeData, nodeColors } from './types';
 
 interface CustomNodeProps extends NodeProps {
   data: CustomNodeData;
 }
 
-const CustomNode = React.memo(({ data }: CustomNodeProps) => {
+const CustomNode = React.memo(({ data }: CustomNodeProps): JSX.Element => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showMetadata, setShowMetadata] = useState(false);
 
@@ -183,7 +169,26 @@ export const TrackingStage = (): JSX.Element => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<CustomNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showStreamOutput, setShowStreamOutput] = useState(true);
+  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(new Set(Object.keys(nodeColors)));
+
+  // Filter nodes based on visible types
+  const filteredNodes = nodes.filter(node => visibleTypes.has(node.data.nodeType));
+
+  // Toggle node type visibility
+  const toggleNodeType = useCallback((type: string) => {
+    setVisibleTypes(prev => {
+      const newTypes = new Set(prev);
+      if (newTypes.has(type)) {
+        newTypes.delete(type);
+      } else {
+        newTypes.add(type);
+      }
+      return newTypes;
+    });
+  }, []);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge(params, eds)),
@@ -211,24 +216,91 @@ export const TrackingStage = (): JSX.Element => {
       throw new Error('Invalid graph data structure');
     }
 
-    const nodes: Node<CustomNodeData>[] = graphData.entities.map((entity: any) => ({
-      id: entity.name,
-      type: 'default',  // Changed from 'custom' to 'default' to match our nodeTypes configuration
+    // First collect all unique entity names from relations
+    const entityNames = new Set<string>();
+    const entityTypes = new Map<string, string>();
+    const entityObservations = new Map<string, string[]>();
+
+    // Add entities from the entities array
+    graphData.entities.forEach((entity: any) => {
+      entityNames.add(entity.name);
+      entityTypes.set(entity.name, entity.entityType);
+      entityObservations.set(entity.name, entity.observations || []);
+    });
+
+    // Add entities from relations that don't exist in entities array
+    graphData.relations.forEach((relation: any) => {
+      // Add entities from relations and infer their types
+      const inferEntityType = (name: string, relation: any) => {
+        // If it's already in entities, keep its type
+        if (entityTypes.has(name)) return;
+
+
+        // Infer type based on name first
+        if (name.includes('University') || name.includes('College')) {
+          entityTypes.set(name, 'college');
+        } else if (name.includes('Scholar') || name.includes('Scholarship')) {
+          entityTypes.set(name, 'scholarship');
+        } else if (name.includes('Coverage') || name.includes('Tuition')) {
+          entityTypes.set(name, 'benefit');
+        } else {
+          // Then infer based on relation patterns
+          if (relation.relationType === 'offered_by') {
+            if (relation.from.includes('Scholar') || relation.from.includes('Scholarship')) {
+              // Source is a scholarship, target is a college
+              entityTypes.set(relation.from, 'scholarship');
+              entityTypes.set(relation.to, 'college');
+            }
+          } else if (relation.relationType === 'values_experience') {
+            // Target of values_experience is an activity
+            entityTypes.set(relation.to, 'activity');
+          } else if (relation.relationType.includes('study')) {
+            // Target of study-related relations is a major
+            entityTypes.set(relation.to, 'major');
+          } else if (relation.relationType === 'provides') {
+            // Target of provides is a benefit
+            entityTypes.set(relation.to, 'benefit');
+          } else {
+            // Default to topic for unknown types
+            entityTypes.set(name, 'topic');
+          }
+        }
+        
+        // Initialize empty observations
+        if (!entityObservations.has(name)) {
+          entityObservations.set(name, []);
+        }
+      };
+
+      if (!entityNames.has(relation.from)) {
+        entityNames.add(relation.from);
+        inferEntityType(relation.from, relation);
+      }
+      if (!entityNames.has(relation.to)) {
+        entityNames.add(relation.to);
+        inferEntityType(relation.to, relation);
+      }
+    });
+
+    // Create nodes for all entities
+    const nodes: Node<CustomNodeData>[] = Array.from(entityNames).map(name => ({
+      id: name,
+      type: 'default',
       position: { x: Math.random() * 500, y: Math.random() * 500 },
       data: {
-        label: entity.name,
-        nodeType: entity.entityType as NodeType,
+        label: name,
+        nodeType: entityTypes.get(name) as NodeType,
         metadata: {
-          type: entity.entityType,  // Add type to metadata for reference
-          ...entity.observations.reduce((acc: any, obs: string) => {
+          type: entityTypes.get(name),
+          ...(entityObservations.get(name) || []).reduce((acc: any, obs: string) => {
             const [key, value] = obs.split(': ');
             return { ...acc, [key]: value };
           }, {}),
         },
       },
-      // Remove style from here since it's handled in CustomNode component
     }));
 
+    // Create edges between nodes
     const edges: Edge<any>[] = graphData.relations.map((relation: any, index: number) => ({
       id: `e${index}`,
       source: relation.from,
@@ -388,13 +460,15 @@ export const TrackingStage = (): JSX.Element => {
   const [streamContent, setStreamContent] = useState<string>('');
 
   const processChats = useCallback(async (unprocessedChats: any[]) => {
-    setProcessingChats(true);
-    setTotalToProcess(unprocessedChats.length);
-    setProcessedCount(0);
-    setProcessingError(null);
-    setStreamContent(''); // Clear stream content when starting new processing
+    try {
+      setProcessingChats(true);
+      setTotalToProcess(unprocessedChats.length);
+      setProcessedCount(0);
+      setProcessingError(null);
+      setStreamContent(''); // Clear stream content when starting new processing
 
-    for (const chat of unprocessedChats) {
+      for (const chat of unprocessedChats) {
+      let success = false;
       try {
         // Send chat to Claude for processing with SSE
         if (!apiKey) {
@@ -441,10 +515,11 @@ export const TrackingStage = (): JSX.Element => {
                 setStreamContent(prev => prev + `\n[${timestamp}] ` + JSON.stringify(data, null, 2));
                 
                 if (data.type === 'thinking') {
-                  setProcessingStatus(data.content);
+                  //setProcessingStatus(data.content);
                 } else if (data.type === 'error') {
                   throw new Error(data.content);
                 } else if (data.type === 'complete') {
+                  success = true;
                   // Mark chat as processed
                   await fetch('/api/mcp/student-data/mark-chat-processed', {
                     method: 'POST',
@@ -472,10 +547,21 @@ export const TrackingStage = (): JSX.Element => {
         console.error('Error processing chat:', error);
         setProcessingError(`Failed to process chat: ${error?.message || 'Unknown error'}`);
       }
+
+      // If this chat failed, wait a bit before trying the next one
+      if (!success) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
-    setProcessingChats(false);
-    setProcessingStatus('');
+      setProcessingChats(false);
+      setProcessingStatus('');
+      return true; // Return success
+    } catch (error) {
+      console.error('Error in processChats:', error);
+      setProcessingError(`Failed to process chats: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false; // Return failure
+    }
   }, [currentStudent, data, initializeKnowledgeGraph]);
 
   useEffect(() => {
@@ -486,16 +572,6 @@ export const TrackingStage = (): JSX.Element => {
       });
     }
   }, [currentStudent, data, initializeKnowledgeGraph, loadChats]);
-
-  useEffect(() => {
-    if (currentStudent && chats.length > 0) {
-      // Find unprocessed chats
-      const unprocessedChats = chats.filter(chat => !chat.processed);
-      if (unprocessedChats.length > 0) {
-        processChats(unprocessedChats);
-      }
-    }
-  }, [currentStudent, chats, processChats]);
 
   const handleClearMemory = useCallback(async () => {
     if (!currentStudent) return;
@@ -551,50 +627,110 @@ export const TrackingStage = (): JSX.Element => {
         <Typography variant="h5">
           College Recommendations Tracker
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
           <Button 
-            variant="outlined"
-            onClick={async () => {
-              if (!currentStudent?.id) return;
-              
-              try {
-                setIsLoading(true);
-                // Mark all chats as unprocessed
-                const response = await fetch('/api/chat/claude/mark-all-unprocessed', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ studentId: currentStudent.id })
-                });
+              variant="outlined"
+              onClick={async () => {
+                if (!currentStudent?.id) return;
+                
+                try {
+                  setIsLoading(true);
+                  // Mark all chats as unprocessed
+                  const response = await fetch('/api/chat/claude/mark-all-unprocessed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId: currentStudent.id })
+                  });
 
-                if (!response.ok) {
-                  throw new Error('Failed to mark chats as unprocessed');
-                }
+                  if (!response.ok) {
+                    throw new Error('Failed to mark chats as unprocessed');
+                  }
 
-                // Reload chats and process them
-                const loadedChats = await loadChats(currentStudent.id);
-                // Process all chats since we just marked them all as unprocessed
-                if (loadedChats.length > 0) {
-                  await processChats(loadedChats);
+                  // Reload chats
+                  await loadChats(currentStudent.id);
+                } catch (err) {
+                  console.error('Failed to mark chats as unprocessed:', err);
+                  setError('Failed to mark chats as unprocessed');
+                } finally {
+                  setIsLoading(false);
                 }
-              } catch (err) {
-                console.error('Failed to reprocess chats:', err);
-                setError('Failed to reprocess chats');
-              } finally {
-                setIsLoading(false);
-              }
-            }}
-            disabled={!currentStudent || isLoading}
-          >
-            Reprocess Chats
-          </Button>
-          <Button 
-            variant="outlined" 
-            color="secondary"
-            onClick={handleClearMemory}
-            disabled={!currentStudent || isLoading}
-          >
-            Clear Memory
-          </Button>
+              }}
+              disabled={!currentStudent || isLoading || isProcessing}
+            >
+              Mark All Unprocessed
+            </Button>
+            <Button 
+              variant="outlined"
+              onClick={async () => {
+                if (!currentStudent?.id) return;
+                
+                try {
+                  setIsLoading(true);
+                  // Mark all chats as processed
+                  const response = await fetch('/api/chat/claude/mark-all-processed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId: currentStudent.id })
+                  });
+
+                  if (!response.ok) {
+                    throw new Error('Failed to mark chats as processed');
+                  }
+
+                  // Reload chats
+                  await loadChats(currentStudent.id);
+                } catch (err) {
+                  console.error('Failed to mark chats as processed:', err);
+                  setError('Failed to mark chats as processed');
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={!currentStudent || isLoading}
+            >
+              Mark All Processed
+            </Button>
+            <Button 
+              variant="outlined"
+              onClick={async () => {
+                if (!currentStudent?.id) return;
+                
+                try {
+                  setIsProcessing(true);
+                  // Find unprocessed chats
+                  // Find chats that aren't processed
+                  const unprocessedChats = chats.filter(chat => !chat.processed);
+                  console.log('Found unprocessed chats:', unprocessedChats.length);
+                  
+                  if (unprocessedChats.length > 0) {
+                    const success = await processChats(unprocessedChats);
+                    if (success) {
+                      // Reload chats after successful processing
+                      await loadChats(currentStudent.id);
+                    }
+                  } else {
+                    setError('No unprocessed chats found');
+                  }
+                } catch (err) {
+                  console.error('Failed to process chats:', err);
+                  setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                } finally {
+                  setIsProcessing(false);
+                  setProcessingChats(false); // Ensure processing state is reset
+                }
+              }}
+              disabled={!currentStudent || isLoading || isProcessing}
+            >
+              Process Chats
+            </Button>
+            <Button 
+              variant="outlined"
+              color="secondary"
+              onClick={handleClearMemory}
+              disabled={!currentStudent || isLoading}
+            >
+              Clear Memory
+            </Button>
         </Box>
       </Box>
 
@@ -621,19 +757,35 @@ export const TrackingStage = (): JSX.Element => {
         </Alert>
       )}
 
-      {/* Always show the stream box, even when empty */}
-      <Paper elevation={1} sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5' }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>Stream Output:</Typography>
-        <Box sx={{ maxHeight: '300px', overflowY: 'auto' }}>
-          <Typography variant="caption" component="pre" sx={{ 
-            whiteSpace: 'pre-wrap', 
-            fontSize: '0.8rem',
-            fontFamily: 'monospace',
-            margin: 0
-          }}>
-            {streamContent || 'Waiting for stream...'}
-          </Typography>
+      {/* Collapsible Stream Output */}
+      <Paper elevation={1} sx={{ mb: 2, backgroundColor: '#f5f5f5' }}>
+        <Box 
+          sx={{ 
+            p: 2, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            cursor: 'pointer'
+          }}
+          onClick={() => setShowStreamOutput(!showStreamOutput)}
+        >
+          <Typography variant="subtitle2">Stream Output</Typography>
+          <IconButton size="small">
+            {showStreamOutput ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          </IconButton>
         </Box>
+        <Collapse in={showStreamOutput}>
+          <Box sx={{ px: 2, pb: 2, maxHeight: '300px', overflowY: 'auto' }}>
+            <Typography variant="caption" component="pre" sx={{ 
+              whiteSpace: 'pre-wrap', 
+              fontSize: '0.8rem',
+              fontFamily: 'monospace',
+              margin: 0
+            }}>
+              {streamContent || 'Waiting for stream...'}
+            </Typography>
+          </Box>
+        </Collapse>
       </Paper>
 
       {!currentStudent ? (
@@ -650,21 +802,20 @@ export const TrackingStage = (): JSX.Element => {
         <Card>
           <CardContent>
             <Box sx={{ height: '600px', border: '1px solid #eee' }}>
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                nodeTypes={nodeTypes}
-                fitView
-                nodesDraggable
-                nodesConnectable={false}
-              >
-                <Controls />
-                <MiniMap />
-                <Background />
-              </ReactFlow>
+              <GraphContent 
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  nodeTypes={nodeTypes}
+                  filteredNodes={filteredNodes}
+                  visibleTypes={visibleTypes}
+                  toggleNodeType={toggleNodeType}
+                  nodeColors={nodeColors}
+                  setNodes={setNodes}
+                  setEdges={setEdges}
+                />
             </Box>
           </CardContent>
         </Card>
