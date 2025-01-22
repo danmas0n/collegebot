@@ -52,15 +52,15 @@ const GraphContentInner = ({
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(filteredNodes, edges);
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
-    window.requestAnimationFrame(() => fitView());
+    setTimeout(() => fitView({ padding: 0.2 }), 50);
   }, [filteredNodes, edges, setNodes, setEdges, fitView]);
 
-  // Apply layout after nodes change
+  // Only apply layout on initial load
   useEffect(() => {
     if (nodes.length > 0) {
       handleLayout();
     }
-  }, [nodes.length, handleLayout]);
+  }, []); // Empty dependency array for initial load only
 
   return (
     <ReactFlow
@@ -70,10 +70,17 @@ const GraphContentInner = ({
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       nodeTypes={nodeTypes}
-      fitView
+      fitView={false}
       nodesDraggable={true}
       nodesConnectable={false}
       selectionOnDrag={false}
+      panOnDrag={true}
+      zoomOnScroll={true}
+      panOnScroll={true}
+      preventScrolling={false}
+      minZoom={0.1}
+      maxZoom={4}
+      defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       connectionLineType={ConnectionLineType.SmoothStep}
       defaultEdgeOptions={{
         type: 'smoothstep',

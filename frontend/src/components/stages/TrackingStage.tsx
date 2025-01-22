@@ -800,8 +800,15 @@ export const TrackingStage = (): JSX.Element => {
         </Alert>
       ) : (
         <Card>
-          <CardContent>
-            <Box sx={{ height: '600px', border: '1px solid #eee' }}>
+          <CardContent sx={{ p: 0 }}>
+            <Box sx={{ 
+              height: '600px', 
+              width: '100%',
+              overflow: 'hidden',
+              '& .react-flow__renderer': {
+                overflow: 'visible !important'
+              }
+            }}>
               <GraphContent 
                   nodes={nodes}
                   edges={edges}
