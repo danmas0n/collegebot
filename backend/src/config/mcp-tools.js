@@ -12,6 +12,9 @@ export const toolServerMap = {
   'save_chat': 'student-data',
   'delete_chat': 'student-data',
   'mark_chat_processed': 'student-data',
+  'geocode': 'student-data',
+  'create_map_location': 'student-data',
+  'get_map_locations': 'student-data',
   
   // Memory/Knowledge graph tools
   'create_entities': 'memory',

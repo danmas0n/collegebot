@@ -59,4 +59,20 @@ router.post('/mark-chat-processed', async (req, res) => {
   }
 });
 
+// Clear map locations
+router.post('/clear-map-locations', async (req, res) => {
+  try {
+    const { studentId } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
+
+    await executeMcpTool('student-data', 'clear_map_locations', { studentId });
+    res.json({ message: 'Map locations cleared successfully' });
+  } catch (error) {
+    console.error('Error clearing map locations:', error);
+    res.status(500).json({ error: 'Failed to clear map locations' });
+  }
+});
+
 export default router;

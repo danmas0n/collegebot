@@ -16,7 +16,8 @@ import { CollegeInterestsStage } from './components/stages/CollegeInterestsStage
 import { BudgetStage } from './components/stages/BudgetStage';
 import { DataCollectionStage } from './components/stages/DataCollectionStage';
 import { RecommendationsStage } from './components/stages/RecommendationsStage';
-import { TrackingStage } from './components/stages/TrackingStage';
+import { KnowledgeGraphStage } from './components/stages/KnowledgeGraphStage';
+import { MapStage } from './components/stages/MapStage';
 
 const WizardContent: React.FC = () => {
   const { currentStage } = useWizard();
@@ -35,8 +36,10 @@ const WizardContent: React.FC = () => {
         return <DataCollectionStage />;
       case 'recommendations':
         return <RecommendationsStage />;
-      case 'tracking':
-        return <TrackingStage />;
+      case 'map':
+        return <MapStage />;
+      case 'knowledge-graph':
+        return <KnowledgeGraphStage />;
       default:
         return null;
     }

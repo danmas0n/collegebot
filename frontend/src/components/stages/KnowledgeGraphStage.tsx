@@ -159,7 +159,7 @@ const nodeTypes: NodeTypes = {
   custom: CustomNode,
 } as const;
 
-export const TrackingStage = (): JSX.Element => {
+export const KnowledgeGraphStage = (): JSX.Element => {
   const { currentStudent, data, updateData } = useWizard();
   const { apiKey } = useClaudeContext();
   const { chats, loadChats } = useChat();
@@ -313,17 +313,17 @@ export const TrackingStage = (): JSX.Element => {
 
   const initializeKnowledgeGraph = useCallback(async (student: NonNullable<typeof currentStudent>, wizardData: typeof data) => {
     try {
-      console.log('TrackingStage: Starting knowledge graph initialization');
+      console.log('KnowledgeGraphStage: Starting knowledge graph initialization');
       if (!student) return;
       
-      console.log('TrackingStage: Current student data:', student);
-      console.log('TrackingStage: Wizard data:', wizardData);
+      console.log('KnowledgeGraphStage: Current student data:', student);
+      console.log('KnowledgeGraphStage: Wizard data:', wizardData);
       
       setIsLoading(true);
       setError(null);
 
       // Create student entity
-      console.log('TrackingStage: Creating student entity:', {
+      console.log('KnowledgeGraphStage: Creating student entity:', {
         name: student.name,
         observations: wizardData.studentProfile
       });
@@ -347,11 +347,11 @@ export const TrackingStage = (): JSX.Element => {
           }]
         })
       });
-      console.log('TrackingStage: Student entity creation response:', await createStudentResponse.clone().json());
+      console.log('KnowledgeGraphStage: Student entity creation response:', await createStudentResponse.clone().json());
 
       // Create college entities and relations
       const colleges = student.data.recommendations?.colleges || [];
-      console.log('TrackingStage: College recommendations:', colleges);
+      console.log('KnowledgeGraphStage: College recommendations:', colleges);
       if (colleges.length > 0) {
         const collegeEntities = colleges.map(college => ({
           name: college.name,
@@ -362,13 +362,13 @@ export const TrackingStage = (): JSX.Element => {
           ]
         }));
 
-        console.log('TrackingStage: Creating college entities:', collegeEntities);
+        console.log('KnowledgeGraphStage: Creating college entities:', collegeEntities);
         const createCollegesResponse = await fetch('/api/mcp/memory/create-entities', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ entities: collegeEntities })
         });
-        console.log('TrackingStage: College entities creation response:', await createCollegesResponse.clone().json());
+        console.log('KnowledgeGraphStage: College entities creation response:', await createCollegesResponse.clone().json());
 
         // Create relations between student and colleges
         const collegeRelations = colleges.map(college => ({
@@ -376,18 +376,18 @@ export const TrackingStage = (): JSX.Element => {
           to: college.name,
           relationType: 'is interested in'
         }));
-        console.log('TrackingStage: Creating college relations:', collegeRelations);
+        console.log('KnowledgeGraphStage: Creating college relations:', collegeRelations);
         const createCollegeRelationsResponse = await fetch('/api/mcp/memory/create-relations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ relations: collegeRelations })
         });
-        console.log('TrackingStage: College relations creation response:', await createCollegeRelationsResponse.clone().json());
+        console.log('KnowledgeGraphStage: College relations creation response:', await createCollegeRelationsResponse.clone().json());
       }
 
       // Create major/field entities and relations
       const majors = student.data.collegeInterests?.majors || [];
-      console.log('TrackingStage: College majors:', majors);
+      console.log('KnowledgeGraphStage: College majors:', majors);
       if (majors.length > 0) {
         const majorEntities = majors.map(major => ({
           name: major,
@@ -395,13 +395,13 @@ export const TrackingStage = (): JSX.Element => {
           observations: []
         }));
 
-        console.log('TrackingStage: Creating major entities:', majorEntities);
+        console.log('KnowledgeGraphStage: Creating major entities:', majorEntities);
         const createMajorsResponse = await fetch('/api/mcp/memory/create-entities', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ entities: majorEntities })
         });
-        console.log('TrackingStage: Major entities creation response:', await createMajorsResponse.clone().json());
+        console.log('KnowledgeGraphStage: Major entities creation response:', await createMajorsResponse.clone().json());
 
         const majorRelations = majors.map(major => ({
           from: student.name,
@@ -409,31 +409,31 @@ export const TrackingStage = (): JSX.Element => {
           relationType: 'wants to study'
         }));
 
-        console.log('TrackingStage: Creating major relations:', majorRelations);
+        console.log('KnowledgeGraphStage: Creating major relations:', majorRelations);
         const createMajorRelationsResponse = await fetch('/api/mcp/memory/create-relations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ relations: majorRelations })
         });
-        console.log('TrackingStage: Major relations creation response:', await createMajorRelationsResponse.clone().json());
+        console.log('KnowledgeGraphStage: Major relations creation response:', await createMajorRelationsResponse.clone().json());
       }
 
       // Read the graph to visualize
-      console.log('TrackingStage: Fetching graph data');
+      console.log('KnowledgeGraphStage: Fetching graph data');
       const response = await fetch('/api/mcp/memory/read-graph', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
 
-      console.log('TrackingStage: Graph response status:', response.status);
+      console.log('KnowledgeGraphStage: Graph response status:', response.status);
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('TrackingStage: Graph response error:', errorText);
+        console.error('KnowledgeGraphStage: Graph response error:', errorText);
         throw new Error(`Failed to fetch graph: ${response.status} ${errorText}`);
       }
       const graph = await response.json();
-      console.log('TrackingStage: Received graph data:', graph);
+      console.log('KnowledgeGraphStage: Received graph data:', graph);
 
       // Transform graph data for visualization
       const { nodes: newNodes, edges: newEdges } = transformGraphData(graph);
@@ -441,11 +441,11 @@ export const TrackingStage = (): JSX.Element => {
       setEdges(newEdges);
       setIsLoading(false);
     } catch (err: any) {
-      console.error('TrackingStage: Error initializing knowledge graph:', err);
+      console.error('KnowledgeGraphStage: Error initializing knowledge graph:', err);
       if (err instanceof Response) {
-        console.error('TrackingStage: Response error:', await err.text());
+        console.error('KnowledgeGraphStage: Response error:', await err.text());
       }
-      console.error('TrackingStage: Error details:', {
+      console.error('KnowledgeGraphStage: Error details:', {
         name: err?.name || 'Unknown error',
         message: err?.message || 'No error message available',
         stack: err?.stack || 'No stack trace available'
@@ -468,101 +468,113 @@ export const TrackingStage = (): JSX.Element => {
       setStreamContent(''); // Clear stream content when starting new processing
 
       for (const chat of unprocessedChats) {
-      let success = false;
-      try {
-        // Send chat to Claude for processing with SSE
-        if (!apiKey) {
-          throw new Error('Claude API key not configured');
-        }
+        let success = false;
+        try {
+          // Send chat to Claude for processing with SSE
+          if (!apiKey) {
+            throw new Error('Claude API key not configured');
+          }
 
-        const response = await fetch('/api/chat/claude/analyze', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey
-          },
-          body: JSON.stringify({
-            studentId: currentStudent?.id,
-            chatId: chat.id,
-            mode: 'graph_enrichment'
-          })
-        });
+          const response = await fetch('/api/chat/claude/analyze', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey
+            },
+            body: JSON.stringify({
+              studentId: currentStudent?.id,
+              chatId: chat.id,
+              mode: 'graph_enrichment'
+            })
+          });
 
-        if (!response.ok) {
-          throw new Error('Failed to process chat');
-        }
+          if (!response.ok) {
+            throw new Error('Failed to process chat');
+          }
 
-        // Handle SSE response
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error('No response body');
-        }
+          // Handle SSE response
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('No response body');
+          }
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          // Parse SSE data
-          const text = new TextDecoder().decode(value);
-          const lines = text.split('\n');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(5));
-                // Add all content to stream display
-                const timestamp = new Date().toLocaleTimeString();
-                setStreamContent(prev => prev + `\n[${timestamp}] ` + JSON.stringify(data, null, 2));
-                
-                if (data.type === 'thinking') {
-                  //setProcessingStatus(data.content);
-                } else if (data.type === 'error') {
-                  throw new Error(data.content);
-                } else if (data.type === 'complete') {
-                  success = true;
-                  // Mark chat as processed
-                  await fetch('/api/mcp/student-data/mark-chat-processed', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      studentId: currentStudent?.id,
-                      chatId: chat.id,
-                      lastMessageTimestamp: chat.updatedAt
-                    })
+            // Parse SSE data
+            const text = new TextDecoder().decode(value);
+            const lines = text.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(5));
+                  // Add all content to stream display
+                  const timestamp = new Date().toLocaleTimeString();
+                  
+                  await new Promise<void>(resolve => {
+                    setStreamContent(prev => {
+                      const newContent = prev + `\n[${timestamp}] ` + JSON.stringify(data, null, 2);
+                      resolve();
+                      return newContent;
+                    });
                   });
+                  
+                  if (data.type === 'thinking') {
+                    //setProcessingStatus(data.content);
+                  } else if (data.type === 'error') {
+                    throw new Error(data.content);
+                  } else if (data.type === 'complete') {
+                    success = true;
+                    // Mark chat as processed
+                    await fetch('/api/mcp/student-data/mark-chat-processed', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        studentId: currentStudent?.id,
+                        chatId: chat.id,
+                        lastMessageTimestamp: chat.updatedAt
+                      })
+                    });
 
-                  setProcessedCount(prev => prev + 1);
-                  // Refresh graph after each chat is processed
-                  if (currentStudent) {
-                    await initializeKnowledgeGraph(currentStudent, data);
+                    // Wait for processed count update
+                    await new Promise<void>(resolve => {
+                      setProcessedCount(prev => {
+                        resolve();
+                        return prev + 1;
+                      });
+                    });
+
+                    // Refresh graph after each chat is processed
+                    if (currentStudent) {
+                      await initializeKnowledgeGraph(currentStudent, data);
+                    }
                   }
+                } catch (error) {
+                  console.error('Error parsing SSE data:', error);
                 }
-              } catch (error) {
-                console.error('Error parsing SSE data:', error);
               }
             }
           }
+        } catch (error: any) {
+          console.error('Error processing chat:', error);
+          setProcessingError(`Failed to process chat: ${error?.message || 'Unknown error'}`);
         }
-      } catch (error: any) {
-        console.error('Error processing chat:', error);
-        setProcessingError(`Failed to process chat: ${error?.message || 'Unknown error'}`);
-      }
 
-      // If this chat failed, wait a bit before trying the next one
-      if (!success) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!success) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-    }
 
       setProcessingChats(false);
-      setProcessingStatus('');
-      return true; // Return success
+      return true;
     } catch (error) {
       console.error('Error in processChats:', error);
       setProcessingError(`Failed to process chats: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return false; // Return failure
+      return false;
     }
-  }, [currentStudent, data, initializeKnowledgeGraph]);
+  }, [apiKey, currentStudent, initializeKnowledgeGraph]);
 
   useEffect(() => {
     if (currentStudent) {
@@ -625,7 +637,7 @@ export const TrackingStage = (): JSX.Element => {
     <Paper elevation={0} sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h5">
-          College Recommendations Tracker
+          Knowledge Graph
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button 

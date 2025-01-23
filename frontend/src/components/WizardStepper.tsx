@@ -10,7 +10,8 @@ const STAGE_LABELS: Record<WizardStage, string> = {
   'budget': 'Budget',
   'data-collection': 'Research',
   'recommendations': 'Recommendations',
-  'tracking': 'Track & Review'
+  'map': 'Map',
+  'knowledge-graph': 'Knowledge Graph'
 };
 
 export const WizardStepper: React.FC = () => {

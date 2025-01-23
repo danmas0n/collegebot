@@ -5,7 +5,8 @@ export type WizardStage =
   | 'budget'
   | 'data-collection'
   | 'recommendations'
-  | 'tracking';
+  | 'map'
+  | 'knowledge-graph';
 
 export interface Student {
   id: string;
@@ -47,6 +48,26 @@ export interface DataSource {
   message?: string;
 }
 
+export interface MapLocation {
+  id: string;
+  type: 'college' | 'scholarship';
+  name: string;
+  latitude: number;
+  longitude: number;
+  metadata: {
+    website?: string;
+    description?: string;
+    address?: string;
+    // College-specific metadata
+    fitScore?: number;
+    reason?: string;
+    // Scholarship-specific metadata
+    amount?: number;
+    deadline?: string;
+    eligibility?: string;
+  }
+}
+
 export interface WizardData {
   studentProfile: StudentProfile;
   collegeInterests: CollegeInterests;
@@ -68,6 +89,9 @@ export interface WizardData {
       deadline: string;
       eligibility: string;
     }>;
+  };
+  map?: {
+    locations: MapLocation[];
   };
 }
 

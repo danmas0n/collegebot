@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
 import path from 'path';
+import axios from 'axios';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'thinking';
@@ -25,6 +26,26 @@ interface Chat {
   studentId: string;
   processed?: boolean;
   processedAt?: string;
+}
+
+interface MapLocation {
+  id: string;
+  type: 'college' | 'scholarship';
+  name: string;
+  latitude: number;
+  longitude: number;
+  metadata: {
+    website?: string;
+    description?: string;
+    address?: string;
+    // College-specific metadata
+    fitScore?: number;
+    reason?: string;
+    // Scholarship-specific metadata
+    amount?: number;
+    deadline?: string;
+    eligibility?: string;
+  };
 }
 
 interface Student {
@@ -71,6 +92,9 @@ interface Student {
         eligibility: string;
       }>;
     };
+    map?: {
+      locations: MapLocation[];
+    };
   };
 }
 
@@ -78,6 +102,7 @@ class StudentDataServer {
   private server: Server;
   private studentsPath: string;
   private chatsPath: string;
+  private mapLocationsPath: string;
 
   constructor() {
     this.server = new Server(
@@ -192,6 +217,86 @@ class StudentDataServer {
                 },
                 required: ['studentId', 'chatId', 'lastMessageTimestamp']
               }
+            },
+            geocode: {
+              description: 'Geocode an address to get latitude and longitude coordinates',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  address: {
+                    type: 'string',
+                    description: 'The address to geocode'
+                  },
+                  name: {
+                    type: 'string',
+                    description: 'Name of the location'
+                  }
+                },
+                required: ['address', 'name']
+              }
+            },
+            create_map_location: {
+              description: 'Add a location to the student map data',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  location: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      type: { type: 'string', enum: ['college', 'scholarship'] },
+                      name: { type: 'string' },
+                      latitude: { type: 'number' },
+                      longitude: { type: 'number' },
+                      metadata: {
+                        type: 'object',
+                        properties: {
+                          website: { type: 'string' },
+                          description: { type: 'string' },
+                          address: { type: 'string' },
+                          fitScore: { type: 'number' },
+                          reason: { type: 'string' },
+                          amount: { type: 'number' },
+                          deadline: { type: 'string' },
+                          eligibility: { type: 'string' }
+                        }
+                      }
+                    },
+                    required: ['id', 'type', 'name', 'latitude', 'longitude']
+                  }
+                },
+                required: ['studentId', 'location']
+              }
+            },
+            get_map_locations: {
+              description: 'Get all map locations for a student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  }
+                },
+                required: ['studentId']
+              }
+            },
+            clear_map_locations: {
+              description: 'Clear all map locations for a student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  }
+                },
+                required: ['studentId']
+              }
             }
           }
         },
@@ -202,6 +307,7 @@ class StudentDataServer {
     const basePath = path.join(process.env.HOME || '', '.collegebot');
     this.studentsPath = path.join(basePath, 'students.json');
     this.chatsPath = path.join(basePath, 'chats.json');
+    this.mapLocationsPath = path.join(basePath, 'map_locations.json');
 
     this.setupToolHandlers();
     
@@ -227,6 +333,12 @@ class StudentDataServer {
         await fs.access(this.chatsPath);
       } catch {
         await fs.writeFile(this.chatsPath, JSON.stringify({ chats: [] }));
+      }
+
+      try {
+        await fs.access(this.mapLocationsPath);
+      } catch {
+        await fs.writeFile(this.mapLocationsPath, JSON.stringify({ locations: [] }));
       }
     } catch (error) {
       console.error('Error ensuring data files exist:', error);
@@ -254,6 +366,17 @@ class StudentDataServer {
   private async writeChats(data: { chats: Chat[] }) {
     await this.ensureDataFiles();
     await fs.writeFile(this.chatsPath, JSON.stringify(data, null, 2));
+  }
+
+  private async readMapLocations(): Promise<{ locations: MapLocation[] }> {
+    await this.ensureDataFiles();
+    const data = await fs.readFile(this.mapLocationsPath, 'utf-8');
+    return JSON.parse(data);
+  }
+
+  private async writeMapLocations(data: { locations: MapLocation[] }) {
+    await this.ensureDataFiles();
+    await fs.writeFile(this.mapLocationsPath, JSON.stringify(data, null, 2));
   }
 
   private setupToolHandlers() {
@@ -444,6 +567,142 @@ class StudentDataServer {
           } catch (error) {
             console.error('Error marking chat as processed:', error);
             throw new McpError(ErrorCode.InternalError, 'Failed to mark chat as processed');
+          }
+        }
+
+        case 'geocode': {
+          const args = request.params.arguments;
+          if (!args?.address || !args?.name) {
+            throw new McpError(ErrorCode.InvalidParams, 'Address and name are required');
+          }
+
+          try {
+            const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+            if (!apiKey) {
+              throw new Error('Google Maps API key not configured');
+            }
+
+            const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+              params: {
+                address: args.address,
+                key: apiKey
+              }
+            });
+
+            if (response.data.status !== 'OK') {
+              throw new Error(`Geocoding failed: ${response.data.status}`);
+            }
+
+            const location = response.data.results[0].geometry.location;
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  name: args.name,
+                  latitude: location.lat,
+                  longitude: location.lng,
+                  formattedAddress: response.data.results[0].formatted_address
+                })
+              }]
+            };
+          } catch (error) {
+            console.error('Error geocoding address:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to geocode address');
+          }
+        }
+
+        case 'create_map_location': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.location) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and location are required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const studentIndex = studentData.students.findIndex(s => s.id === args.studentId);
+            if (studentIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            // Initialize map data if it doesn't exist
+            if (!studentData.students[studentIndex].data.map) {
+              studentData.students[studentIndex].data.map = { locations: [] };
+            }
+
+            // Check if location already exists
+            const location = args.location as MapLocation;
+            const existingLocationIndex = studentData.students[studentIndex].data.map!.locations.findIndex(
+              loc => loc.name === location.name && loc.type === location.type
+            );
+
+            if (existingLocationIndex !== -1) {
+              // Update existing location
+              studentData.students[studentIndex].data.map!.locations[existingLocationIndex] = location;
+            } else {
+              // Add new location
+              studentData.students[studentIndex].data.map!.locations.push(location);
+            }
+
+            await this.writeStudents(studentData);
+            return {
+              content: [{ type: 'text', text: 'Location added successfully' }],
+            };
+          } catch (error) {
+            console.error('Error creating map location:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to create map location');
+          }
+        }
+
+        case 'clear_map_locations': {
+          const args = request.params.arguments;
+          if (!args?.studentId) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID is required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const studentIndex = studentData.students.findIndex(s => s.id === args.studentId);
+            if (studentIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            // Clear map locations
+            if (studentData.students[studentIndex].data.map) {
+              studentData.students[studentIndex].data.map.locations = [];
+            }
+
+            await this.writeStudents(studentData);
+            return {
+              content: [{ type: 'text', text: 'Map locations cleared successfully' }],
+            };
+          } catch (error) {
+            console.error('Error clearing map locations:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to clear map locations');
+          }
+        }
+
+        case 'get_map_locations': {
+          const args = request.params.arguments;
+          if (!args?.studentId) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID is required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const student = studentData.students.find(s => s.id === args.studentId);
+            if (!student) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(student.data.map?.locations || [])
+              }]
+            };
+          } catch (error) {
+            console.error('Error getting map locations:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to get map locations');
           }
         }
 

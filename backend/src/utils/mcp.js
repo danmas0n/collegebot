@@ -21,6 +21,10 @@ export const createMcpClient = async (serverName) => {
     case 'student-data':
       command = 'node';
       args = ['../mcp/student-data-server/build/index.js'];
+      env = {
+        ...env,
+        GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY
+      };
       break;
     case 'fetch':
       command = 'uvx';

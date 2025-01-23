@@ -1,5 +1,6 @@
 import { graphInstructions } from './graph_instructions.js';
 import { recommendationsInstructions } from './recommendations_instructions.js';
+import { mapInstructions } from './map_instructions.js';
 import { executeMcpTool } from '../utils/mcp.js';
 
 // Tools for making college recommendations
@@ -67,6 +68,57 @@ const RECOMMENDATION_TOOLS = [
 ];
 
 // Tools for managing the knowledge graph
+const MAP_TOOLS = [
+  {
+    name: 'geocode',
+    description: 'Geocode an address to get latitude and longitude coordinates',
+    parameters: [
+      {
+        name: 'address',
+        type: 'string',
+        description: 'The address to geocode',
+        required: true
+      },
+      {
+        name: 'name',
+        type: 'string',
+        description: 'Name of the location',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_map_location',
+    description: 'Add a location to the student map data',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'location',
+        type: 'object',
+        description: 'Location object with coordinates and metadata',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'get_map_locations',
+    description: 'Get all map locations for a student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      }
+    ]
+  }
+];
+
 const GRAPH_TOOLS = [
   {
     name: 'create_entities',
@@ -180,7 +232,19 @@ const GRAPH_TOOLS = [
 export const generateToolInstructions = (mode) => {
   let instructions = 'Available tools:\n\n';
   
-  const tools = mode === 'recommendations' ? RECOMMENDATION_TOOLS : GRAPH_TOOLS;
+  let tools;
+  switch (mode) {
+    case 'recommendations':
+      tools = RECOMMENDATION_TOOLS;
+      break;
+    case 'map_enrichment':
+      tools = MAP_TOOLS;
+      break;
+    case 'graph_enrichment':
+    default:
+      tools = GRAPH_TOOLS;
+      break;
+  }
   tools.forEach((tool, index) => {
     instructions += `${index + 1}. ${tool.name}\n`;
     instructions += `Description: ${tool.description}\n`;
@@ -197,12 +261,14 @@ export const generateToolInstructions = (mode) => {
    - Format tool calls like this:
      <tool>
       <name>search_college_data</name>
-      <parameters>{"query": "Stanford University"}</parameters>
+      <parameters>
+        {"query": "Stanford University"}
+      </parameters>
      </tool>
    - You may call multiple tools in one message if you want to.
    - To call a tool, respond with a correctly formatted <tool> tag, and then end your message.  
      The tool call results will be passed to you on your next turn.
-   - CRITICAL: YOU MUST RETURN WELL FORMED XML AND JSON in your tool calls.  If you don't, the system will break.
+   - CRITICAL: YOU MUST RETURN WELL FORMED XML AND JSON in your tool calls.  Ensure you close each tag.  If you don't, the system will break.
    - CRITICAL: END YOUR MESSAGE IMMEDIATELY after the tool calls.  Don't keep thinking or answering until you get the tool results.
    - CRITICAL: DO NOT EVER FABRICATE THE RESULTS OF TOOL CALLS!!!  Even if you think you know the answer, you must call the tool.
 
@@ -233,39 +299,74 @@ export const generateBasePrompt = async (studentName, studentData, mode = 'recom
   const baseInstructions = `You are an AI college advisor helping a student named ${studentName}. 
 You have access to their profile data and can use tools to fetch college information from the Internet as needed.`;
 
-  const modeSpecificInstructions = mode === 'recommendations' ? 
-    `Your goal is to generate great recommendations for colleges and scholarships that match ${studentName}'s profile and interests.
+  let modeSpecificInstructions;
+  let tools;
 
-${recommendationsInstructions}` :
-    `Your goal is to analyze our conversation and extract any college or scholarship recommendations we discussed,
+  switch (mode) {
+    case 'recommendations':
+      modeSpecificInstructions = `Your goal is to generate great recommendations for colleges and scholarships that match ${studentName}'s profile and interests.
+
+${recommendationsInstructions}`;
+      tools = RECOMMENDATION_TOOLS;
+      break;
+
+    case 'map_enrichment':
+      modeSpecificInstructions = `Your goal is to analyze our conversation and extract any college or scholarship locations we discussed,
+adding them to the student's map to help them visualize their options geographically.
+
+${mapInstructions}`;
+      tools = MAP_TOOLS;
+      break;
+
+    case 'graph_enrichment':
+    default:
+      modeSpecificInstructions = `Your goal is to analyze our conversation and extract any college or scholarship recommendations we discussed,
 adding them to the student's knowledge graph to help them track their options.
 
 ${graphInstructions}`;
+      tools = GRAPH_TOOLS;
+      break;
+  }
+
+  const contextData = {
+    id: studentData.id,
+    name: studentName,
+    ...studentData.studentProfile,
+    interests: {
+      majors: studentData.collegeInterests?.majors || [],
+      fieldsOfStudy: studentData.collegeInterests?.fieldsOfStudy || []
+    },
+    budget: {
+      yearly: studentData.budgetInfo?.yearlyBudget,
+      willingness: studentData.budgetInfo?.willingness || {}
+    }
+  };
+
+  // Add mode-specific context
+  let additionalContext = '';
+  try {
+    if (mode === 'graph_enrichment') {
+      additionalContext = `\nCurrent Knowledge Graph State:
+${JSON.stringify(await executeMcpTool('memory', 'read_graph', {}), null, 2)}`;
+    } else if (mode === 'map_enrichment' && studentData?.id) {
+      const mapLocations = await executeMcpTool('student-data', 'get_map_locations', { studentId: studentData.id });
+      additionalContext = `\nCurrent Map State:
+${JSON.stringify(mapLocations.content[0].text ? JSON.parse(mapLocations.content[0].text) : [], null, 2)}`;
+    }
+  } catch (error) {
+    console.error('Error getting additional context:', error);
+    // Continue without the additional context rather than failing
+    additionalContext = '\nFailed to load current state';
+  }
 
   return `${baseInstructions}
 ${modeSpecificInstructions}
 
 Student Profile:
-${JSON.stringify({
-  name: studentName,
-  ...studentData.studentProfile,
-  interests: {
-    majors: studentData.collegeInterests?.majors || [],
-    fieldsOfStudy: studentData.collegeInterests?.fieldsOfStudy || []
-  },
-  budget: {
-    yearly: studentData.budgetInfo?.yearlyBudget,
-    willingness: studentData.budgetInfo?.willingness || {}
-  }
-}, null, 2)}
+${JSON.stringify(contextData, null, 2)}
 
 ${generateToolInstructions(mode)}
-
-${mode === 'graph_enrichment' ? 
-  // Get current graph state for context
-  `Current Knowledge Graph State:
-${JSON.stringify(await executeMcpTool('memory', 'read_graph', {}), null, 2)}` : 
-  ''}
+${additionalContext}
 
 Format your responses clearly:
 - Use bullet points for lists
@@ -273,6 +374,5 @@ Format your responses clearly:
 - Highlight key information
 - Organize information logically
 - Make complex topics understandable
-
 `;
 };

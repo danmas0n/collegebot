@@ -8,7 +8,8 @@ const STAGES: WizardStage[] = [
   'budget',
   'data-collection',
   'recommendations',
-  'tracking'
+  'map',
+  'knowledge-graph'
 ];
 
 const initialData: WizardData = {
@@ -198,7 +199,9 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return data.dataCollection?.status === 'complete';
       case 'recommendations':
         return true;
-      case 'tracking':
+      case 'map':
+        return true;
+      case 'knowledge-graph':
         return true;
       default:
         return false;
