@@ -36,7 +36,7 @@ When analyzing conversations to extract location data for the map, follow these 
           "latitude": number,
           "longitude": number,
           "metadata": {
-            "website": "URL",
+            "website": "URL", // College website or scholarship application URL
             "description": "Brief description",
             "address": "Full address",
             // For colleges
@@ -45,7 +45,9 @@ When analyzing conversations to extract location data for the map, follow these 
             // For scholarships
             "amount": number,
             "deadline": "YYYY-MM-DD",
-            "eligibility": "Eligibility criteria"
+            "eligibility": "Eligibility criteria",
+            "applicationUrl": "URL", // Direct link to scholarship application if different from website
+            "sponsorWebsite": "URL" // Website of the scholarship sponsor/organization
           }
         }
       }

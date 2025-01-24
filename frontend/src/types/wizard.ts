@@ -65,6 +65,8 @@ export interface MapLocation {
     amount?: number;
     deadline?: string;
     eligibility?: string;
+    applicationUrl?: string;
+    sponsorWebsite?: string;
   }
 }
 

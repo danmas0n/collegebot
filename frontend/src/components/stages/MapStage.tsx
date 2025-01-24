@@ -11,13 +11,18 @@ import {
   LinearProgress,
   Collapse,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Grid,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Link,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import SortByAlphaIcon from '@mui/icons-material/SortByAlpha';
+import SchoolIcon from '@mui/icons-material/School';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import { GoogleMap, useLoadScript, MarkerF, InfoWindowF } from '@react-google-maps/api';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
@@ -384,9 +389,104 @@ export const MapStage = (): JSX.Element => {
           <CircularProgress />
         </Box>
       ) : (
-        <Card>
-          <CardContent sx={{ p: 0 }}>
-            <GoogleMap
+        <Grid container spacing={2}>
+          {/* List View */}
+          <Grid item xs={4}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Locations</Typography>
+                  <Box>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => {
+                        const sorted = [...(data.map?.locations || [])].sort((a, b) => a.name.localeCompare(b.name));
+                        if (data.map) {
+                          updateData({
+                            ...data,
+                            map: {
+                              ...data.map,
+                              locations: sorted
+                            }
+                          });
+                        }
+                      }}
+                    >
+                      <SortByAlphaIcon />
+                    </IconButton>
+                  </Box>
+                </Box>
+                <List>
+                  {data.map?.locations.map((location) => (
+                    <ListItem 
+                      key={location.id}
+                      sx={{ 
+                        cursor: 'pointer',
+                        bgcolor: selectedLocation?.id === location.id ? 'action.selected' : 'transparent',
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        }
+                      }}
+                      onClick={() => setSelectedLocation(location)}
+                    >
+                      <ListItemIcon>
+                        {location.type === 'college' ? (
+                          <SchoolIcon color="primary" />
+                        ) : (
+                          <AttachMoneyIcon color="secondary" />
+                        )}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={location.name}
+                        secondary={
+                          <>
+                            {location.type === 'college' && location.metadata.fitScore && (
+                              <Box component="span" sx={{ display: 'block' }}>
+                                Fit Score: {location.metadata.fitScore}
+                              </Box>
+                            )}
+                            {location.type === 'scholarship' && location.metadata.amount && (
+                              <Box component="span" sx={{ display: 'block' }}>
+                                Amount: ${location.metadata.amount}
+                              </Box>
+                            )}
+                            {location.metadata.website && (
+                              <Link 
+                                href={location.metadata.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Visit Website
+                              </Link>
+                            )}
+                            {location.type === 'scholarship' && location.metadata.applicationUrl && (
+                              <Box component="span" sx={{ display: 'block' }}>
+                                <Link 
+                                  href={location.metadata.applicationUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  Apply Now
+                                </Link>
+                              </Box>
+                            )}
+                          </>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Map View */}
+          <Grid item xs={8}>
+            <Card>
+              <CardContent sx={{ p: 0 }}>
+                <GoogleMap
               mapContainerStyle={mapContainerStyle}
               zoom={4}
               center={defaultCenter}
@@ -465,15 +565,39 @@ export const MapStage = (): JSX.Element => {
                             Eligibility: {selectedLocation.metadata.eligibility}
                           </Typography>
                         )}
+                        {selectedLocation.metadata.applicationUrl && (
+                          <Typography variant="body2">
+                            <a 
+                              href={selectedLocation.metadata.applicationUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                            >
+                              Apply Now
+                            </a>
+                          </Typography>
+                        )}
+                        {selectedLocation.metadata.sponsorWebsite && (
+                          <Typography variant="body2">
+                            <a 
+                              href={selectedLocation.metadata.sponsorWebsite} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                            >
+                              Sponsor Website
+                            </a>
+                          </Typography>
+                        )}
                       </>
                     )}
                   </div>
                 </InfoWindowF>
               )}
             </GoogleMap>
-          </CardContent>
-        </Card>
-      )}
-    </Paper>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+        </Paper>
   );
 };
