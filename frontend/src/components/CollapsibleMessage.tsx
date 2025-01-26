@@ -27,7 +27,7 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
 
   // Get preview text based on message type and content
   const getPreviewText = () => {
-    const text = message.content;
+    const text = message.content || '';
     
     // For tool usage messages
     if (text.startsWith('Using ')) {
@@ -48,6 +48,9 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
     const firstLine = text.split('\n')[0];
     return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
   };
+
+  const messageContent = message.content || '';
+  const hasToolData = messageContent.includes('Tool Data:');
 
   return (
     <Paper
@@ -84,8 +87,8 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
             {!expanded && (
               <Typography sx={{ 
                 whiteSpace: 'pre-wrap',
-                fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
-                fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit',
+                fontFamily: hasToolData ? 'monospace' : 'inherit',
+                fontSize: hasToolData ? '0.85em' : 'inherit',
                 opacity: 0.8
               }}>
                 {getPreviewText()}
@@ -95,21 +98,21 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
           <Collapse in={expanded}>
             <Typography sx={{ 
               whiteSpace: 'pre-wrap',
-              fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
-              fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit',
+              fontFamily: hasToolData ? 'monospace' : 'inherit',
+              fontSize: hasToolData ? '0.85em' : 'inherit',
               mt: 1
             }}>
-              {message.content}
+              {messageContent}
             </Typography>
           </Collapse>
         </Box>
       ) : (
         <Typography sx={{ 
           whiteSpace: 'pre-wrap',
-          fontFamily: message.content.includes('Tool Data:') ? 'monospace' : 'inherit',
-          fontSize: message.content.includes('Tool Data:') ? '0.85em' : 'inherit'
+          fontFamily: hasToolData ? 'monospace' : 'inherit',
+          fontSize: hasToolData ? '0.85em' : 'inherit'
         }}>
-          {message.content}
+          {messageContent}
         </Typography>
       )}
     </Paper>

@@ -50,6 +50,7 @@ export const RecommendationsStage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [assistantMessageBuffer, setAssistantMessageBuffer] = useState('');
+  const paperRef = React.useRef<HTMLDivElement>(null);
 
   // Load chats when component mounts or student changes
   useEffect(() => {
@@ -394,6 +395,15 @@ export const RecommendationsStage: React.FC = () => {
                     content: data.content,
                     timestamp: new Date().toISOString()
                   };
+                  
+                  // If this is the first answer in the chat and we have a suggested title
+                  if (data.suggestedTitle && activeChat.messages.filter(m => m.role === 'answer').length === 0) {
+                    activeChat = {
+                      ...activeChat,
+                      title: data.suggestedTitle
+                    };
+                  }
+                  
                   const updatedChatWithAnswer: Chat = {
                     ...activeChat,
                     messages: [...activeChat.messages, answerMessage],
@@ -448,6 +458,17 @@ export const RecommendationsStage: React.FC = () => {
     );
   };
 
+  useEffect(() => {
+    // Scroll to bottom whenever messages change
+    if (paperRef.current && currentChat?.messages.length) {
+      const scrollElement = paperRef.current;
+      // Use requestAnimationFrame to ensure the DOM has updated
+      requestAnimationFrame(() => {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      });
+    }
+  }, [currentChat?.messages]);
+
   if (!isConfigured) {
     return (
       <Paper elevation={0} sx={{ p: 3 }}>
@@ -494,7 +515,7 @@ export const RecommendationsStage: React.FC = () => {
   }
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }}>
+    <Paper elevation={0} sx={{ p: 3, height: '100%' }}>
       <Typography variant="h5" gutterBottom>
         AI Recommendations
       </Typography>
@@ -516,10 +537,10 @@ export const RecommendationsStage: React.FC = () => {
         </Alert>
       )}
 
-      <Grid container spacing={2}>
+      <Grid container spacing={2} sx={{ height: 'calc(100vh - 250px)' }}>
         {/* Chat List */}
-        <Grid item xs={3}>
-          <Paper elevation={0} sx={{ p: 2, height: '100%' }}>
+        <Grid item xs={3} sx={{ height: '100%' }}>
+          <Paper elevation={0} sx={{ p: 2, height: '100%', overflowY: 'auto' }}>
             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6">Chats</Typography>
               <Button
@@ -561,34 +582,50 @@ export const RecommendationsStage: React.FC = () => {
         </Grid>
 
         {/* Chat Messages */}
-        <Grid item xs={9}>
-          <Box sx={{ mb: 3, height: '400px', overflowY: 'auto' }}>
-            <List>
-              {currentChat?.messages.map((msg, index) => renderMessage(msg, index))}
-            </List>
+        <Grid item xs={9} sx={{ height: '100%' }}>
+          <Box 
+            sx={{ 
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            <Box 
+              sx={{ 
+                flex: 1,
+                overflowY: 'auto',
+                width: '100%',
+                mb: 2
+              }}
+              ref={paperRef}
+            >
+              <List sx={{ width: '100%' }}>
+                {currentChat?.messages.map((msg, index) => renderMessage(msg, index))}
+              </List>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                fullWidth
+                label="Ask a question"
+                multiline
+                rows={2}
+                value={currentMessage}
+                onChange={(e) => setCurrentMessage(e.target.value)}
+                disabled={isLoading}
+              />
+              <Button
+                variant="contained"
+                onClick={handleSendMessage}
+                disabled={!currentMessage.trim() || isLoading}
+                sx={{ minWidth: '100px' }}
+              >
+                {isLoading ? <CircularProgress size={24} /> : 'Send'}
+              </Button>
+            </Box>
           </Box>
         </Grid>
       </Grid>
-
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <TextField
-          fullWidth
-          label="Ask a question"
-          multiline
-          rows={2}
-          value={currentMessage}
-          onChange={(e) => setCurrentMessage(e.target.value)}
-          disabled={isLoading}
-        />
-        <Button
-          variant="contained"
-          onClick={handleSendMessage}
-          disabled={!currentMessage.trim() || isLoading}
-          sx={{ minWidth: '100px' }}
-        >
-          {isLoading ? <CircularProgress size={24} /> : 'Send'}
-        </Button>
-      </Box>
 
       <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
         <Button

@@ -38,6 +38,7 @@ export class ClaudeService {
     let savedAnswer = null;
     let continueProcessing = true;
     let rawMessage = ''; // Track complete raw message
+    let isFirstAnswer = messages.filter(msg => msg.role === 'assistant').length === 0;
 
     try {
       // Map our roles to Claude's roles before sending
@@ -45,6 +46,11 @@ export class ClaudeService {
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content
       }));
+
+      // If this is the first answer, append a request for a title
+      if (isFirstAnswer) {
+        systemPrompt += '\n\nAfter providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>';
+      }
 
       logger.info('System prompt', {
         preview: systemPrompt.slice(0, 1000),
@@ -84,13 +90,24 @@ export class ClaudeService {
                   role: 'answer',
                   content: result.content
                 });
-                sendSSE({ 
-                  type: 'response', 
-                  content: result.content
+                // Only send the SSE if we haven't seen a title tag yet
+                if (!isFirstAnswer) {
+                  sendSSE({ 
+                    type: 'response', 
+                    content: result.content
+                  });
+                }
+              } else if (tagName === 'title' && isFirstAnswer) {
+                // When we get the title, send both the saved answer and title together
+                sendSSE({
+                  type: 'response',
+                  content: savedAnswer,
+                  suggestedTitle: result.content.trim()
                 });
-              } else {
+                isFirstAnswer = false; // Mark that we've handled the first answer
+              } else if (tagName === 'thinking') {
                 sendSSE({ 
-                  type, 
+                  type: 'thinking', 
                   content: result.content
                 });
               }
@@ -101,6 +118,7 @@ export class ClaudeService {
 
           processTag('thinking', 'thinking');
           processTag('answer', 'response');
+          processTag('title', 'response');
 
           // If we have non-tag content, accumulate it
           if (!toolBuffer.includes('<')) {
