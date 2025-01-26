@@ -16,7 +16,6 @@ import { CollegeInterestsStage } from './components/stages/CollegeInterestsStage
 import { BudgetStage } from './components/stages/BudgetStage';
 import { DataCollectionStage } from './components/stages/DataCollectionStage';
 import { RecommendationsStage } from './components/stages/RecommendationsStage';
-import { KnowledgeGraphStage } from './components/stages/KnowledgeGraphStage';
 import { MapStage } from './components/stages/MapStage';
 
 const WizardContent: React.FC = () => {
@@ -38,8 +37,6 @@ const WizardContent: React.FC = () => {
         return <RecommendationsStage />;
       case 'map':
         return <MapStage />;
-      case 'knowledge-graph':
-        return <KnowledgeGraphStage />;
       default:
         return null;
     }

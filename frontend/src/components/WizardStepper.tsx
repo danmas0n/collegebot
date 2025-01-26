@@ -5,24 +5,23 @@ import { WizardStage } from '../types/wizard';
 
 const STAGE_LABELS: Record<WizardStage, string> = {
   'student-selection': 'Select Student',
-  'student-profile': 'Your Profile',
+  'student-profile': 'Student Profile',
   'college-interests': 'Interests',
   'budget': 'Budget',
-  'data-collection': 'Research',
+  'data-collection': 'Data Collection',
   'recommendations': 'Recommendations',
   'map': 'Map',
-  'knowledge-graph': 'Knowledge Graph'
 };
 
 export const WizardStepper: React.FC = () => {
   const { currentStage, goToStage, canProceed, nextStage, previousStage, currentStudent } = useWizard();
 
-  const stages = Object.entries(STAGE_LABELS).map(([key, label]) => ({
-    key: key as WizardStage,
+  const stages = Object.entries(STAGE_LABELS).map(([stage, label]) => ({
+    stage: stage as WizardStage,
     label
   }));
 
-  const currentIndex = stages.findIndex(stage => stage.key === currentStage);
+  const currentIndex = stages.findIndex(stage => stage.stage === currentStage);
 
   // Only show stepper if a student is selected
   if (!currentStudent && currentStage === 'student-selection') {
@@ -32,8 +31,8 @@ export const WizardStepper: React.FC = () => {
   return (
     <Box sx={{ width: '100%' }}>
       <Stepper activeStep={currentIndex} sx={{ mb: 4 }}>
-        {stages.filter(stage => stage.key !== 'student-selection').map(({ key, label }) => (
-          <Step key={key} completed={stages.indexOf({ key, label }) < currentIndex}>
+        {stages.filter(stage => stage.stage !== 'student-selection').map(({ stage, label }) => (
+          <Step key={stage} completed={stages.indexOf({ stage, label }) < currentIndex}>
             <StepLabel
               sx={{
                 cursor: 'pointer',
@@ -44,7 +43,7 @@ export const WizardStepper: React.FC = () => {
                   }
                 }
               }}
-              onClick={() => goToStage(key)}
+              onClick={() => goToStage(stage)}
             >
               {label}
             </StepLabel>

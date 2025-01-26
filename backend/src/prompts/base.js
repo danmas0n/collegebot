@@ -334,7 +334,14 @@ ${graphInstructions}`;
     ...studentData.studentProfile,
     interests: {
       majors: studentData.collegeInterests?.majors || [],
-      fieldsOfStudy: studentData.collegeInterests?.fieldsOfStudy || []
+      fieldsOfStudy: studentData.collegeInterests?.fieldsOfStudy || [],
+      locations: {
+        regions: studentData.collegeInterests?.locationPreferences?.regions || [],
+        states: studentData.collegeInterests?.locationPreferences?.states || [],
+        minDistanceFromHome: studentData.collegeInterests?.locationPreferences?.minDistanceFromHome,
+        maxDistanceFromHome: studentData.collegeInterests?.locationPreferences?.maxDistanceFromHome,
+        urbanSettings: studentData.collegeInterests?.locationPreferences?.urbanSettings || []
+      }
     },
     budget: {
       yearly: studentData.budgetInfo?.yearlyBudget,

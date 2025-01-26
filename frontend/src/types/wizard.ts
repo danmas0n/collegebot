@@ -5,8 +5,7 @@ export type WizardStage =
   | 'budget'
   | 'data-collection'
   | 'recommendations'
-  | 'map'
-  | 'knowledge-graph';
+  | 'map';
 
 export interface Student {
   id: string;
@@ -30,6 +29,13 @@ export interface CollegeInterests {
   colleges?: string[];
   majors?: string[];
   fieldsOfStudy?: string[];
+  locationPreferences?: {
+    regions?: string[];
+    minDistanceFromHome?: number;
+    maxDistanceFromHome?: number;
+    states?: string[];
+    urbanSettings?: ('urban' | 'suburban' | 'rural')[];
+  };
 }
 
 export interface BudgetInfo {
@@ -58,16 +64,34 @@ export interface MapLocation {
     website?: string;
     description?: string;
     address?: string;
-    // College-specific metadata
+    distanceFromHome?: number;
+    matchesPreferences?: {
+      region: boolean;
+      state: boolean;
+      distance: boolean;
+      setting: boolean;
+    };
+    referenceLinks?: Array<{
+      url: string;
+      title: string;
+      category: 'admissions' | 'financial' | 'academic' | 'campus' | 'career' | 'research' | 'application' | 'student-life' | 'social';
+      source: 'official' | 'semi-official' | 'unofficial';
+      platform: 'website' | 'reddit' | 'youtube' | 'twitter' | 'instagram' | 'linkedin' | 'blog' | 'news' | 'other';
+      notes?: string;
+      dateFound: string;
+      credibilityNotes?: string;
+    }>;
+    showLinks?: boolean;
+    // For colleges
     fitScore?: number;
     reason?: string;
-    // Scholarship-specific metadata
+    // For scholarships
     amount?: number;
     deadline?: string;
     eligibility?: string;
     applicationUrl?: string;
     sponsorWebsite?: string;
-  }
+  };
 }
 
 export interface WizardData {
