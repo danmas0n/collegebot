@@ -80,7 +80,7 @@ router.post('/analyze', async (req, res) => {
       messageCount: chat.messages.length,
       messages: chat.messages.map(m => ({
         role: m.role,
-        contentPreview: m.content.slice(0, 100) + (m.content.length > 100 ? '...' : '')
+        contentPreview: m.content ? m.content.slice(0, 100) + (m.content.length > 100 ? '...' : '') : '[no content]'
       }))
     });
 

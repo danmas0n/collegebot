@@ -62,7 +62,16 @@ export const RecommendationsStage: React.FC = () => {
           setCurrentChat(newChat);
         } else {
           // Select the most recent chat
-          setCurrentChat(loadedChats[loadedChats.length - 1]);
+          const mostRecentChat = loadedChats[loadedChats.length - 1];
+          setCurrentChat(mostRecentChat);
+          
+          // If this is the initial recommendations chat and it only has one message,
+          // automatically start the conversation
+          if (mostRecentChat.title === 'Initial Recommendations' && 
+              mostRecentChat.messages.length === 1 &&
+              mostRecentChat.messages[0].role === 'user') {
+            handleSendMessage(mostRecentChat.messages[0].content);
+          }
         }
       });
     }
@@ -170,8 +179,9 @@ export const RecommendationsStage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!currentMessage.trim() || !apiKey) return;
+  const handleSendMessage = async (messageContent?: string) => {
+    const message = messageContent || currentMessage;
+    if (!message.trim() || !apiKey) return;
 
     let activeChat: Chat;
     if (!currentChat) {
@@ -189,7 +199,7 @@ export const RecommendationsStage: React.FC = () => {
       // Add user message immediately
       const userMessage: Message = {
         role: 'user',
-        content: currentMessage,
+        content: message,
         timestamp: new Date().toISOString()
       };
 
@@ -205,7 +215,7 @@ export const RecommendationsStage: React.FC = () => {
       await saveChat(updatedChat);
 
       // Clear input field after message is saved
-      const messageToSend = currentMessage;
+      const messageToSend = message;
       setCurrentMessage('');
 
       // Find index of last user message before current one
@@ -616,7 +626,7 @@ export const RecommendationsStage: React.FC = () => {
               />
               <Button
                 variant="contained"
-                onClick={handleSendMessage}
+                onClick={() => handleSendMessage(currentMessage)}
                 disabled={!currentMessage.trim() || isLoading}
                 sx={{ minWidth: '100px' }}
               >

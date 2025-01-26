@@ -37,6 +37,7 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { GoogleMap, useLoadScript, MarkerF, InfoWindowF } from '@react-google-maps/api';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
@@ -77,6 +78,7 @@ export const MapStage = (): JSX.Element => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<MapLocation | null>(null);
   const [locationFormErrors, setLocationFormErrors] = useState<Record<string, string>>({});
+  const [showDebugControls, setShowDebugControls] = useState(false);
 
   // Google Maps setup
   const { isLoaded, loadError } = useLoadScript({
@@ -175,11 +177,12 @@ export const MapStage = (): JSX.Element => {
                       })
                     });
 
-                    // Wait for processed count update
+                    // Update processed count, ensuring it doesn't exceed total
                     await new Promise<void>(resolve => {
                       setProcessedCount(prev => {
+                        const newCount = Math.min(prev + 1, unprocessedChats.length);
                         resolve();
-                        return prev + 1;
+                        return newCount;
                       });
                     });
 
@@ -226,6 +229,38 @@ export const MapStage = (): JSX.Element => {
       });
     }
   }, [currentStudent, loadChats]);
+
+  // Add effect to auto-process chats on load
+  useEffect(() => {
+    const autoProcessChats = async () => {
+      if (!currentStudent?.id || !apiKey) return;
+      
+      try {
+        const unprocessedChats = chats.filter(chat => !chat.processed);
+        if (unprocessedChats.length > 0) {
+          setIsProcessing(true);
+          setProcessingChats(true);
+          console.log('Auto-processing unprocessed chats:', unprocessedChats.length);
+          
+          const success = await processChats(unprocessedChats);
+          if (success) {
+            await loadChats(currentStudent.id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to auto-process chats:', err);
+        setError('Failed to auto-process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      } finally {
+        setIsProcessing(false);
+        setProcessingChats(false);
+        setIsLoading(false);
+      }
+    };
+
+    if (currentStudent && !isLoading) {
+      autoProcessChats();
+    }
+  }, [currentStudent, isLoading, chats, apiKey]);
 
   const handleDeleteLocation = async (location: MapLocation) => {
     if (!currentStudent?.id) return;
@@ -354,38 +389,89 @@ export const MapStage = (): JSX.Element => {
           College & Scholarship Map
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button 
+          <Button
             variant="outlined"
-            onClick={async () => {
-              if (!currentStudent?.id) return;
-              
-              try {
-                setIsLoading(true);
-                const response = await fetch('/api/chat/claude/mark-all-unprocessed', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ studentId: currentStudent.id })
-                });
-
-                if (!response.ok) {
-                  throw new Error('Failed to mark chats as unprocessed');
-                }
-
-                await loadChats(currentStudent.id);
-              } catch (err) {
-                console.error('Failed to mark chats as unprocessed:', err);
-                setError('Failed to mark chats as unprocessed');
-              } finally {
-                setIsLoading(false);
-              }
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setEditingLocation({
+                id: `custom-${Date.now()}`,
+                type: 'college',
+                name: '',
+                latitude: 0,
+                longitude: 0,
+                metadata: {}
+              });
+              setIsEditDialogOpen(true);
             }}
             disabled={!currentStudent || isLoading || isProcessing}
           >
-            Mark All Unprocessed
+            Add Location
           </Button>
-          <>
+          <IconButton
+            onClick={() => setShowDebugControls(!showDebugControls)}
+            size="small"
+          >
+            <SettingsIcon />
+          </IconButton>
+        </Box>
+      </Box>
+
+      {processingChats && (
+        <Box sx={{ width: '100%', mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Processing chats ({processedCount}/{totalToProcess})
+          </Typography>
+          <LinearProgress 
+            variant="determinate" 
+            value={(processedCount / totalToProcess) * 100} 
+          />
+        </Box>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Debug Controls */}
+      <Collapse in={showDebugControls}>
+        <Paper elevation={1} sx={{ p: 2, mb: 2, bgcolor: '#f5f5f5' }}>
+          <Typography variant="subtitle2" gutterBottom>Debug Controls</Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
             <Button 
               variant="outlined"
+              size="small"
+              onClick={async () => {
+                if (!currentStudent?.id) return;
+                
+                try {
+                  setIsLoading(true);
+                  const response = await fetch('/api/chat/claude/mark-all-unprocessed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId: currentStudent.id })
+                  });
+
+                  if (!response.ok) {
+                    throw new Error('Failed to mark chats as unprocessed');
+                  }
+
+                  await loadChats(currentStudent.id);
+                } catch (err) {
+                  console.error('Failed to mark chats as unprocessed:', err);
+                  setError('Failed to mark chats as unprocessed');
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={!currentStudent || isLoading || isProcessing}
+            >
+              Mark All Unprocessed
+            </Button>
+            <Button 
+              variant="outlined"
+              size="small"
               onClick={async () => {
                 if (!currentStudent?.id) return;
                 
@@ -416,6 +502,7 @@ export const MapStage = (): JSX.Element => {
             </Button>
             <Button 
               variant="outlined"
+              size="small"
               onClick={async () => {
                 if (!currentStudent?.id) return;
                 
@@ -449,82 +536,51 @@ export const MapStage = (): JSX.Element => {
             >
               Clear Map
             </Button>
-          </>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setEditingLocation({
-                id: `custom-${Date.now()}`,
-                type: 'college',
-                name: '',
-                latitude: 0,
-                longitude: 0,
-                metadata: {}
-              });
-              setIsEditDialogOpen(true);
-            }}
-            disabled={!currentStudent || isLoading || isProcessing}
-          >
-            Add Location
-          </Button>
-        </Box>
-      </Box>
-
-      {processingChats && (
-        <Box sx={{ width: '100%', mb: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Processing chats ({processedCount}/{totalToProcess})
-          </Typography>
-          <LinearProgress 
-            variant="determinate" 
-            value={(processedCount / totalToProcess) * 100} 
-          />
-        </Box>
-      )}
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Stream Outputs */}
-      {streams.map(stream => (
-        <Paper key={stream.id} elevation={1} sx={{ mb: 2, backgroundColor: '#f5f5f5' }}>
-          <Box 
-            sx={{ 
-              p: 2, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              cursor: 'pointer'
-            }}
-            onClick={() => setStreams(prev => prev.map(s => 
-              s.id === stream.id ? { ...s, isOpen: !s.isOpen } : s
-            ))}
-          >
-            <Typography variant="subtitle2">
-              Chat {stream.id} {stream.isComplete ? '(Complete)' : '(Processing...)'}
-            </Typography>
-            <IconButton size="small">
-              {stream.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
           </Box>
-          <Collapse in={stream.isOpen}>
-            <Box sx={{ px: 2, pb: 2, maxHeight: '300px', overflowY: 'auto' }}>
-              <Typography variant="caption" component="pre" sx={{ 
-                whiteSpace: 'pre-wrap', 
-                fontSize: '0.8rem',
-                fontFamily: 'monospace',
-                margin: 0
-              }}>
-                {stream.content}
-              </Typography>
+
+          {/* Stream Outputs */}
+          {streams.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Processing Logs</Typography>
+              {streams.map(stream => (
+                <Paper key={stream.id} elevation={1} sx={{ mb: 2, backgroundColor: '#ffffff' }}>
+                  <Box 
+                    sx={{ 
+                      p: 2, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setStreams(prev => prev.map(s => 
+                      s.id === stream.id ? { ...s, isOpen: !s.isOpen } : s
+                    ))}
+                  >
+                    <Typography variant="subtitle2">
+                      Chat {stream.id} {stream.isComplete ? '(Complete)' : '(Processing...)'}
+                    </Typography>
+                    <IconButton size="small">
+                      {stream.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    </IconButton>
+                  </Box>
+                  <Collapse in={stream.isOpen}>
+                    <Box sx={{ px: 2, pb: 2, maxHeight: '300px', overflowY: 'auto' }}>
+                      <Typography variant="caption" component="pre" sx={{ 
+                        whiteSpace: 'pre-wrap', 
+                        fontSize: '0.8rem',
+                        fontFamily: 'monospace',
+                        margin: 0
+                      }}>
+                        {stream.content}
+                      </Typography>
+                    </Box>
+                  </Collapse>
+                </Paper>
+              ))}
             </Box>
-          </Collapse>
+          )}
         </Paper>
-      ))}
+      </Collapse>
 
       {!currentStudent ? (
         <Typography>Please select a student first.</Typography>
@@ -583,14 +639,14 @@ export const MapStage = (): JSX.Element => {
                       <ListItemText
                         primary={location.name}
                         secondary={
-                          <>
+                          <Box component="div">
                             {location.type === 'college' && location.metadata.fitScore && (
-                              <Box component="span" sx={{ display: 'block' }}>
+                              <Box component="div" sx={{ display: 'block' }}>
                                 Fit Score: {location.metadata.fitScore}
                               </Box>
                             )}
                             {location.type === 'scholarship' && location.metadata.amount && (
-                              <Box component="span" sx={{ display: 'block' }}>
+                              <Box component="div" sx={{ display: 'block' }}>
                                 Amount: ${location.metadata.amount}
                               </Box>
                             )}
@@ -605,7 +661,7 @@ export const MapStage = (): JSX.Element => {
                               </Link>
                             )}
                             {location.type === 'scholarship' && location.metadata.applicationUrl && (
-                              <Box component="span" sx={{ display: 'block' }}>
+                              <Box component="div" sx={{ display: 'block' }}>
                                 <Link 
                                   href={location.metadata.applicationUrl}
                                   target="_blank"
@@ -617,7 +673,7 @@ export const MapStage = (): JSX.Element => {
                               </Box>
                             )}
                             {(location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0) && (
-                              <Box sx={{ mt: 1 }}>
+                              <Box component="div" sx={{ mt: 1 }}>
                                 <Button
                                   size="small"
                                   endIcon={location.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -647,7 +703,7 @@ export const MapStage = (): JSX.Element => {
                                   {`${location.metadata.referenceLinks.length} Reference Links`}
                                 </Button>
                                 <Collapse in={!!location.metadata.showLinks}>
-                                  <Box sx={{ mt: 1 }}>
+                                  <Box component="div" sx={{ mt: 1 }}>
                                     {Object.entries(
                                       (location.metadata.referenceLinks as NonNullable<typeof location.metadata.referenceLinks>).reduce<Record<string, NonNullable<typeof location.metadata.referenceLinks>>>((acc, link) => ({
                                         ...acc,
@@ -655,44 +711,48 @@ export const MapStage = (): JSX.Element => {
                                       }), {})
                                     ).map(([category, links]) => (
                                       <Box key={category} sx={{ mb: 2 }}>
-                                        <Typography variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
+                                        <Typography component="div" variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
                                           {category.replace(/-/g, ' ')}
                                         </Typography>
-                                        <List dense>
-                                          {(links as NonNullable<typeof location.metadata.referenceLinks>).map((link, index) => (
-                                            <ListItem key={index} sx={{ py: 0 }}>
-                                              <ListItemText
-                                                primary={
-                                                  <Link
-                                                    href={link.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                  >
-                                                    {link.title}
-                                                  </Link>
-                                                }
-                                                secondary={
-                                                  <Box sx={{ fontSize: '0.75rem' }}>
-                                                    {link.source} • {link.platform}
-                                                    {link.notes && (
-                                                      <Typography component="div" sx={{ mt: 0.5 }}>
-                                                        {link.notes}
-                                                      </Typography>
-                                                    )}
-                                                  </Box>
-                                                }
-                                              />
-                                            </ListItem>
-                                          ))}
-                                        </List>
+                                        <Box component="div">
+                                          <List dense>
+                                            {(links as NonNullable<typeof location.metadata.referenceLinks>).map((link, index) => (
+                                              <ListItem key={index} sx={{ py: 0 }}>
+                                                <ListItemText
+                                                  primary={
+                                                    <Box component="div">
+                                                      <Link
+                                                        href={link.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                        {link.title}
+                                                      </Link>
+                                                    </Box>
+                                                  }
+                                                  secondary={
+                                                    <Box component="div" sx={{ fontSize: '0.75rem' }}>
+                                                      {link.source} • {link.platform}
+                                                      {link.notes && (
+                                                        <Typography component="div" sx={{ mt: 0.5 }}>
+                                                          {link.notes}
+                                                        </Typography>
+                                                      )}
+                                                    </Box>
+                                                  }
+                                                />
+                                              </ListItem>
+                                            ))}
+                                          </List>
+                                        </Box>
                                       </Box>
                                     ))}
                                   </Box>
                                 </Collapse>
                               </Box>
                             )}
-                          </>
+                          </Box>
                         }
                       />
                       <ListItemSecondaryAction>
@@ -790,13 +850,56 @@ export const MapStage = (): JSX.Element => {
                                 Reason: {selectedLocation.metadata.reason}
                               </Typography>
                             )}
+                            {/* CDS Academic Data */}
+                            {selectedLocation.metadata.studentFacultyRatio && (
+                              <Typography variant="body2">
+                                Student-Faculty Ratio: {selectedLocation.metadata.studentFacultyRatio}
+                              </Typography>
+                            )}
+                            {selectedLocation.metadata.graduationRate && (
+                              <Typography variant="body2">
+                                Graduation Rate: {selectedLocation.metadata.graduationRate.fourYear}% (4yr) / {selectedLocation.metadata.graduationRate.sixYear}% (6yr)
+                              </Typography>
+                            )}
+                            {selectedLocation.metadata.retentionRate && (
+                              <Typography variant="body2">
+                                Retention Rate: {selectedLocation.metadata.retentionRate}%
+                              </Typography>
+                            )}
+                            {/* CDS Admissions Data */}
+                            {selectedLocation.metadata.acceptanceRate && (
+                              <Typography variant="body2">
+                                Acceptance Rate: {selectedLocation.metadata.acceptanceRate}%
+                              </Typography>
+                            )}
+                            {selectedLocation.metadata.testScores?.sat && (
+                              <Typography variant="body2">
+                                SAT Range: {selectedLocation.metadata.testScores.sat.math[0]}-{selectedLocation.metadata.testScores.sat.math[1]} (Math) / {selectedLocation.metadata.testScores.sat.reading[0]}-{selectedLocation.metadata.testScores.sat.reading[1]} (Reading)
+                              </Typography>
+                            )}
+                            {selectedLocation.metadata.testScores?.act && (
+                              <Typography variant="body2">
+                                ACT Range: {selectedLocation.metadata.testScores.act.composite[0]}-{selectedLocation.metadata.testScores.act.composite[1]}
+                              </Typography>
+                            )}
+                            {/* CDS Financial Data */}
+                            {selectedLocation.metadata.costOfAttendance && (
+                              <Typography variant="body2">
+                                Cost of Attendance: ${selectedLocation.metadata.costOfAttendance.total.toLocaleString()}
+                              </Typography>
+                            )}
+                            {selectedLocation.metadata.financialAid && (
+                              <Typography variant="body2">
+                                Average Aid Package: ${selectedLocation.metadata.financialAid.averagePackage.toLocaleString()} ({selectedLocation.metadata.financialAid.percentReceivingAid}% receive aid)
+                              </Typography>
+                            )}
                           </Box>
                         )}
                         {selectedLocation.type === 'scholarship' && (
                           <Box sx={{ mb: 1 }}>
                             {selectedLocation.metadata.amount && (
                               <Typography variant="body2">
-                                Amount: ${selectedLocation.metadata.amount}
+                                Amount: ${selectedLocation.metadata.amount.toLocaleString()}
                               </Typography>
                             )}
                             {selectedLocation.metadata.deadline && (
@@ -807,6 +910,25 @@ export const MapStage = (): JSX.Element => {
                             {selectedLocation.metadata.eligibility && (
                               <Typography variant="body2">
                                 Eligibility: {selectedLocation.metadata.eligibility}
+                              </Typography>
+                            )}
+                            {/* Historical Data */}
+                            {selectedLocation.metadata.historicalData && (
+                              <>
+                                <Typography variant="body2">
+                                  Annual Awards: {selectedLocation.metadata.historicalData.annualAwards}
+                                </Typography>
+                                {selectedLocation.metadata.historicalData.recipientStats?.averageGpa && (
+                                  <Typography variant="body2">
+                                    Average Recipient GPA: {selectedLocation.metadata.historicalData.recipientStats.averageGpa}
+                                  </Typography>
+                                )}
+                              </>
+                            )}
+                            {/* Competition Data */}
+                            {selectedLocation.metadata.competitionData && (
+                              <Typography variant="body2">
+                                Success Rate: {selectedLocation.metadata.competitionData.successRate}% ({selectedLocation.metadata.competitionData.annualApplicants} applicants)
                               </Typography>
                             )}
                             {selectedLocation.metadata.applicationUrl && (
@@ -872,37 +994,41 @@ export const MapStage = (): JSX.Element => {
                                   }), {})
                                 ).map(([category, links]) => (
                                   <Box key={category} sx={{ mb: 2 }}>
-                                    <Typography variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
+                                    <Typography component="div" variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
                                       {category.replace(/-/g, ' ')}
                                     </Typography>
-                                    <List dense>
-                                      {(links as NonNullable<typeof selectedLocation.metadata.referenceLinks>).map((link, index) => (
-                                        <ListItem key={index} sx={{ py: 0 }}>
-                                          <ListItemText
-                                            primary={
-                                              <Link
-                                                href={link.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                onClick={(e) => e.stopPropagation()}
-                                              >
-                                                {link.title}
-                                              </Link>
-                                            }
-                                            secondary={
-                                              <Box sx={{ fontSize: '0.75rem' }}>
-                                                {link.source} • {link.platform}
-                                                {link.notes && (
-                                                  <Typography component="div" sx={{ mt: 0.5 }}>
-                                                    {link.notes}
-                                                  </Typography>
-                                                )}
-                                              </Box>
-                                            }
-                                          />
-                                        </ListItem>
-                                      ))}
-                                    </List>
+                                    <Box component="div">
+                                      <List dense>
+                                        {(links as NonNullable<typeof selectedLocation.metadata.referenceLinks>).map((link, index) => (
+                                          <ListItem key={index} sx={{ py: 0 }}>
+                                            <ListItemText
+                                              primary={
+                                                <Box component="div">
+                                                  <Link
+                                                    href={link.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                    {link.title}
+                                                  </Link>
+                                                </Box>
+                                              }
+                                              secondary={
+                                                <Box component="div" sx={{ fontSize: '0.75rem' }}>
+                                                  {link.source} • {link.platform}
+                                                  {link.notes && (
+                                                    <Typography component="div" sx={{ mt: 0.5 }}>
+                                                      {link.notes}
+                                                    </Typography>
+                                                  )}
+                                                </Box>
+                                              }
+                                            />
+                                          </ListItem>
+                                        ))}
+                                      </List>
+                                    </Box>
                                   </Box>
                                 ))}
                               </Box>

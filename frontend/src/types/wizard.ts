@@ -71,26 +71,94 @@ export interface MapLocation {
       distance: boolean;
       setting: boolean;
     };
-    referenceLinks?: Array<{
+    referenceLinks?: {
       url: string;
       title: string;
-      category: 'admissions' | 'financial' | 'academic' | 'campus' | 'career' | 'research' | 'application' | 'student-life' | 'social';
+      category: string;
       source: 'official' | 'semi-official' | 'unofficial';
-      platform: 'website' | 'reddit' | 'youtube' | 'twitter' | 'instagram' | 'linkedin' | 'blog' | 'news' | 'other';
+      platform: string;
       notes?: string;
       dateFound: string;
       credibilityNotes?: string;
-    }>;
+    }[];
     showLinks?: boolean;
-    // For colleges
+    
+    // College-specific fields
     fitScore?: number;
     reason?: string;
-    // For scholarships
+    // CDS Academic Data
+    studentFacultyRatio?: string;
+    classSize?: {
+      under20: number;
+      under50: number;
+      over50: number;
+    };
+    graduationRate?: {
+      fourYear: number;
+      sixYear: number;
+    };
+    retentionRate?: number;
+    popularMajors?: {
+      name: string;
+      enrollment: number;
+    }[];
+    // CDS Admissions Data
+    acceptanceRate?: number;
+    testScores?: {
+      sat?: {
+        math: [number, number]; // 25th and 75th percentile
+        reading: [number, number];
+      };
+      act?: {
+        composite: [number, number];
+      };
+    };
+    averageGpa?: number;
+    // CDS Financial Data
+    costOfAttendance?: {
+      tuition: number;
+      roomAndBoard: number;
+      booksAndSupplies: number;
+      otherExpenses: number;
+      total: number;
+    };
+    financialAid?: {
+      averagePackage: number;
+      percentNeedMet: number;
+      percentReceivingAid: number;
+    };
+    meritScholarships?: {
+      minAmount: number;
+      maxAmount: number;
+      percentReceiving: number;
+    };
+    
+    // Scholarship-specific fields
     amount?: number;
     deadline?: string;
     eligibility?: string;
     applicationUrl?: string;
     sponsorWebsite?: string;
+    // Historical Data
+    historicalData?: {
+      annualAwards: number;
+      averageAwardTrend: number[];
+      recipientStats?: {
+        averageGpa?: number;
+        typicalMajors?: string[];
+        commonCharacteristics?: string[];
+      };
+    };
+    // Competition Data
+    competitionData?: {
+      annualApplicants: number;
+      successRate: number;
+      winnerProfile?: {
+        academicStrengths?: string[];
+        extracurricularFocus?: string[];
+        essayThemes?: string[];
+      };
+    };
   };
 }
 

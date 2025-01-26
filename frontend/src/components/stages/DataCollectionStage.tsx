@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useWizard } from '../../contexts/WizardContext';
+import { useClaudeContext } from '../../contexts/ClaudeContext';
+import { useChat } from '../../contexts/ChatContext';
 import {
   Box,
   Typography,
@@ -15,9 +17,21 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import PendingIcon from '@mui/icons-material/Pending';
 import { DataSource } from '../../types/wizard';
+import { AiChatMessage } from '../../types/college';
+
+interface Chat {
+  id: string;
+  title: string;
+  messages: AiChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+  studentId?: string;
+}
 
 export const DataCollectionStage: React.FC = () => {
-  const { updateData } = useWizard();
+  const { updateData, currentStudent } = useWizard();
+  const { apiKey } = useClaudeContext();
+  const { loadChats, saveChat } = useChat();
   const [dataSources, setDataSources] = useState<DataSource[]>([
     {
       id: 'cds',
@@ -39,6 +53,24 @@ export const DataCollectionStage: React.FC = () => {
   const calculateProgress = () => {
     const completed = dataSources.filter(s => s.status === 'complete').length;
     return (completed / dataSources.length) * 100;
+  };
+
+  const createInitialChat = async () => {
+    if (!currentStudent?.id) return;
+    
+    const chat: Chat = {
+      id: crypto.randomUUID(),
+      title: 'Initial Recommendations',
+      messages: [{
+        role: 'user',
+        content: 'What are a few colleges and/or scholarships that might be good fits for me?',
+        timestamp: new Date().toISOString()
+      }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      studentId: currentStudent.id
+    };
+    await saveChat(currentStudent.id, chat);
   };
 
   useEffect(() => {
@@ -76,6 +108,9 @@ export const DataCollectionStage: React.FC = () => {
         setDataSources(prev => prev.map(s => 
           s.id === 'scholarships' ? { ...s, status: 'complete' } : s
         ));
+
+        // Create initial chat
+        await createInitialChat();
 
         // Update wizard data with completion status
         updateData({
