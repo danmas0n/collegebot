@@ -5,7 +5,6 @@ import { config } from 'dotenv';
 
 // Import route handlers
 import chatRoutes from './routes/chat.js';
-import memoryRoutes from './routes/memory.js';
 import studentRoutes from './routes/students.js';
 import collegeRoutes from './routes/colleges.js';
 
@@ -25,7 +24,6 @@ app.use(express.json({ limit: '50mb' }));
 
 // Mount routes
 app.use('/api/chat/claude', chatRoutes);
-app.use('/api/mcp/memory', memoryRoutes);
 app.use('/api/mcp/student-data', studentRoutes);
 app.use('/api/students', studentRoutes); // Keep this for backward compatibility
 app.use('/api/colleges', collegeRoutes);

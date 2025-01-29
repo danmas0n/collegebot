@@ -1,4 +1,3 @@
-import { graphInstructions } from './graph_instructions.js';
 import { recommendationsInstructions } from './recommendations_instructions.js';
 import { mapInstructions } from './map_instructions.js';
 import { executeMcpTool } from '../utils/mcp.js';
@@ -67,7 +66,7 @@ const RECOMMENDATION_TOOLS = [
   }
 ];
 
-// Tools for managing the knowledge graph
+// Tools for managing map locations
 const MAP_TOOLS = [
   {
     name: 'geocode',
@@ -119,116 +118,6 @@ const MAP_TOOLS = [
   }
 ];
 
-const GRAPH_TOOLS = [
-  {
-    name: 'create_entities',
-    description: 'Create multiple new entities in the knowledge graph',
-    parameters: [
-      {
-        name: 'entities',
-        type: 'array',
-        description: 'Array of entities to create, each with name, entityType, and observations array',
-        required: true
-      }
-    ]
-  },
-  {
-    name: 'create_relations',
-    description: 'Create multiple new relations between entities in the knowledge graph',
-    parameters: [
-      {
-        name: 'relations',
-        type: 'array',
-        description: 'Array of relations to create, each with from, to, and relationType',
-        required: true
-      }
-    ]
-  },
-  {
-    name: 'add_observations',
-    description: 'Add new observations to existing entities',
-    parameters: [
-      {
-        name: 'observations',
-        type: 'array',
-        description: 'Array of objects with entityName and contents (array of observations)',
-        required: true
-      }
-    ]
-  },
-  {
-    name: 'delete_entities',
-    description: 'Remove entities and their relations from the knowledge graph',
-    parameters: [
-      {
-        name: 'entityNames',
-        type: 'array',
-        description: 'Array of entity names to delete',
-        required: true
-      }
-    ]
-  },
-  {
-    name: 'fetch',
-    description: 'Fetch and extract content from a webpage URL',
-    parameters: [
-      {
-        name: 'url',
-        type: 'string',
-        description: 'URL to fetch content from',
-        required: true
-      },
-      {
-        name: 'max_length',
-        type: 'integer',
-        description: 'Maximum number of characters to return (default: 5000)',
-        required: false
-      },
-      {
-        name: 'start_index',
-        type: 'integer',
-        description: 'Start content from this character index (default: 0)',
-        required: false
-      }
-    ]
-  },
-  {
-    name: 'search_college_data',
-    description: 'Search for college data sources and information',
-    parameters: [
-      {
-        name: 'query',
-        type: 'string',
-        description: 'Search query for college data',
-        required: true
-      },
-      {
-        name: 'includeWebSearch',
-        type: 'boolean',
-        description: 'Whether to include web search results',
-        required: false      }
-    ]
-  },
-  {
-    name: 'get_cds_data',
-    description: 'Get Common Data Set information and full content for a specific college',
-    parameters: [
-      {
-        name: 'collegeName',
-        type: 'string',
-        description: 'Name of the college',
-        required: true
-      },
-      {
-        name: 'year',
-        type: 'string',
-        description: 'Academic year (e.g., "2022-2023")',
-        required: false
-      }
-    ]
-  }
-];
-
 export const generateToolInstructions = (mode) => {
   let instructions = 'Available tools:\n\n';
   
@@ -240,9 +129,8 @@ export const generateToolInstructions = (mode) => {
     case 'map_enrichment':
       tools = MAP_TOOLS;
       break;
-    case 'graph_enrichment':
     default:
-      tools = GRAPH_TOOLS;
+      tools = RECOMMENDATION_TOOLS;
       break;
   }
   tools.forEach((tool, index) => {
@@ -318,13 +206,12 @@ ${mapInstructions}`;
       tools = MAP_TOOLS;
       break;
 
-    case 'graph_enrichment':
     default:
       modeSpecificInstructions = `Your goal is to analyze our conversation and extract any college or scholarship recommendations we discussed,
-adding them to the student's knowledge graph to help them track their options.
+to help them track their options.
 
 ${graphInstructions}`;
-      tools = GRAPH_TOOLS;
+      tools = RECOMMENDATION_TOOLS;
       break;
   }
 

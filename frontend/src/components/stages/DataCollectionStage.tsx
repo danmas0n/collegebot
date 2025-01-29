@@ -18,6 +18,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import PendingIcon from '@mui/icons-material/Pending';
 import { DataSource } from '../../types/wizard';
 import { AiChatMessage } from '../../types/college';
+import { api } from '../../utils/api';
 
 interface Chat {
   id: string;
@@ -63,8 +64,7 @@ export const DataCollectionStage: React.FC = () => {
       title: 'Initial Recommendations',
       messages: [{
         role: 'user',
-        content: 'What are a few colleges and/or scholarships that might be good fits for me?',
-        timestamp: new Date().toISOString()
+        content: 'What are a few colleges and/or scholarships that might be good fits for me?'
       }],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -129,8 +129,10 @@ export const DataCollectionStage: React.FC = () => {
       }
     };
 
-    processDataSources();
-  }, []);
+    if (currentStudent?.id) {
+      processDataSources();
+    }
+  }, [currentStudent?.id, updateData]);
 
   const getStatusIcon = (status: DataSource['status']) => {
     switch (status) {

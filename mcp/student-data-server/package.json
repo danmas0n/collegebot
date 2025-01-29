@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "0.6.0",
-    "axios": "^1.7.9"
+    "axios": "^1.7.9",
+    "firebase-admin": "^13.0.2"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",

@@ -1,0 +1,19 @@
+version: '3'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/workspace/backend
+      - ./mcp:/workspace/mcp
+      - /workspace/backend/node_modules
+      - /workspace/backend/dist
+      - /workspace/mcp/student-data-server/node_modules
+      - /workspace/mcp/college-data-server/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    command: npm run dev 

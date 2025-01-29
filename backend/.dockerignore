@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Environment
+.env
+.env.*
+
+# Logs
+logs
+*.log
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+
+# Other
+.DS_Store
+*.md 

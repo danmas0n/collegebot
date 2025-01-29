@@ -3,6 +3,10 @@ import { executeMcpTool } from '../utils/mcp.js';
 
 const router = express.Router();
 
+// Debug logging for route registration
+console.log('Registering student routes...');
+console.log('Available routes:');
+
 // Get all students
 router.get('/', async (req, res) => {
   try {
@@ -16,6 +20,62 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('Error getting students:', error);
     res.status(500).json({ error: 'Failed to get students' });
+  }
+});
+
+// Map location routes
+router.post('/map-locations/get', async (req, res) => {
+  console.log('POST /map-locations/get route hit');
+  console.log('Request body:', req.body);
+  console.log('Full URL:', req.originalUrl);
+  console.log('Method:', req.method);
+  console.log('Headers:', req.headers);
+  
+  try {
+    const { studentId } = req.body;
+    if (!studentId) {
+      console.log('No studentId provided in request body');
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
+    console.log('Getting locations for student:', studentId);
+    const result = await executeMcpTool('student-data', 'get_map_locations', { studentId });
+    const locations = JSON.parse(result.content[0].text);
+    res.json(locations);
+  } catch (error) {
+    console.error('Error in map locations route handler:', error);
+    res.status(500).json({ error: 'Failed to get map locations' });
+  }
+});
+
+router.post('/map-locations', async (req, res) => {
+  try {
+    const { studentId, ...location } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
+    await executeMcpTool('student-data', 'add_map_location', { studentId, location });
+    
+    // Return the updated list of locations
+    const result = await executeMcpTool('student-data', 'get_map_locations', { studentId });
+    const locations = JSON.parse(result.content[0].text);
+    res.json(locations);
+  } catch (error) {
+    console.error('Error adding map location:', error);
+    res.status(500).json({ error: 'Failed to add map location' });
+  }
+});
+
+router.post('/map-locations/delete', async (req, res) => {
+  try {
+    const { studentId, locationId } = req.body;
+    if (!studentId || !locationId) {
+      return res.status(400).json({ error: 'Student ID and Location ID are required' });
+    }
+    await executeMcpTool('student-data', 'delete_map_location', { studentId, locationId });
+    res.json({ message: 'Map location deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting map location:', error);
+    res.status(500).json({ error: 'Failed to delete map location' });
   }
 });
 

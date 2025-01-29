@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../../utils/api';
 import {
   Box,
   Typography,
@@ -57,28 +58,20 @@ const defaultCenter = {
 const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [];
 
 export const MapStage = (): JSX.Element => {
-  const { currentStudent, data, updateData } = useWizard();
+  const { currentStudent } = useWizard();
   const { apiKey } = useClaudeContext();
   const { chats, loadChats } = useChat();
-  const [processingChats, setProcessingChats] = useState(false);
-  const [processedCount, setProcessedCount] = useState(0);
-  const [totalToProcess, setTotalToProcess] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
+  // State definitions
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  interface StreamData {
-    id: string;
-    content: string;
-    isOpen: boolean;
-    isComplete: boolean;
-  }
-  const [streams, setStreams] = useState<StreamData[]>([]);
+  const [locations, setLocations] = useState<MapLocation[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   const [editingLocation, setEditingLocation] = useState<MapLocation | null>(null);
   const [locationFormErrors, setLocationFormErrors] = useState<Record<string, string>>({});
-  const [showDebugControls, setShowDebugControls] = useState(false);
+  const [showDebugControls, setShowDebugControls] = useState<boolean>(false);
 
   // Google Maps setup
   const { isLoaded, loadError } = useLoadScript({
@@ -86,181 +79,35 @@ export const MapStage = (): JSX.Element => {
     libraries,
   });
 
-  const processChats = useCallback(async (unprocessedChats: any[]) => {
-    try {
-      setProcessingChats(true);
-      setTotalToProcess(unprocessedChats.length);
-      setProcessedCount(0);
-      setStreams([]);
-
-      for (const chat of unprocessedChats) {
-        let success = false;
-        const timestamp = new Date().toLocaleTimeString();
-        
-        // Create new stream for this chat
-        setStreams(prev => [...prev, {
-          id: chat.id,
-          content: `[${timestamp}] Processing chat: ${chat.id}\n`,
-          isOpen: true,
-          isComplete: false
-        }]);
-        
-        try {
-          if (!apiKey) {
-            throw new Error('Claude API key not configured');
-          }
-
-          const response = await fetch('/api/chat/claude/analyze', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey
-            },
-            body: JSON.stringify({
-              studentId: currentStudent?.id,
-              chatId: chat.id,
-              mode: 'map_enrichment'
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to process chat');
-          }
-
-          const reader = response.body?.getReader();
-          if (!reader) {
-            throw new Error('No response body');
-          }
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = new TextDecoder().decode(value);
-            const lines = text.split('\n');
-            
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(5));
-                  const timestamp = new Date().toLocaleTimeString();
-                  
-                  await new Promise<void>(resolve => {
-                    setStreams(prev => {
-                      const newStreams = prev.map(stream => 
-                        stream.id === chat.id 
-                          ? { 
-                              ...stream, 
-                              content: stream.content + `\n[${timestamp}] ` + JSON.stringify(data, null, 2),
-                              isComplete: data.type === 'complete'
-                            }
-                          : stream
-                      );
-                      resolve();
-                      return newStreams;
-                    });
-                  });
-                  
-                  if (data.type === 'error') {
-                    throw new Error(data.content);
-                  } else if (data.type === 'complete') {
-                    success = true;
-                    
-                    // Mark chat as processed
-                    await fetch('/api/mcp/student-data/mark-chat-processed', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        studentId: currentStudent?.id,
-                        chatId: chat.id,
-                        lastMessageTimestamp: chat.updatedAt
-                      })
-                    });
-
-                    // Update processed count, ensuring it doesn't exceed total
-                    await new Promise<void>(resolve => {
-                      setProcessedCount(prev => {
-                        const newCount = Math.min(prev + 1, unprocessedChats.length);
-                        resolve();
-                        return newCount;
-                      });
-                    });
-
-                    // Refresh map data after each chat is processed
-                    const studentResponse = await fetch('/api/students');
-                    const students = await studentResponse.json();
-                    const updatedStudent = students.find((s: any) => s.id === currentStudent?.id);
-                    if (updatedStudent) {
-                      await new Promise<void>(resolve => {
-                        updateData(updatedStudent.data);
-                        resolve();
-                      });
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error parsing SSE data:', error);
-                }
-              }
-            }
-          }
-        } catch (error: any) {
-          console.error('Error processing chat:', error);
-          setError(`Failed to process chat: ${error?.message || 'Unknown error'}`);
-        }
-
-        if (!success) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+  // Load locations when student changes
+  useEffect(() => {
+    const loadLocations = async () => {
+      if (!currentStudent?.id) {
+        setLocations([]);
+        return;
       }
 
-      setProcessingChats(false);
-      return true;
-    } catch (error) {
-      console.error('Error in processChats:', error);
-      setError(`Failed to process chats: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return false;
-    }
-  }, [apiKey, currentStudent, updateData]);
-
-  useEffect(() => {
-    if (currentStudent) {
-      loadChats(currentStudent.id).then(() => {
-        setIsLoading(false);
-      });
-    }
-  }, [currentStudent, loadChats]);
-
-  // Add effect to auto-process chats on load
-  useEffect(() => {
-    const autoProcessChats = async () => {
-      if (!currentStudent?.id || !apiKey) return;
-      
       try {
-        const unprocessedChats = chats.filter(chat => !chat.processed);
-        if (unprocessedChats.length > 0) {
-          setIsProcessing(true);
-          setProcessingChats(true);
-          console.log('Auto-processing unprocessed chats:', unprocessedChats.length);
-          
-          const success = await processChats(unprocessedChats);
-          if (success) {
-            await loadChats(currentStudent.id);
-          }
+        setIsLoading(true);
+        const response = await api.post('/api/students/map-locations/get', {
+          studentId: currentStudent.id
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(errorData.error || `Failed to load locations: ${response.status}`);
         }
+        const data = await response.json();
+        setLocations(data);
       } catch (err) {
-        console.error('Failed to auto-process chats:', err);
-        setError('Failed to auto-process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
+        console.error('Error loading locations:', err);
+        setError('Failed to load locations: ' + (err instanceof Error ? err.message : 'Unknown error'));
       } finally {
-        setIsProcessing(false);
-        setProcessingChats(false);
         setIsLoading(false);
       }
     };
 
-    if (currentStudent && !isLoading) {
-      autoProcessChats();
-    }
-  }, [currentStudent, isLoading, chats, apiKey]);
+    loadLocations();
+  }, [currentStudent?.id]);
 
   const handleDeleteLocation = async (location: MapLocation) => {
     if (!currentStudent?.id) return;
@@ -268,23 +115,19 @@ export const MapStage = (): JSX.Element => {
     try {
       setIsProcessing(true);
       
-      // Get current locations
-      const currentLocations = data.map?.locations || [];
-      
-      // Filter out the location to delete
-      const updatedLocations = currentLocations.filter(loc => loc.id !== location.id);
-      
-      // Update the student data
-      if (data.map) {
-        updateData({
-          ...data,
-          map: {
-            ...data.map,
-            locations: updatedLocations
-          }
-        });
+      // Delete the location
+      const response = await api.post('/api/students/map-locations/delete', {
+        studentId: currentStudent.id,
+        locationId: location.id
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to delete location: ${response.status}`);
       }
-      
+
+      // Update local state
+      setLocations(prev => prev.filter(loc => loc.id !== location.id));
       setIsDeleteDialogOpen(false);
       setSelectedLocation(null);
     } catch (err) {
@@ -295,25 +138,22 @@ export const MapStage = (): JSX.Element => {
     }
   };
 
-  const handleSaveLocation = async (formData: MapLocation) => {
+  const handleSaveLocation = async (formData: Partial<MapLocation>) => {
     if (!currentStudent?.id) return;
     
     try {
       setIsProcessing(true);
       
       // Geocode the address if provided
-      if (formData.metadata.address) {
-        const response = await fetch('/api/mcp/student-data/geocode', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            address: formData.metadata.address,
-            name: formData.name
-          })
+      if (formData.metadata?.address) {
+        const response = await api.post('/api/mcp/student-data/geocode', {
+          address: formData.metadata.address,
+          name: formData.name
         });
 
         if (!response.ok) {
-          throw new Error('Failed to geocode address');
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(errorData.error || 'Failed to geocode address');
         }
 
         const geocodeResult = await response.json();
@@ -322,26 +162,19 @@ export const MapStage = (): JSX.Element => {
       }
 
       // Create or update the location
-      const response = await fetch('/api/mcp/student-data/create_map_location', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: currentStudent.id,
-          location: formData
-        })
+      const response = await api.post('/api/students/map-locations', {
+        ...formData,
+        studentId: currentStudent.id
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save location');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to save location');
       }
 
-      // Refresh student data
-      const studentResponse = await fetch('/api/students');
-      const students = await studentResponse.json();
-      const updatedStudent = students.find((s: any) => s.id === currentStudent.id);
-      if (updatedStudent) {
-        updateData(updatedStudent.data);
-      }
+      // Update local state with the response
+      const updatedLocations = await response.json();
+      setLocations(updatedLocations);
 
       setIsEditDialogOpen(false);
       setEditingLocation(null);
@@ -400,7 +233,7 @@ export const MapStage = (): JSX.Element => {
                 latitude: 0,
                 longitude: 0,
                 metadata: {}
-              });
+              } as MapLocation);
               setIsEditDialogOpen(true);
             }}
             disabled={!currentStudent || isLoading || isProcessing}
@@ -416,59 +249,15 @@ export const MapStage = (): JSX.Element => {
         </Box>
       </Box>
 
-      {processingChats && (
-        <Box sx={{ width: '100%', mb: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Processing chats ({processedCount}/{totalToProcess})
-          </Typography>
-          <LinearProgress 
-            variant="determinate" 
-            value={(processedCount / totalToProcess) * 100} 
-          />
-        </Box>
-      )}
-
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
 
-      {/* Debug Controls */}
       <Collapse in={showDebugControls}>
-        <Paper elevation={1} sx={{ p: 2, mb: 2, bgcolor: '#f5f5f5' }}>
-          <Typography variant="subtitle2" gutterBottom>Debug Controls</Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button 
-              variant="outlined"
-              size="small"
-              onClick={async () => {
-                if (!currentStudent?.id) return;
-                
-                try {
-                  setIsLoading(true);
-                  const response = await fetch('/api/chat/claude/mark-all-unprocessed', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ studentId: currentStudent.id })
-                  });
-
-                  if (!response.ok) {
-                    throw new Error('Failed to mark chats as unprocessed');
-                  }
-
-                  await loadChats(currentStudent.id);
-                } catch (err) {
-                  console.error('Failed to mark chats as unprocessed:', err);
-                  setError('Failed to mark chats as unprocessed');
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              disabled={!currentStudent || isLoading || isProcessing}
-            >
-              Mark All Unprocessed
-            </Button>
+        <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <Button 
               variant="outlined"
               size="small"
@@ -477,54 +266,14 @@ export const MapStage = (): JSX.Element => {
                 
                 try {
                   setIsProcessing(true);
-                  const unprocessedChats = chats.filter(chat => !chat.processed);
-                  console.log('Found unprocessed chats:', unprocessedChats.length);
-                  
-                  if (unprocessedChats.length > 0) {
-                    const success = await processChats(unprocessedChats);
-                    if (success) {
-                      await loadChats(currentStudent.id);
-                    }
-                  } else {
-                    setError('No unprocessed chats found');
-                  }
-                } catch (err) {
-                  console.error('Failed to process chats:', err);
-                  setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                } finally {
-                  setIsProcessing(false);
-                  setProcessingChats(false);
-                }
-              }}
-              disabled={!currentStudent || isLoading || isProcessing}
-            >
-              Process Chats
-            </Button>
-            <Button 
-              variant="outlined"
-              size="small"
-              onClick={async () => {
-                if (!currentStudent?.id) return;
-                
-                try {
-                  setIsProcessing(true);
-                  const response = await fetch('/api/mcp/student-data/clear-map-locations', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ studentId: currentStudent.id })
-                  });
+                  const response = await api.post(`/api/students/${currentStudent.id}/clear-map-locations`);
 
                   if (!response.ok) {
                     throw new Error('Failed to clear map locations');
                   }
 
-                  // Refresh student data to update map
-                  const studentResponse = await fetch('/api/students');
-                  const students = await studentResponse.json();
-                  const updatedStudent = students.find((s: any) => s.id === currentStudent.id);
-                  if (updatedStudent) {
-                    updateData(updatedStudent.data);
-                  }
+                  // Clear local state
+                  setLocations([]);
                 } catch (err) {
                   console.error('Failed to clear map:', err);
                   setError('Failed to clear map: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -537,48 +286,6 @@ export const MapStage = (): JSX.Element => {
               Clear Map
             </Button>
           </Box>
-
-          {/* Stream Outputs */}
-          {streams.length > 0 && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>Processing Logs</Typography>
-              {streams.map(stream => (
-                <Paper key={stream.id} elevation={1} sx={{ mb: 2, backgroundColor: '#ffffff' }}>
-                  <Box 
-                    sx={{ 
-                      p: 2, 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setStreams(prev => prev.map(s => 
-                      s.id === stream.id ? { ...s, isOpen: !s.isOpen } : s
-                    ))}
-                  >
-                    <Typography variant="subtitle2">
-                      Chat {stream.id} {stream.isComplete ? '(Complete)' : '(Processing...)'}
-                    </Typography>
-                    <IconButton size="small">
-                      {stream.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                    </IconButton>
-                  </Box>
-                  <Collapse in={stream.isOpen}>
-                    <Box sx={{ px: 2, pb: 2, maxHeight: '300px', overflowY: 'auto' }}>
-                      <Typography variant="caption" component="pre" sx={{ 
-                        whiteSpace: 'pre-wrap', 
-                        fontSize: '0.8rem',
-                        fontFamily: 'monospace',
-                        margin: 0
-                      }}>
-                        {stream.content}
-                      </Typography>
-                    </Box>
-                  </Collapse>
-                </Paper>
-              ))}
-            </Box>
-          )}
         </Paper>
       </Collapse>
 
@@ -600,16 +307,8 @@ export const MapStage = (): JSX.Element => {
                     <IconButton 
                       size="small" 
                       onClick={() => {
-                        const sorted = [...(data.map?.locations || [])].sort((a, b) => a.name.localeCompare(b.name));
-                        if (data.map) {
-                          updateData({
-                            ...data,
-                            map: {
-                              ...data.map,
-                              locations: sorted
-                            }
-                          });
-                        }
+                        const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
+                        setLocations(sorted);
                       }}
                     >
                       <SortByAlphaIcon />
@@ -617,7 +316,7 @@ export const MapStage = (): JSX.Element => {
                   </Box>
                 </Box>
                 <List>
-                  {data.map?.locations.map((location) => (
+                  {locations.map((location) => (
                     <ListItem 
                       key={location.id}
                       sx={{ 
@@ -650,37 +349,14 @@ export const MapStage = (): JSX.Element => {
                                 Amount: ${location.metadata.amount}
                               </Box>
                             )}
-                            {location.metadata.website && (
-                              <Link 
-                                href={location.metadata.website}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                Visit Website
-                              </Link>
-                            )}
-                            {location.type === 'scholarship' && location.metadata.applicationUrl && (
-                              <Box component="div" sx={{ display: 'block' }}>
-                                <Link 
-                                  href={location.metadata.applicationUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  Apply Now
-                                </Link>
-                              </Box>
-                            )}
-                            {(location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0) && (
-                              <Box component="div" sx={{ mt: 1 }}>
+                            {location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0 && (
+                              <Box component="div">
                                 <Button
                                   size="small"
                                   endIcon={location.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                  onClick={(e) => {
+                                  onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
-                                    if (!data.map?.locations) return;
-                                    const updatedLocations = data.map.locations.map(loc => 
+                                    setLocations(prev => prev.map(loc => 
                                       loc.id === location.id 
                                         ? { 
                                             ...loc, 
@@ -690,95 +366,32 @@ export const MapStage = (): JSX.Element => {
                                             } 
                                           }
                                         : loc
-                                    );
-                                    updateData({
-                                      ...data,
-                                      map: {
-                                        ...data.map,
-                                        locations: updatedLocations
-                                      }
-                                    });
+                                    ));
                                   }}
                                 >
                                   {`${location.metadata.referenceLinks.length} Reference Links`}
                                 </Button>
-                                <Collapse in={!!location.metadata.showLinks}>
-                                  <Box component="div" sx={{ mt: 1 }}>
-                                    {Object.entries(
-                                      (location.metadata.referenceLinks as NonNullable<typeof location.metadata.referenceLinks>).reduce<Record<string, NonNullable<typeof location.metadata.referenceLinks>>>((acc, link) => ({
-                                        ...acc,
-                                        [link.category]: [...(acc[link.category] || []), link]
-                                      }), {})
-                                    ).map(([category, links]) => (
-                                      <Box key={category} sx={{ mb: 2 }}>
-                                        <Typography component="div" variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
-                                          {category.replace(/-/g, ' ')}
-                                        </Typography>
-                                        <Box component="div">
-                                          <List dense>
-                                            {(links as NonNullable<typeof location.metadata.referenceLinks>).map((link, index) => (
-                                              <ListItem key={index} sx={{ py: 0 }}>
-                                                <ListItemText
-                                                  primary={
-                                                    <Box component="div">
-                                                      <Link
-                                                        href={link.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                      >
-                                                        {link.title}
-                                                      </Link>
-                                                    </Box>
-                                                  }
-                                                  secondary={
-                                                    <Box component="div" sx={{ fontSize: '0.75rem' }}>
-                                                      {link.source} • {link.platform}
-                                                      {link.notes && (
-                                                        <Typography component="div" sx={{ mt: 0.5 }}>
-                                                          {link.notes}
-                                                        </Typography>
-                                                      )}
-                                                    </Box>
-                                                  }
-                                                />
-                                              </ListItem>
-                                            ))}
-                                          </List>
-                                        </Box>
-                                      </Box>
+                                <Collapse in={location.metadata.showLinks}>
+                                  <List dense>
+                                    {location.metadata.referenceLinks.map((link, index) => (
+                                      <ListItem key={index}>
+                                        <Link 
+                                          href={link.url} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                        >
+                                          {link.title || `Reference ${index + 1}`}
+                                        </Link>
+                                      </ListItem>
                                     ))}
-                                  </Box>
+                                  </List>
                                 </Collapse>
                               </Box>
                             )}
                           </Box>
                         }
                       />
-                      <ListItemSecondaryAction>
-                        <IconButton
-                          edge="end"
-                          aria-label="edit"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingLocation(location);
-                            setIsEditDialogOpen(true);
-                          }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          edge="end"
-                          aria-label="delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingLocation(location);
-                            setIsDeleteDialogOpen(true);
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </ListItemSecondaryAction>
                     </ListItem>
                   ))}
                 </List>
@@ -799,7 +412,7 @@ export const MapStage = (): JSX.Element => {
                     streetViewControl: false,
                   }}
                 >
-                  {data.map?.locations.map((location) => (
+                  {locations.map((location) => (
                     <MarkerF
                       key={location.id}
                       position={{ lat: location.latitude, lng: location.longitude }}
@@ -850,56 +463,13 @@ export const MapStage = (): JSX.Element => {
                                 Reason: {selectedLocation.metadata.reason}
                               </Typography>
                             )}
-                            {/* CDS Academic Data */}
-                            {selectedLocation.metadata.studentFacultyRatio && (
-                              <Typography variant="body2">
-                                Student-Faculty Ratio: {selectedLocation.metadata.studentFacultyRatio}
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.graduationRate && (
-                              <Typography variant="body2">
-                                Graduation Rate: {selectedLocation.metadata.graduationRate.fourYear}% (4yr) / {selectedLocation.metadata.graduationRate.sixYear}% (6yr)
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.retentionRate && (
-                              <Typography variant="body2">
-                                Retention Rate: {selectedLocation.metadata.retentionRate}%
-                              </Typography>
-                            )}
-                            {/* CDS Admissions Data */}
-                            {selectedLocation.metadata.acceptanceRate && (
-                              <Typography variant="body2">
-                                Acceptance Rate: {selectedLocation.metadata.acceptanceRate}%
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.testScores?.sat && (
-                              <Typography variant="body2">
-                                SAT Range: {selectedLocation.metadata.testScores.sat.math[0]}-{selectedLocation.metadata.testScores.sat.math[1]} (Math) / {selectedLocation.metadata.testScores.sat.reading[0]}-{selectedLocation.metadata.testScores.sat.reading[1]} (Reading)
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.testScores?.act && (
-                              <Typography variant="body2">
-                                ACT Range: {selectedLocation.metadata.testScores.act.composite[0]}-{selectedLocation.metadata.testScores.act.composite[1]}
-                              </Typography>
-                            )}
-                            {/* CDS Financial Data */}
-                            {selectedLocation.metadata.costOfAttendance && (
-                              <Typography variant="body2">
-                                Cost of Attendance: ${selectedLocation.metadata.costOfAttendance.total.toLocaleString()}
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.financialAid && (
-                              <Typography variant="body2">
-                                Average Aid Package: ${selectedLocation.metadata.financialAid.averagePackage.toLocaleString()} ({selectedLocation.metadata.financialAid.percentReceivingAid}% receive aid)
-                              </Typography>
-                            )}
                           </Box>
                         )}
                         {selectedLocation.type === 'scholarship' && (
                           <Box sx={{ mb: 1 }}>
                             {selectedLocation.metadata.amount && (
                               <Typography variant="body2">
-                                Amount: ${selectedLocation.metadata.amount.toLocaleString()}
+                                Amount: ${selectedLocation.metadata.amount}
                               </Typography>
                             )}
                             {selectedLocation.metadata.deadline && (
@@ -912,47 +482,6 @@ export const MapStage = (): JSX.Element => {
                                 Eligibility: {selectedLocation.metadata.eligibility}
                               </Typography>
                             )}
-                            {/* Historical Data */}
-                            {selectedLocation.metadata.historicalData && (
-                              <>
-                                <Typography variant="body2">
-                                  Annual Awards: {selectedLocation.metadata.historicalData.annualAwards}
-                                </Typography>
-                                {selectedLocation.metadata.historicalData.recipientStats?.averageGpa && (
-                                  <Typography variant="body2">
-                                    Average Recipient GPA: {selectedLocation.metadata.historicalData.recipientStats.averageGpa}
-                                  </Typography>
-                                )}
-                              </>
-                            )}
-                            {/* Competition Data */}
-                            {selectedLocation.metadata.competitionData && (
-                              <Typography variant="body2">
-                                Success Rate: {selectedLocation.metadata.competitionData.successRate}% ({selectedLocation.metadata.competitionData.annualApplicants} applicants)
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.applicationUrl && (
-                              <Typography variant="body2">
-                                <Link 
-                                  href={selectedLocation.metadata.applicationUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                >
-                                  Apply Now
-                                </Link>
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.sponsorWebsite && (
-                              <Typography variant="body2">
-                                <Link 
-                                  href={selectedLocation.metadata.sponsorWebsite} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                >
-                                  Sponsor Website
-                                </Link>
-                              </Typography>
-                            )}
                           </Box>
                         )}
                         {(selectedLocation.metadata.referenceLinks && selectedLocation.metadata.referenceLinks.length > 0) && (
@@ -960,10 +489,9 @@ export const MapStage = (): JSX.Element => {
                             <Button
                               size="small"
                               endIcon={selectedLocation.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                              onClick={(e) => {
+                              onClick={(e: React.MouseEvent) => {
                                 e.stopPropagation();
-                                if (!data.map?.locations) return;
-                                const updatedLocations = data.map.locations.map(loc => 
+                                setLocations(prev => prev.map(loc => 
                                   loc.id === selectedLocation.id 
                                     ? { 
                                         ...loc, 
@@ -973,65 +501,26 @@ export const MapStage = (): JSX.Element => {
                                         } 
                                       }
                                     : loc
-                                );
-                                updateData({
-                                  ...data,
-                                  map: {
-                                    ...data.map,
-                                    locations: updatedLocations
-                                  }
-                                });
+                                ));
                               }}
                             >
                               {`${selectedLocation.metadata.referenceLinks.length} Reference Links`}
                             </Button>
-                            <Collapse in={!!selectedLocation.metadata.showLinks}>
-                              <Box sx={{ mt: 1 }}>
-                                {Object.entries(
-                                  (selectedLocation.metadata.referenceLinks as NonNullable<typeof selectedLocation.metadata.referenceLinks>).reduce<Record<string, NonNullable<typeof selectedLocation.metadata.referenceLinks>>>((acc, link) => ({
-                                    ...acc,
-                                    [link.category]: [...(acc[link.category] || []), link]
-                                  }), {})
-                                ).map(([category, links]) => (
-                                  <Box key={category} sx={{ mb: 2 }}>
-                                    <Typography component="div" variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
-                                      {category.replace(/-/g, ' ')}
-                                    </Typography>
-                                    <Box component="div">
-                                      <List dense>
-                                        {(links as NonNullable<typeof selectedLocation.metadata.referenceLinks>).map((link, index) => (
-                                          <ListItem key={index} sx={{ py: 0 }}>
-                                            <ListItemText
-                                              primary={
-                                                <Box component="div">
-                                                  <Link
-                                                    href={link.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                  >
-                                                    {link.title}
-                                                  </Link>
-                                                </Box>
-                                              }
-                                              secondary={
-                                                <Box component="div" sx={{ fontSize: '0.75rem' }}>
-                                                  {link.source} • {link.platform}
-                                                  {link.notes && (
-                                                    <Typography component="div" sx={{ mt: 0.5 }}>
-                                                      {link.notes}
-                                                    </Typography>
-                                                  )}
-                                                </Box>
-                                              }
-                                            />
-                                          </ListItem>
-                                        ))}
-                                      </List>
-                                    </Box>
-                                  </Box>
+                            <Collapse in={selectedLocation.metadata.showLinks}>
+                              <List dense>
+                                {selectedLocation.metadata.referenceLinks.map((link, index) => (
+                                  <ListItem key={index}>
+                                    <Link 
+                                      href={link.url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                    >
+                                      {link.title || `Reference ${index + 1}`}
+                                    </Link>
+                                  </ListItem>
                                 ))}
-                              </Box>
+                              </List>
                             </Collapse>
                           </Box>
                         )}
@@ -1086,7 +575,7 @@ export const MapStage = (): JSX.Element => {
             <TextField
               label="Address"
               fullWidth
-              value={editingLocation?.metadata.address || ''}
+              value={editingLocation?.metadata?.address || ''}
               onChange={(e) => setEditingLocation(prev => prev ? {
                 ...prev,
                 metadata: { ...prev.metadata, address: e.target.value }
@@ -1103,7 +592,7 @@ export const MapStage = (): JSX.Element => {
                   ...prev,
                   latitude: parseFloat(e.target.value)
                 } : null)}
-                disabled={!!editingLocation?.metadata.address}
+                disabled={!!editingLocation?.metadata?.address}
               />
               <TextField
                 label="Longitude"
@@ -1113,47 +602,46 @@ export const MapStage = (): JSX.Element => {
                   ...prev,
                   longitude: parseFloat(e.target.value)
                 } : null)}
-                disabled={!!editingLocation?.metadata.address}
+                disabled={!!editingLocation?.metadata?.address}
               />
             </Box>
-            <TextField
-              label="Website"
-              fullWidth
-              value={editingLocation?.metadata.website || ''}
-              onChange={(e) => setEditingLocation(prev => prev ? {
-                ...prev,
-                metadata: { ...prev.metadata, website: e.target.value }
-              } : null)}
-            />
-            <TextField
-              label="Description"
-              fullWidth
-              multiline
-              rows={3}
-              value={editingLocation?.metadata.description || ''}
-              onChange={(e) => setEditingLocation(prev => prev ? {
-                ...prev,
-                metadata: { ...prev.metadata, description: e.target.value }
-              } : null)}
-            />
             {editingLocation?.type === 'college' && (
               <>
                 <TextField
-                  label="Fit Score"
-                  type="number"
-                  inputProps={{ min: 0, max: 100 }}
-                  value={editingLocation.metadata.fitScore || ''}
+                  label="Website"
+                  fullWidth
+                  value={editingLocation.metadata?.website || ''}
                   onChange={(e) => setEditingLocation(prev => prev ? {
                     ...prev,
-                    metadata: { ...prev.metadata, fitScore: parseInt(e.target.value) }
+                    metadata: { ...prev.metadata, website: e.target.value }
                   } : null)}
                 />
                 <TextField
-                  label="Fit Reason"
+                  label="Description"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={editingLocation.metadata?.description || ''}
+                  onChange={(e) => setEditingLocation(prev => prev ? {
+                    ...prev,
+                    metadata: { ...prev.metadata, description: e.target.value }
+                  } : null)}
+                />
+                <TextField
+                  label="Fit Score"
+                  type="number"
+                  value={editingLocation.metadata?.fitScore || ''}
+                  onChange={(e) => setEditingLocation(prev => prev ? {
+                    ...prev,
+                    metadata: { ...prev.metadata, fitScore: parseFloat(e.target.value) }
+                  } : null)}
+                />
+                <TextField
+                  label="Reason"
                   fullWidth
                   multiline
                   rows={2}
-                  value={editingLocation.metadata.reason || ''}
+                  value={editingLocation.metadata?.reason || ''}
                   onChange={(e) => setEditingLocation(prev => prev ? {
                     ...prev,
                     metadata: { ...prev.metadata, reason: e.target.value }
@@ -1166,18 +654,16 @@ export const MapStage = (): JSX.Element => {
                 <TextField
                   label="Amount"
                   type="number"
-                  inputProps={{ min: 0 }}
-                  value={editingLocation.metadata.amount || ''}
+                  value={editingLocation.metadata?.amount || ''}
                   onChange={(e) => setEditingLocation(prev => prev ? {
                     ...prev,
-                    metadata: { ...prev.metadata, amount: parseInt(e.target.value) }
+                    metadata: { ...prev.metadata, amount: parseFloat(e.target.value) }
                   } : null)}
                 />
                 <TextField
                   label="Deadline"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={editingLocation.metadata.deadline || ''}
+                  fullWidth
+                  value={editingLocation.metadata?.deadline || ''}
                   onChange={(e) => setEditingLocation(prev => prev ? {
                     ...prev,
                     metadata: { ...prev.metadata, deadline: e.target.value }
@@ -1188,19 +674,10 @@ export const MapStage = (): JSX.Element => {
                   fullWidth
                   multiline
                   rows={2}
-                  value={editingLocation.metadata.eligibility || ''}
+                  value={editingLocation.metadata?.eligibility || ''}
                   onChange={(e) => setEditingLocation(prev => prev ? {
                     ...prev,
                     metadata: { ...prev.metadata, eligibility: e.target.value }
-                  } : null)}
-                />
-                <TextField
-                  label="Application URL"
-                  fullWidth
-                  value={editingLocation.metadata.applicationUrl || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, applicationUrl: e.target.value }
                   } : null)}
                 />
               </>
@@ -1232,28 +709,21 @@ export const MapStage = (): JSX.Element => {
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={isDeleteDialogOpen}
-        onClose={() => {
-          setIsDeleteDialogOpen(false);
-          setEditingLocation(null);
-        }}
+        onClose={() => setIsDeleteDialogOpen(false)}
       >
         <DialogTitle>Delete Location</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete {editingLocation?.name}? This action cannot be undone.
+            Are you sure you want to delete this location?
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setIsDeleteDialogOpen(false);
-            setEditingLocation(null);
-          }}>
+          <Button onClick={() => setIsDeleteDialogOpen(false)}>
             Cancel
           </Button>
           <Button 
-            onClick={() => editingLocation && handleDeleteLocation(editingLocation)}
+            onClick={() => selectedLocation && handleDeleteLocation(selectedLocation)}
             color="error"
-            variant="contained"
             disabled={isProcessing}
           >
             Delete

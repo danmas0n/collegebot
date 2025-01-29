@@ -19,6 +19,7 @@ import { useClaudeContext } from '../contexts/ClaudeContext';
 import { useWizard } from '../contexts/WizardContext';
 import { useChat } from '../contexts/ChatContext';
 import { CollapsibleMessage } from './CollapsibleMessage';
+import { api } from '../utils/api';
 
 interface AiChatProps {
   consideredColleges: College[];
@@ -131,20 +132,17 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         setAbortController(controller);
       });
       
-      const response = await fetch('/api/chat/claude/message', {
+      const response = await api.post('/api/chat/claude/message', {
+        message: input,
+        studentData,
+        studentName: currentStudent?.name || 'Student',
+        history: messages,
+        currentChat
+      }, {
         signal: controller.signal,
-        method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'x-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          message: input,
-          studentData,
-          studentName: currentStudent?.name || 'Student',
-          history: messages,
-          currentChat
-        }),
+        }
       });
 
       console.log('Frontend - Response status:', response.status);

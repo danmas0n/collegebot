@@ -1,0 +1,16 @@
+version: '3'
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: collegebot-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ..:/workspace
+      - /workspace/backend/node_modules
+      - /workspace/mcp/student-data-server/node_modules
+      - /workspace/mcp/college-data-server/node_modules 

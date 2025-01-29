@@ -24,6 +24,7 @@ import { useWizard } from '../../contexts/WizardContext';
 import { useClaudeContext } from '../../contexts/ClaudeContext';
 import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
+import { api } from '../../utils/api';
 
 interface Message extends AiChatMessage {
   timestamp: string;
@@ -79,20 +80,13 @@ export const RecommendationsStage: React.FC = () => {
 
   const loadChats = async (): Promise<Chat[]> => {
     try {
-      const response = await fetch('/api/chat/claude/chats', {
-        method: 'POST',
+      const response = await api.post('/api/chat/claude/chats', {
+        studentId: currentStudent?.id
+      }, {
         headers: {
-          'Content-Type': 'application/json',
           'x-api-key': apiKey || ''
-        },
-        body: JSON.stringify({
-          studentId: currentStudent?.id
-        })
+        }
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to load chats');
-      }
 
       const data = await response.json();
       const loadedChats = data.chats;
@@ -122,21 +116,14 @@ export const RecommendationsStage: React.FC = () => {
 
   const deleteChat = async (chatId: string) => {
     try {
-      const response = await fetch('/api/chat/claude/chat', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey || ''
-        },
+      await api.delete(`/api/chat/claude/chat/${chatId}`, {
         body: JSON.stringify({
-          studentId: currentStudent?.id,
-          chatId
-        })
+          studentId: currentStudent?.id
+        }),
+        headers: {
+          'x-api-key': apiKey || ''
+        }
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete chat');
-      }
 
       setChats(prev => prev.filter(c => c.id !== chatId));
       if (currentChat?.id === chatId) {
@@ -150,21 +137,14 @@ export const RecommendationsStage: React.FC = () => {
 
   const saveChat = async (chat: Chat) => {
     try {
-      const response = await fetch('/api/chat/claude/chat', {
-        method: 'POST',
+      await api.post('/api/chat/claude/chat', {
+        studentId: currentStudent?.id,
+        chat
+      }, {
         headers: {
-          'Content-Type': 'application/json',
           'x-api-key': apiKey || ''
-        },
-        body: JSON.stringify({
-          studentId: currentStudent?.id,
-          chat
-        })
+        }
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save chat');
-      }
     } catch (error) {
       console.error('Error saving chat:', error);
       setError(error instanceof Error ? error.message : 'Failed to save chat');

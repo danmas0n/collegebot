@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { AiChat } from '../types/college';
+import { api } from '../utils/api';
 
 interface ChatContextType {
   currentChat: AiChat | null;
@@ -26,16 +27,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadChats = useCallback(async (studentId: string): Promise<AiChat[]> => {
     try {
-      const response = await fetch('/api/chat/claude/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load chats');
-      }
-
+      const response = await api.post('/api/chat/claude/chats', { studentId });
       const { chats: loadedChats } = await response.json();
       setChats(loadedChats);
       setCurrentChat(null); // Reset current chat when loading new chats
@@ -48,15 +40,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveChat = useCallback(async (studentId: string, chat: AiChat) => {
     try {
-      const response = await fetch('/api/chat/claude/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, chat })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save chat');
-      }
+      await api.post('/api/chat/claude/chat', { studentId, chat });
 
       setChats(prev => {
         const index = prev.findIndex(c => c.id === chat.id);
@@ -78,17 +62,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteChat = useCallback(async (studentId: string, chatId: string) => {
     try {
-      const response = await fetch('/api/chat/claude/chat', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, chatId })
-      });
+      await api.delete(`/api/chat/claude/chat/${chatId}`, { body: JSON.stringify({ studentId }) });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete chat');
-      }
-
-      setChats(prev => prev.filter(chat => chat.id !== chatId));
+      setChats(prev => prev.filter(c => c.id !== chatId));
       if (currentChat?.id === chatId) {
         setCurrentChat(null);
       }

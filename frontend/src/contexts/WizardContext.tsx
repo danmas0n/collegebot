@@ -1,15 +1,15 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { WizardStage, WizardData, WizardContextType, Student } from '../types/wizard';
+import { api } from '../utils/api';
 
-const STAGES: WizardStage[] = [
+const stages: WizardStage[] = [
   'student-selection',
   'student-profile',
   'college-interests',
   'budget',
   'data-collection',
   'recommendations',
-  'map',
-  'knowledge-graph'
+  'map'
 ];
 
 const initialData: WizardData = {
@@ -38,12 +38,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     const loadStudents = async () => {
       try {
-        const response = await fetch('/api/students');
-        
-        if (!response.ok) {
-          throw new Error('Failed to load students');
-        }
-
+        const response = await api.get('/api/students');
         const loadedStudents = await response.json();
         setStudents(loadedStudents);
       } catch (error) {
@@ -78,10 +73,8 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ));
 
         // Persist to server
-        fetch('/api/students', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ student: updatedStudent })
+        api.post('/api/students', {
+          student: updatedStudent
         }).catch(error => {
           console.error('Error saving student data:', error);
         });
@@ -117,11 +110,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentStage(firstIncompleteStage);
 
       // Load student's chats
-      const response = await fetch('/api/chat/claude/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: student.id })
-      });
+      const response = await api.post('/api/chat/claude/chats', { studentId: student.id });
       
       if (!response.ok) {
         console.error('Failed to load chats:', await response.text());
@@ -144,16 +133,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     try {
-      const response = await fetch('/api/students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student: newStudent })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to save student');
-      }
+      await api.post('/api/students', { student: newStudent });
 
       // Only update state if the save was successful
       setStudents(prev => [...prev, newStudent]);
@@ -166,13 +146,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteStudent = useCallback(async (id: string) => {
     try {
-      const response = await fetch(`/api/students/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete student');
-      }
+      await api.delete(`/api/students/${id}`);
 
       setStudents(prev => prev.filter(student => student.id !== id));
       if (currentStudent?.id === id) {
@@ -201,24 +175,22 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return true;
       case 'map':
         return true;
-      case 'knowledge-graph':
-        return true;
       default:
         return false;
     }
   }, [currentStage, currentStudent, data]);
 
   const nextStage = useCallback(() => {
-    const currentIndex = STAGES.indexOf(currentStage);
-    if (currentIndex < STAGES.length - 1 && canProceed()) {
-      setCurrentStage(STAGES[currentIndex + 1]);
+    const currentIndex = stages.indexOf(currentStage);
+    if (currentIndex < stages.length - 1 && canProceed()) {
+      setCurrentStage(stages[currentIndex + 1]);
     }
   }, [currentStage, canProceed]);
 
   const previousStage = useCallback(() => {
-    const currentIndex = STAGES.indexOf(currentStage);
+    const currentIndex = stages.indexOf(currentStage);
     if (currentIndex > 0) {
-      setCurrentStage(STAGES[currentIndex - 1]);
+      setCurrentStage(stages[currentIndex - 1]);
     }
   }, [currentStage]);
 
