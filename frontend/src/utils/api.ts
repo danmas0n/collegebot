@@ -2,11 +2,12 @@ import { getAuthHeaders } from './auth';
 
 interface ApiOptions extends RequestInit {
   skipAuth?: boolean;
+  stream?: boolean;
 }
 
 export const api = {
   get: async (endpoint: string, options: ApiOptions = {}) => {
-    const { skipAuth, ...fetchOptions } = options;
+    const { skipAuth, stream, ...fetchOptions } = options;
     const headers = skipAuth ? 
       { 'Content-Type': 'application/json' } : 
       await getAuthHeaders();
@@ -15,6 +16,7 @@ export const api = {
       ...fetchOptions,
       headers: {
         ...headers,
+        ...(stream ? { 'Accept': 'text/event-stream' } : { 'Content-Type': 'application/json' }),
         ...fetchOptions.headers
       }
     });
@@ -48,4 +50,4 @@ export const api = {
       method: 'DELETE'
     });
   }
-}; 
+};

@@ -52,13 +52,23 @@ export const WizardStepper: React.FC = () => {
       </Stepper>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-        <Button
-          variant="outlined"
-          onClick={previousStage}
-          disabled={currentIndex === 0}
-        >
-          Back
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={previousStage}
+            disabled={currentIndex === 0}
+          >
+            Back
+          </Button>
+          {currentStage !== 'student-selection' && (
+            <Button
+              variant="outlined"
+              onClick={() => goToStage('student-selection')}
+            >
+              Back to Student Selection
+            </Button>
+          )}
+        </Box>
 
         <Button
           variant="contained"

@@ -9,7 +9,6 @@ import {
 } from '@mui/material';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
-import { ClaudeProvider } from './contexts/ClaudeContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
@@ -99,13 +98,11 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <ClaudeProvider>
-        <WizardProvider>
-          <ChatProvider>
-            <AppContent />
-          </ChatProvider>
-        </WizardProvider>
-      </ClaudeProvider>
+      <WizardProvider>
+        <ChatProvider>
+          <AppContent />
+        </ChatProvider>
+      </WizardProvider>
     </AuthProvider>
   );
 };

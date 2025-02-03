@@ -10,6 +10,7 @@ import { isAdmin } from './services/firestore.js';
 import chatRouter from './routes/chat.js';
 import studentsRouter from './routes/students.js';
 import collegesRouter from './routes/colleges.js';
+import studentDataRouter from './routes/student-data.js';
 
 // Load environment variables
 config();
@@ -99,9 +100,10 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // Protected routes
-app.use('/api/chat/claude', authMiddleware, chatRouter);
+app.use('/api/chat', authMiddleware, chatRouter);
 app.use('/api/students', authMiddleware, studentsRouter);
 app.use('/api/colleges', authMiddleware, collegesRouter);
+app.use('/api/student-data', authMiddleware, studentDataRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

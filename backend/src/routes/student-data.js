@@ -1,6 +1,7 @@
 import express from 'express';
 import { StudentData } from '../models/student-data.js';
 import { authenticateUser } from '../middleware/auth.js';
+import axios from 'axios';
 
 const router = express.Router();
 const studentData = new StudentData();
@@ -52,4 +53,41 @@ router.delete('/', authenticateUser, async (req, res) => {
   }
 });
 
-export default router; 
+// Geocode an address
+router.post('/geocode', authenticateUser, async (req, res) => {
+  try {
+    const { address, name } = req.body;
+    if (!address || !name) {
+      return res.status(400).json({ error: 'Address and name are required' });
+    }
+
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      throw new Error('Google Maps API key not configured');
+    }
+
+    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+      params: {
+        address,
+        key: apiKey
+      }
+    });
+
+    if (response.data.status !== 'OK') {
+      throw new Error(`Geocoding failed: ${response.data.status}`);
+    }
+
+    const location = response.data.results[0].geometry.location;
+    res.json({
+      name,
+      latitude: location.lat,
+      longitude: location.lng,
+      formattedAddress: response.data.results[0].formatted_address
+    });
+  } catch (error) {
+    console.error('Error geocoding address:', error);
+    res.status(500).json({ error: error.message || 'Failed to geocode address' });
+  }
+});
+
+export default router;

@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import App from './App';
-import { ClaudeProvider } from './contexts/ClaudeContext';
 
 const theme = createTheme({
   palette: {
@@ -65,9 +64,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <ClaudeProvider>
-        <App />
-      </ClaudeProvider>
+      <App />
     </ThemeProvider>
   </React.StrictMode>
 );

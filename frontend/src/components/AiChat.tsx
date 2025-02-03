@@ -15,7 +15,6 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import { College, AiChatMessage } from '../types/college';
-import { useClaudeContext } from '../contexts/ClaudeContext';
 import { useWizard } from '../contexts/WizardContext';
 import { useChat } from '../contexts/ChatContext';
 import { CollapsibleMessage } from './CollapsibleMessage';
@@ -34,7 +33,6 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const { apiKey, isConfigured, setApiKey } = useClaudeContext();
   const { currentStudent, data: studentData } = useWizard();
   const { currentChat, setCurrentChat } = useChat();
   const paperRef = useRef<HTMLDivElement>(null);
@@ -48,7 +46,6 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
       if (abortController) {
         console.log('Frontend - Aborting request during unmount');
         abortController.abort();
-        // Don't update state here since component is unmounting
       }
     };
   }, [abortController]);
@@ -72,18 +69,16 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
       console.log('Frontend - Cancelling request');
       abortController.abort();
       
-      // Group state updates to avoid race conditions
       updateState(() => {
-        // First clear loading state and abort controller
         setIsLoading(false);
         setAbortController(null);
 
-        // Then add cancellation message
         setMessages(prev => {
           const newMessages = prev.filter(msg => msg.role !== 'thinking');
           return [...newMessages, {
             role: 'system',
-            content: 'Response cancelled by user.'
+            content: 'Response cancelled by user.',
+            timestamp: new Date().toISOString()
           }];
         });
       });
@@ -92,20 +87,13 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
     }
   };
   
-  const [showApiKeyDialog, setShowApiKeyDialog] = useState(!isConfigured);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-
-  const handleSaveApiKey = () => {
-    setApiKey(apiKeyInput);
-    setShowApiKeyDialog(false);
-  };
-
   const handleSendMessage = async () => {
     if (!input.trim()) return;
 
     const userMessage: AiChatMessage = {
       role: 'user',
       content: input,
+      timestamp: new Date().toISOString()
     };
 
     updateState(() => {
@@ -115,12 +103,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
     });
 
     try {
-      if (!isConfigured || !apiKey) {
-        throw new Error('Claude API key not configured');
-      }
-
-      console.log('Frontend - Sending request with API key:', apiKey.substring(0, 4) + '...');
-      console.log('Frontend - isConfigured:', isConfigured);
+      console.log('Frontend - Sending request');
       console.log('Frontend - Request payload:', {
         message: input,
         studentName: currentStudent?.name || 'Student',
@@ -132,17 +115,14 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         setAbortController(controller);
       });
       
-      const response = await api.post('/api/chat/claude/message', {
+      const response = await api.post('/api/chat/message', {
         message: input,
         studentData,
         studentName: currentStudent?.name || 'Student',
         history: messages,
         currentChat
       }, {
-        signal: controller.signal,
-        headers: {
-          'x-api-key': apiKey,
-        }
+        signal: controller.signal
       });
 
       console.log('Frontend - Response status:', response.status);
@@ -189,11 +169,11 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   console.log('Frontend - Adding thinking message');
                   const thinkingMessage: AiChatMessage = {
                     role: 'thinking',
-                    content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : '')
+                    content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : ''),
+                    timestamp: new Date().toISOString()
                   };
                   updateState(() => {
                     setMessages(prev => {
-                      // Replace the last message if it was also a thinking message
                       const newMessages = prev[prev.length - 1]?.role === 'thinking' 
                         ? [...prev.slice(0, -1), thinkingMessage]
                         : [...prev, thinkingMessage];
@@ -210,12 +190,11 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   console.log('Frontend - Adding answer message');
                   const answerMessage: AiChatMessage = {
                     role: 'answer',
-                    content: data.content
+                    content: data.content,
+                    timestamp: new Date().toISOString()
                   };
                   updateState(() => {
                     setMessages(prev => {
-                      // If the last message was a thinking message, replace it
-                      // This handles the case where thinking and answer are part of the same response
                       const newMessages = prev[prev.length - 1]?.role === 'thinking'
                         ? [...prev.slice(0, -1), answerMessage]
                         : [...prev, answerMessage];
@@ -223,6 +202,27 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                         top: paperRef.current.scrollHeight,
                         behavior: 'auto'
                       });
+
+                      if (currentStudent?.id && data.suggestedTitle) {
+                        const chatToSave = {
+                          id: currentChat?.id || `chat-${Date.now()}`,
+                          title: data.suggestedTitle,
+                          messages: newMessages,
+                          studentId: currentStudent.id,
+                          processed: false,
+                          processedAt: null,
+                          createdAt: currentChat?.createdAt || new Date().toISOString(),
+                          updatedAt: new Date().toISOString()
+                        };
+                        api.post('/api/chat/chat', { 
+                          studentId: currentStudent.id, 
+                          chat: chatToSave 
+                        }).catch(err => {
+                          console.error('Error saving chat:', err);
+                        });
+                        setCurrentChat(chatToSave);
+                      }
+
                       return newMessages;
                     });
                   });
@@ -233,7 +233,6 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                     console.log('Frontend - Received text delta:', data.delta.text);
                     currentMessage += data.delta.text;
                     
-                    // Only update if we have accumulated non-tag content
                     if (currentMessage.trim() && 
                         !currentMessage.includes('<thinking>') &&
                         !currentMessage.includes('<answer>') &&
@@ -241,10 +240,13 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                       updateState(() => {
                         setMessages(prev => {
                           const lastMessage = prev[prev.length - 1];
-                          // Update or add as thinking message
                           const updatedMessages = lastMessage?.role === 'thinking'
                             ? [...prev.slice(0, -1), { ...lastMessage, content: currentMessage }]
-                            : [...prev, { role: 'thinking' as const, content: currentMessage }];
+                            : [...prev, { 
+                                role: 'thinking' as const, 
+                                content: currentMessage,
+                                timestamp: new Date().toISOString()
+                              }];
                           
                           paperRef.current?.scrollTo({
                             top: paperRef.current.scrollHeight,
@@ -254,14 +256,12 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                           return updatedMessages;
                         });
                       });
-                      // Clear buffer since we've handled this content
                       currentMessage = '';
                     }
                   }
                   break;
 
                 case 'message_stop':
-                  // Reset current message for next stream
                   currentMessage = '';
                   break;
 
@@ -277,6 +277,21 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   updateState(() => {
                     setIsLoading(false);
                     setAbortController(null);
+
+                    if (currentStudent?.id && currentChat) {
+                      const chatToSave = {
+                        ...currentChat,
+                        messages,
+                        updatedAt: new Date().toISOString()
+                      };
+                      api.post('/api/chat/chat', { 
+                        studentId: currentStudent.id, 
+                        chat: chatToSave 
+                      }).catch(err => {
+                        console.error('Error saving chat:', err);
+                      });
+                      setCurrentChat(chatToSave);
+                    }
                   });
 
                   console.log('Frontend - State updates complete');
@@ -293,7 +308,6 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
       } finally {
         console.log('Frontend - Stream ended, cleaning up');
         reader.releaseLock();
-        // Ensure loading state is cleared when stream ends
         updateState(() => {
           setIsLoading(false);
           setAbortController(null);
@@ -305,9 +319,9 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         const errorMessage: AiChatMessage = {
           role: 'system',
           content: error instanceof Error ? error.message : 'Sorry, I encountered an error while processing your request.',
+          timestamp: new Date().toISOString()
         };
         setMessages(prev => [...prev, errorMessage]);
-        // Ensure loading state is cleared on error
         setIsLoading(false);
         setAbortController(null);
       });
@@ -316,28 +330,6 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
 
   return (
     <>
-      <Dialog open={showApiKeyDialog} onClose={() => {}}>
-        <DialogTitle>Configure Claude API Key</DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Please enter your Claude API key to enable AI chat functionality.
-          </Typography>
-          <TextField
-            fullWidth
-            label="Claude API Key"
-            variant="outlined"
-            value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
-            type="password"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleSaveApiKey} variant="contained" disabled={!apiKeyInput}>
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Typography variant="h6" gutterBottom>
           Ask about your colleges

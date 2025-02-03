@@ -1,6 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { findCompleteTagContent } from '../utils/helpers.js';
-import { executeMcpTool } from '../utils/mcp.js';
+import { executeMcpTool } from './mcp.js';
 import { toolServerMap } from '../config/mcp-tools.js';
 
 interface Message {
@@ -17,12 +17,14 @@ type AnthropicMessage = {
 
 export class ClaudeService {
   private client: Anthropic;
+  private userId?: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, userId?: string) {
     this.client = new Anthropic({
       apiKey,
       baseURL: 'https://api.anthropic.com'
     });
+    this.userId = userId;
   }
 
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
@@ -66,7 +68,7 @@ export class ClaudeService {
       }
 
       console.info('System prompt', {
-        preview: systemPrompt.slice(0, 1000),
+        preview: systemPrompt.slice(0, 200),
         totalLength: systemPrompt.length
       });
 
@@ -201,7 +203,7 @@ export class ClaudeService {
 
                   // Execute tool
                   console.info('Starting tool execution', { server, toolName, params });
-                  const toolResult = await executeMcpTool(server, toolName, params);
+                  const toolResult = await executeMcpTool(server, toolName, params, this.userId);
                   console.info('Tool execution successful, processing result');
 
                   // Process tool result
@@ -253,6 +255,10 @@ export class ClaudeService {
                     type: 'thinking',
                     content: `Error executing tool: ${error.message}`
                   });
+                  // Clear the tool buffer and continue processing
+                  toolBuffer = toolBuffer.replace(toolCall, '').trim();
+                  // Set hasToolCalls to false so we can process any remaining content
+                  hasToolCalls = false;
                 }
               } catch (error: any) {
                 console.error('Error parsing tool call', { error: error.message, stack: error.stack });
@@ -266,6 +272,10 @@ export class ClaudeService {
                   type: 'thinking',
                   content: `Error parsing tool call: ${error.message}`
                 });
+                // Clear the tool buffer and continue processing
+                toolBuffer = toolBuffer.replace(toolCall, '').trim();
+                // Set hasToolCalls to false so we can process any remaining content
+                hasToolCalls = false;
               }
             }
           }
@@ -324,9 +334,9 @@ export class ClaudeService {
 
   async analyzeChatHistory(chat: any, systemPrompt: string, sendSSE: (data: any) => void) {
     const messages = [
-      ...chat.messages.map((msg: any) => ({
+      ...chat.messages.filter((msg: any) => msg.content).map((msg: any) => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content.trim()
+        content: msg.content?.trim() || ''
       })),
       {
         role: 'user',
@@ -338,4 +348,4 @@ export class ClaudeService {
     
     await this.processStream(messages, systemPrompt, sendSSE);
   }
-} 
+}

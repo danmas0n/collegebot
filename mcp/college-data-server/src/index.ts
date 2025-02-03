@@ -400,22 +400,43 @@ class CollegeDataServer {
       let sections;
 
       if (isPDF) {
-        const pdfParser = new PDFParser();
-        fullText = await new Promise<string>((resolve, reject) => {
-          pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
-            const pages = pdfData.Pages || [];
-            const text = pages.map((page: any) => {
-              const texts = page.Texts || [];
-              return texts.map((text: any) => {
-                const runs = text.R || [];
-                return runs.map((r: any) => r.T || '').join(' ');
-              }).join(' ');
-            }).join('\n');
-            resolve(decodeURIComponent(text));
+        try {
+          const pdfParser = new PDFParser();
+          fullText = await new Promise<string>((resolve, reject) => {
+            pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+              const pages = pdfData.Pages || [];
+              const text = pages.map((page: any) => {
+                const texts = page.Texts || [];
+                return texts.map((text: any) => {
+                  const runs = text.R || [];
+                  return runs.map((r: any) => r.T || '').join(' ');
+                }).join(' ');
+              }).join('\n');
+              resolve(decodeURIComponent(text));
+            });
+            pdfParser.on('pdfParser_dataError', (error: any) => {
+              // Check for encryption error
+              if (error.message?.includes('encryption')) {
+                reject(new Error(`The PDF file for ${args.collegeName} is encrypted or password-protected. Please try searching for an unencrypted version.`));
+              } else {
+                reject(error);
+              }
+            });
+            pdfParser.parseBuffer(content);
           });
-          pdfParser.on('pdfParser_dataError', reject);
-          pdfParser.parseBuffer(content);
-        });
+        } catch (error: any) {
+          // If PDF parsing fails, try to find an HTML version
+          console.error(`PDF parsing failed for ${args.collegeName}, searching for HTML version...`);
+          const htmlResults = await this.searchCDSFiles(`${args.collegeName} "Common Data Set" -filetype:pdf`);
+          if (htmlResults.length > 0) {
+            const htmlCollege = htmlResults[0];
+            const htmlResponse = await axios.get(htmlCollege.url);
+            const $ = cheerio.load(htmlResponse.data);
+            fullText = $.text();
+          } else {
+            throw error;
+          }
+        }
       } else {
         // Handle HTML content
         const $ = cheerio.load(content);

@@ -73,9 +73,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ));
 
         // Persist to server
-        api.post('/api/students', {
-          student: updatedStudent
-        }).catch(error => {
+        api.post(`/api/students/${currentStudent.id}`, updatedStudent).catch(error => {
           console.error('Error saving student data:', error);
         });
       }
@@ -110,7 +108,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCurrentStage(firstIncompleteStage);
 
       // Load student's chats
-      const response = await api.post('/api/chat/claude/chats', { studentId: student.id });
+      const response = await api.post('/api/chat/chats', { studentId: student.id });
       
       if (!response.ok) {
         console.error('Failed to load chats:', await response.text());
@@ -133,7 +131,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     try {
-      await api.post('/api/students', { student: newStudent });
+      await api.post(`/api/students/${newStudent.id}`, newStudent);
 
       // Only update state if the save was successful
       setStudents(prev => [...prev, newStudent]);

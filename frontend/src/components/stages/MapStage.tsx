@@ -42,7 +42,6 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { GoogleMap, useLoadScript, MarkerF, InfoWindowF } from '@react-google-maps/api';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
-import { useClaudeContext } from '../../contexts/ClaudeContext';
 import { MapLocation } from '../../types/wizard';
 
 const mapContainerStyle = {
@@ -59,7 +58,6 @@ const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [];
 
 export const MapStage = (): JSX.Element => {
   const { currentStudent } = useWizard();
-  const { apiKey } = useClaudeContext();
   const { chats, loadChats } = useChat();
   // State definitions
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -79,10 +77,18 @@ export const MapStage = (): JSX.Element => {
     libraries,
   });
 
-  // Load locations when student changes
+  // State for processing status
+  const [processingStatus, setProcessingStatus] = useState<string>('');
+  const [processingProgress, setProcessingProgress] = useState<number>(0);
+  const [processingTotal, setProcessingTotal] = useState<number>(0);
+  const [processingLogs, setProcessingLogs] = useState<string[]>([]);
+  const [showProcessingLogs, setShowProcessingLogs] = useState<boolean>(true);
+
+  // Load map locations
+  const { currentStage } = useWizard();
   useEffect(() => {
     const loadLocations = async () => {
-      if (!currentStudent?.id) {
+      if (!currentStudent?.id || currentStage !== 'map') {
         setLocations([]);
         return;
       }
@@ -107,7 +113,97 @@ export const MapStage = (): JSX.Element => {
     };
 
     loadLocations();
-  }, [currentStudent?.id]);
+  }, [currentStudent?.id, currentStage]);
+
+  // Process chats after map is loaded
+  useEffect(() => {
+    const processChats = async () => {
+      if (!currentStudent?.id || currentStage !== 'map' || isLoading) {
+        setIsProcessing(false); // Ensure processing is false when conditions aren't met
+        return;
+      }
+
+      // Wait a bit to ensure map is rendered and interactive
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      try {
+        // Only set processing if we actually have unprocessed chats
+        const hasUnprocessedChats = chats?.some(chat => !chat.processed);
+        if (!hasUnprocessedChats) {
+          setIsProcessing(false);
+          return;
+        }
+
+        setIsProcessing(true);
+        
+        // Process any unprocessed chats
+        const processStream = await api.post(`/api/chat/process-all`, {
+          studentId: currentStudent.id
+        }, { stream: true });
+
+        if (!processStream.ok) {
+          throw new Error('Failed to process chats');
+        }
+
+        const reader = processStream.body?.getReader();
+        if (!reader) {
+          throw new Error('No stream reader available');
+        }
+
+        // Reset processing state
+        setProcessingLogs([]);
+        setProcessingProgress(0);
+        setProcessingTotal(0);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Parse SSE data
+          const text = new TextDecoder().decode(value);
+          const lines = text.split('\n');
+
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue;
+            
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'status') {
+                setProcessingStatus(data.content);
+                if (data.total) setProcessingTotal(data.total);
+                if (data.progress) setProcessingProgress(data.progress);
+              } else if (data.type === 'thinking') {
+                setProcessingLogs(prev => [...prev, data.content]);
+              } else if (data.type === 'error') {
+                setError(data.content);
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e);
+            }
+          }
+        }
+
+        // Reload locations after processing
+        const response = await api.post('/api/students/map-locations/get', {
+          studentId: currentStudent.id
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(errorData.error || `Failed to load locations: ${response.status}`);
+        }
+        const data = await response.json();
+        setLocations(data);
+      } catch (err) {
+        console.error('Error processing chats:', err);
+        setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    processChats();
+  }, [currentStudent?.id, currentStage, isLoading]);
 
   const handleDeleteLocation = async (location: MapLocation) => {
     if (!currentStudent?.id) return;
@@ -146,7 +242,7 @@ export const MapStage = (): JSX.Element => {
       
       // Geocode the address if provided
       if (formData.metadata?.address) {
-        const response = await api.post('/api/mcp/student-data/geocode', {
+        const response = await api.post('/api/student-data/geocode', {
           address: formData.metadata.address,
           name: formData.name
         });
@@ -236,7 +332,7 @@ export const MapStage = (): JSX.Element => {
               } as MapLocation);
               setIsEditDialogOpen(true);
             }}
-            disabled={!currentStudent || isLoading || isProcessing}
+            disabled={!currentStudent || isProcessing}
           >
             Add Location
           </Button>
@@ -255,36 +351,168 @@ export const MapStage = (): JSX.Element => {
         </Alert>
       )}
 
-      <Collapse in={showDebugControls}>
+      <Collapse in={showDebugControls || !!processingStatus}>
         <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
+          {processingStatus && (
+            <Box sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2">{processingStatus}</Typography>
+                <Button
+                  size="small"
+                  onClick={() => setShowProcessingLogs(!showProcessingLogs)}
+                  endIcon={showProcessingLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                >
+                  {showProcessingLogs ? 'Hide' : 'Show'} Details
+                </Button>
+              </Box>
+              {processingTotal > 0 && (
+                <LinearProgress 
+                  variant="determinate" 
+                  value={(processingProgress / processingTotal) * 100} 
+                  sx={{ mb: 1 }}
+                />
+              )}
+              <Collapse in={showProcessingLogs}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    mt: 1, 
+                    p: 1, 
+                    maxHeight: '200px', 
+                    overflow: 'auto',
+                    bgcolor: 'grey.100'
+                  }}
+                >
+                  {processingLogs.map((log, index) => {
+                    // Handle both string and object logs
+                    const logContent = typeof log === 'string' ? log : (log as { content: string }).content;
+                    return (
+                      <React.Fragment key={index}>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            fontFamily: 'monospace',
+                            whiteSpace: 'pre-wrap',
+                            mb: 0.5
+                          }}
+                        >
+                          {logContent}
+                        </Typography>
+                        {index < processingLogs.length - 1 && (
+                          <Box 
+                            sx={{ 
+                              borderBottom: '1px solid',
+                              borderColor: 'divider',
+                              my: 1
+                            }} 
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </Paper>
+              </Collapse>
+            </Box>
+          )}
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Button 
-              variant="outlined"
-              size="small"
-              onClick={async () => {
-                if (!currentStudent?.id) return;
-                
-                try {
-                  setIsProcessing(true);
-                  const response = await api.post(`/api/students/${currentStudent.id}/clear-map-locations`);
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button 
+                variant="outlined"
+                size="small"
+                onClick={async () => {
+                  if (!currentStudent?.id) return;
+                  
+                  try {
+                    setIsProcessing(true);
+                    const response = await api.post(`/api/students/${currentStudent.id}/clear-map-locations`);
 
-                  if (!response.ok) {
-                    throw new Error('Failed to clear map locations');
+                    if (!response.ok) {
+                      throw new Error('Failed to clear map locations');
+                    }
+
+                    // Clear local state
+                    setLocations([]);
+                  } catch (err) {
+                    console.error('Failed to clear map:', err);
+                    setError('Failed to clear map: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                  } finally {
+                    setIsProcessing(false);
                   }
+                }}
+                disabled={!currentStudent || isProcessing}
+              >
+                Clear Map
+              </Button>
 
-                  // Clear local state
-                  setLocations([]);
-                } catch (err) {
-                  console.error('Failed to clear map:', err);
-                  setError('Failed to clear map: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                } finally {
-                  setIsProcessing(false);
-                }
-              }}
-              disabled={!currentStudent || isLoading || isProcessing}
-            >
-              Clear Map
-            </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={async () => {
+                  if (!currentStudent?.id || !chats) return;
+                  
+                  try {
+                    setIsProcessing(true);
+                    const response = await api.post(`/api/chat/mark-unprocessed`, {
+                      studentId: currentStudent.id,
+                      chatIds: chats.map(chat => chat.id)
+                    });
+
+                    if (!response.ok) {
+                      throw new Error('Failed to mark chats as unprocessed');
+                    }
+
+                    // Reload chats to update UI
+                    await loadChats(currentStudent.id);
+                  } catch (err) {
+                    console.error('Failed to mark chats as unprocessed:', err);
+                    setError('Failed to mark chats as unprocessed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                  } finally {
+                    setIsProcessing(false);
+                  }
+                }}
+                disabled={!currentStudent || isProcessing}
+              >
+                Mark Chats Unprocessed
+              </Button>
+
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={async () => {
+                  if (!currentStudent?.id || !chats) return;
+                  
+                  try {
+                    setIsProcessing(true);
+                    const response = await api.post(`/api/chat/process-all`, {
+                      studentId: currentStudent.id,
+                      chatIds: chats.map(chat => chat.id)
+                    });
+
+                    if (!response.ok) {
+                      throw new Error('Failed to process chats');
+                    }
+
+                    // Reload chats and locations
+                    await loadChats(currentStudent.id);
+                    const locationsResponse = await api.post('/api/students/map-locations/get', {
+                      studentId: currentStudent.id
+                    });
+                    if (locationsResponse.ok) {
+                      const data = await locationsResponse.json();
+                      setLocations(data);
+                    }
+                  } catch (err) {
+                    console.error('Failed to process chats:', err);
+                    setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
+                  } finally {
+                    setIsProcessing(false);
+                  }
+                }}
+                disabled={!currentStudent || isProcessing}
+              >
+                Process All Chats
+              </Button>
+            </Box>
           </Box>
         </Paper>
       </Collapse>
@@ -299,102 +527,109 @@ export const MapStage = (): JSX.Element => {
         <Grid container spacing={2}>
           {/* List View */}
           <Grid item xs={4}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Card sx={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
+              <CardContent sx={{ 
+                flex: 1, 
+                p: 2, 
+                '&:last-child': { pb: 2 },
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }}>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="h6">Locations</Typography>
-                  <Box>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => {
-                        const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
-                        setLocations(sorted);
-                      }}
-                    >
-                      <SortByAlphaIcon />
-                    </IconButton>
-                  </Box>
+                  <IconButton 
+                    size="small" 
+                    onClick={() => {
+                      const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
+                      setLocations(sorted);
+                    }}
+                  >
+                    <SortByAlphaIcon />
+                  </IconButton>
                 </Box>
-                <List>
-                  {locations.map((location) => (
-                    <ListItem 
-                      key={location.id}
-                      sx={{ 
-                        cursor: 'pointer',
-                        bgcolor: selectedLocation?.id === location.id ? 'action.selected' : 'transparent',
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        }
-                      }}
-                      onClick={() => setSelectedLocation(location)}
-                    >
-                      <ListItemIcon>
-                        {location.type === 'college' ? (
-                          <SchoolIcon color="primary" />
-                        ) : (
-                          <AttachMoneyIcon color="secondary" />
-                        )}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={location.name}
-                        secondary={
-                          <Box component="div">
-                            {location.type === 'college' && location.metadata.fitScore && (
-                              <Box component="div" sx={{ display: 'block' }}>
-                                Fit Score: {location.metadata.fitScore}
-                              </Box>
-                            )}
-                            {location.type === 'scholarship' && location.metadata.amount && (
-                              <Box component="div" sx={{ display: 'block' }}>
-                                Amount: ${location.metadata.amount}
-                              </Box>
-                            )}
-                            {location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0 && (
-                              <Box component="div">
-                                <Button
-                                  size="small"
-                                  endIcon={location.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                  onClick={(e: React.MouseEvent) => {
-                                    e.stopPropagation();
-                                    setLocations(prev => prev.map(loc => 
-                                      loc.id === location.id 
-                                        ? { 
-                                            ...loc, 
-                                            metadata: { 
-                                              ...loc.metadata, 
-                                              showLinks: !loc.metadata.showLinks 
-                                            } 
-                                          }
-                                        : loc
-                                    ));
-                                  }}
-                                >
-                                  {`${location.metadata.referenceLinks.length} Reference Links`}
-                                </Button>
-                                <Collapse in={location.metadata.showLinks}>
-                                  <List dense>
-                                    {location.metadata.referenceLinks.map((link, index) => (
-                                      <ListItem key={index}>
-                                        <Link 
-                                          href={link.url} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer"
-                                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                                        >
-                                          {link.title || `Reference ${index + 1}`}
-                                        </Link>
-                                      </ListItem>
-                                    ))}
-                                  </List>
-                                </Collapse>
-                              </Box>
-                            )}
-                          </Box>
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
+                <Box sx={{ flex: 1, overflow: 'auto' }}>
+                  <List>
+                    {locations.map((location) => (
+                      <ListItem 
+                        key={location.id}
+                        sx={{ 
+                          cursor: 'pointer',
+                          bgcolor: selectedLocation?.id === location.id ? 'action.selected' : 'transparent',
+                          '&:hover': {
+                            bgcolor: 'action.hover',
+                          }
+                        }}
+                        onClick={() => setSelectedLocation(location)}
+                      >
+                        <ListItemIcon>
+                          {location.type === 'college' ? (
+                            <SchoolIcon color="primary" />
+                          ) : (
+                            <AttachMoneyIcon color="secondary" />
+                          )}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={location.name}
+                          secondary={
+                            <Box component="div">
+                              {location.type === 'college' && location.metadata.fitScore && (
+                                <Box component="div" sx={{ display: 'block' }}>
+                                  Fit Score: {location.metadata.fitScore}
+                                </Box>
+                              )}
+                              {location.type === 'scholarship' && location.metadata.amount && (
+                                <Box component="div" sx={{ display: 'block' }}>
+                                  Amount: ${location.metadata.amount}
+                                </Box>
+                              )}
+                              {location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0 && (
+                                <Box component="div">
+                                  <Button
+                                    size="small"
+                                    endIcon={location.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                    onClick={(e: React.MouseEvent) => {
+                                      e.stopPropagation();
+                                      setLocations(prev => prev.map(loc => 
+                                        loc.id === location.id 
+                                          ? { 
+                                              ...loc, 
+                                              metadata: { 
+                                                ...loc.metadata, 
+                                                showLinks: !loc.metadata.showLinks 
+                                              } 
+                                            }
+                                          : loc
+                                      ));
+                                    }}
+                                  >
+                                    {`${location.metadata.referenceLinks.length} Reference Links`}
+                                  </Button>
+                                  <Collapse in={location.metadata.showLinks}>
+                                    <List dense>
+                                      {location.metadata.referenceLinks.map((link, index) => (
+                                        <ListItem key={index}>
+                                          <Link 
+                                            href={link.url} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                          >
+                                            {link.title || `Reference ${index + 1}`}
+                                          </Link>
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  </Collapse>
+                                </Box>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
               </CardContent>
             </Card>
           </Grid>

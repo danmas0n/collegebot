@@ -5,23 +5,16 @@ import {
   Paper,
   TextField,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   List,
   ListItem,
   ListItemText,
   CircularProgress,
   Alert,
   Grid,
-  Card,
-  CardContent,
   IconButton,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useWizard } from '../../contexts/WizardContext';
-import { useClaudeContext } from '../../contexts/ClaudeContext';
 import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
 import { api } from '../../utils/api';
@@ -42,9 +35,6 @@ interface Chat {
 
 export const RecommendationsStage: React.FC = () => {
   const { data, currentStudent } = useWizard();
-  const { apiKey, setApiKey, isConfigured } = useClaudeContext();
-  const [isConfiguring, setIsConfiguring] = useState(false);
-  const [newApiKey, setNewApiKey] = useState('');
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -80,12 +70,8 @@ export const RecommendationsStage: React.FC = () => {
 
   const loadChats = async (): Promise<Chat[]> => {
     try {
-      const response = await api.post('/api/chat/claude/chats', {
+      const response = await api.post('/api/chat/chats', {
         studentId: currentStudent?.id
-      }, {
-        headers: {
-          'x-api-key': apiKey || ''
-        }
       });
 
       const data = await response.json();
@@ -116,13 +102,10 @@ export const RecommendationsStage: React.FC = () => {
 
   const deleteChat = async (chatId: string) => {
     try {
-      await api.delete(`/api/chat/claude/chat/${chatId}`, {
+      await api.delete(`/api/chat/chats/${chatId}`, {
         body: JSON.stringify({
           studentId: currentStudent?.id
-        }),
-        headers: {
-          'x-api-key': apiKey || ''
-        }
+        })
       });
 
       setChats(prev => prev.filter(c => c.id !== chatId));
@@ -137,31 +120,21 @@ export const RecommendationsStage: React.FC = () => {
 
   const saveChat = async (chat: Chat) => {
     try {
-      await api.post('/api/chat/claude/chat', {
+      console.log('Frontend - Saving chat:', { chatId: chat.id, title: chat.title, studentId: chat.studentId });
+      await api.post('/api/chat/chat', {
         studentId: currentStudent?.id,
         chat
-      }, {
-        headers: {
-          'x-api-key': apiKey || ''
-        }
       });
+      console.log('Frontend - Chat saved successfully');
     } catch (error) {
-      console.error('Error saving chat:', error);
+      console.error('Frontend - Error saving chat:', error);
       setError(error instanceof Error ? error.message : 'Failed to save chat');
-    }
-  };
-
-  const handleConfigureApiKey = () => {
-    if (newApiKey.trim()) {
-      setApiKey(newApiKey.trim());
-      setIsConfiguring(false);
-      setNewApiKey('');
     }
   };
 
   const handleSendMessage = async (messageContent?: string) => {
     const message = messageContent || currentMessage;
-    if (!message.trim() || !apiKey) return;
+    if (!message.trim()) return;
 
     let activeChat: Chat;
     if (!currentChat) {
@@ -205,7 +178,7 @@ export const RecommendationsStage: React.FC = () => {
         .filter(({ msg }) => msg.role === 'user')
         .pop()?.i;
 
-      // Filter messages for Claude
+      // Filter messages for AI service
       const filteredMessages = updatedChat.messages
         // Group messages by exchange (between user messages)
         .reduce<Message[]>((acc, msg, i) => {
@@ -224,19 +197,13 @@ export const RecommendationsStage: React.FC = () => {
           }
           return acc;
         }, [])
-        // Map to Claude format
+        // Map to AI service format
         .map(msg => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.content
         }));
 
-      const response = await fetch('/api/chat/claude/message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey
-        },
-        body: JSON.stringify({
+      const response = await api.post('/api/chat/message', {
           message: messageToSend,
           studentData: {
             ...data,
@@ -245,11 +212,10 @@ export const RecommendationsStage: React.FC = () => {
           studentName: currentStudent?.name,
           history: filteredMessages,
           currentChat: updatedChat
-        })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response from Claude');
+        throw new Error('Failed to get AI response');
       }
 
       if (!response.body) {
@@ -459,51 +425,6 @@ export const RecommendationsStage: React.FC = () => {
     }
   }, [currentChat?.messages]);
 
-  if (!isConfigured) {
-    return (
-      <Paper elevation={0} sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          AI Recommendations
-        </Typography>
-        <Typography color="text.secondary" paragraph>
-          To get personalized recommendations, we need to configure your Claude API key.
-        </Typography>
-        <Button
-          variant="contained"
-          onClick={() => setIsConfiguring(true)}
-        >
-          Configure API Key
-        </Button>
-
-        <Dialog open={isConfiguring} onClose={() => setIsConfiguring(false)}>
-          <DialogTitle>Configure Claude API Key</DialogTitle>
-          <DialogContent>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Claude API Key"
-              type="password"
-              fullWidth
-              value={newApiKey}
-              onChange={(e) => setNewApiKey(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleConfigureApiKey()}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setIsConfiguring(false)}>Cancel</Button>
-            <Button
-              onClick={handleConfigureApiKey}
-              variant="contained"
-              disabled={!newApiKey.trim()}
-            >
-              Save
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </Paper>
-    );
-  }
-
   return (
     <Paper elevation={0} sx={{ p: 3, height: '100%' }}>
       <Typography variant="h5" gutterBottom>
@@ -616,15 +537,6 @@ export const RecommendationsStage: React.FC = () => {
           </Box>
         </Grid>
       </Grid>
-
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          size="small"
-          onClick={() => setIsConfiguring(true)}
-        >
-          Change API Key
-        </Button>
-      </Box>
     </Paper>
   );
 };

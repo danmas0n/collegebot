@@ -4,7 +4,7 @@ import { getAuth } from 'firebase-admin/auth';
 
 // Initialize Firebase Admin
 const app = initializeApp({
-  projectId: 'collegebot-dev-52f43',
+  projectId: process.env.FIREBASE_PROJECT_ID,
   credential: process.env.NODE_ENV === 'development' 
     ? applicationDefault()
     : cert(
@@ -31,4 +31,4 @@ if (process.env.NODE_ENV === 'development') {
 // Initialize Auth
 const auth = getAuth(app);
 
-export { db, auth }; 
+export { db, auth };

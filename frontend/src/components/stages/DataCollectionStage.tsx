@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useWizard } from '../../contexts/WizardContext';
-import { useClaudeContext } from '../../contexts/ClaudeContext';
 import { useChat } from '../../contexts/ChatContext';
 import {
   Box,
@@ -20,18 +19,10 @@ import { DataSource } from '../../types/wizard';
 import { AiChatMessage } from '../../types/college';
 import { api } from '../../utils/api';
 
-interface Chat {
-  id: string;
-  title: string;
-  messages: AiChatMessage[];
-  createdAt: string;
-  updatedAt: string;
-  studentId?: string;
-}
+import { AiChat } from '../../types/college';
 
 export const DataCollectionStage: React.FC = () => {
   const { updateData, currentStudent } = useWizard();
-  const { apiKey } = useClaudeContext();
   const { loadChats, saveChat } = useChat();
   const [dataSources, setDataSources] = useState<DataSource[]>([
     {
@@ -59,16 +50,19 @@ export const DataCollectionStage: React.FC = () => {
   const createInitialChat = async () => {
     if (!currentStudent?.id) return;
     
-    const chat: Chat = {
+    const chat: AiChat = {
       id: crypto.randomUUID(),
       title: 'Initial Recommendations',
       messages: [{
         role: 'user',
-        content: 'What are a few colleges and/or scholarships that might be good fits for me?'
+        content: 'What are a few colleges and/or scholarships that might be good fits for me?',
+        timestamp: new Date().toISOString()
       }],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      studentId: currentStudent.id
+      studentId: currentStudent.id,
+      processed: false,
+      processedAt: null
     };
     await saveChat(currentStudent.id, chat);
   };

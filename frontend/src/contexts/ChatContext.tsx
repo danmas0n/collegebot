@@ -27,7 +27,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadChats = useCallback(async (studentId: string): Promise<AiChat[]> => {
     try {
-      const response = await api.post('/api/chat/claude/chats', { studentId });
+      const response = await api.post('/api/chat/chats', { studentId });
       const { chats: loadedChats } = await response.json();
       setChats(loadedChats);
       setCurrentChat(null); // Reset current chat when loading new chats
@@ -40,7 +40,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveChat = useCallback(async (studentId: string, chat: AiChat) => {
     try {
-      await api.post('/api/chat/claude/chat', { studentId, chat });
+      await api.post('/api/chat/chat', { studentId, chat });
 
       setChats(prev => {
         const index = prev.findIndex(c => c.id === chat.id);
@@ -62,7 +62,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteChat = useCallback(async (studentId: string, chatId: string) => {
     try {
-      await api.delete(`/api/chat/claude/chat/${chatId}`, { body: JSON.stringify({ studentId }) });
+      await api.delete(`/api/chat/chat/${chatId}`, { body: JSON.stringify({ studentId }) });
 
       setChats(prev => prev.filter(c => c.id !== chatId));
       if (currentChat?.id === chatId) {

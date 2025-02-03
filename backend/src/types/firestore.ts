@@ -45,18 +45,42 @@ export interface Student {
   updatedAt: Timestamp;
 }
 
+// Common chat message types
+interface BaseChatMessage {
+  role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer' | 'question';
+  content: string;
+}
+
+interface FirestoreChatMessage extends BaseChatMessage {
+  timestamp: Timestamp;
+}
+
+interface DTOChatMessage extends BaseChatMessage {
+  timestamp: string;
+}
+
+// Firestore Chat type with Timestamps
 export interface Chat {
   id: string;
   studentId: string;
-  messages: {
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: Timestamp;
-  }[];
+  title?: string;
+  messages: FirestoreChatMessage[];
   processed: boolean;
   processedAt: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+// Frontend Chat type with ISO strings
+export interface ChatDTO {
+  id: string;
+  studentId: string;
+  title?: string;
+  messages: DTOChatMessage[];
+  processed: boolean;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MapLocation {

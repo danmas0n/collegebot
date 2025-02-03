@@ -66,6 +66,48 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
 - **Firebase Console**: Track hosting performance and authentication
 - **Firestore Console**: Monitor database usage and performance
 - **Cloud Logging**: Centralized logs for all services
+  - Production logs available in Google Cloud Console
+  - Local development logs in `backend/logs/`
+  - Structured logging with Winston
+  - See `backend/docs/logging.md` for details
+
+### Viewing Application Logs
+
+#### Local Development
+1. Console Output:
+   - Backend logs appear in your terminal
+   - Frontend logs in browser dev tools
+   - Colorized for better readability
+
+2. Log Files (in `backend/logs/`):
+   ```bash
+   # View all logs
+   tail -f backend/logs/combined.log
+   
+   # View error logs only
+   tail -f backend/logs/error.log
+   
+   # View Claude-specific logs
+   tail -f backend/logs/claude.log
+   ```
+
+#### Production
+1. Google Cloud Console:
+   - Go to Cloud Logging > Logs Explorer
+   - Filter: `resource.type="cloud_run_revision"`
+   - View structured logs with metadata
+
+2. Command Line:
+   ```bash
+   # Stream all logs
+   gcloud logging tail "resource.type=cloud_run_revision"
+   
+   # Filter for specific severity
+   gcloud logging tail "resource.type=cloud_run_revision AND severity>=ERROR"
+   
+   # Filter for specific service
+   gcloud logging tail "resource.type=cloud_run_revision AND jsonPayload.service=claude"
+   ```
 
 ## Quick Start Guide
 
@@ -216,6 +258,10 @@ NODE_ENV=production npm run dev
 
 ### Backend
 - `PORT` - Server port (default: 3001)
+- `NODE_ENV` - Environment (development/production)
+- `LOG_LEVEL` - Winston log level (default: info)
+- `GOOGLE_CLOUD_PROJECT` - GCP project ID for Cloud Logging
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key
 - `CLAUDE_API_KEY` - Anthropic Claude API key
 - `GOOGLE_API_KEY` - Google API key for Maps and Search
 - `GOOGLE_MAPS_API_KEY` - Google Maps API key

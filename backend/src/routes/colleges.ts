@@ -35,7 +35,11 @@ const searchColleges: RequestHandler<{}, any, SearchRequest> = async (req, res) 
         throw new Error('Invalid response format from college-data server');
       }
 
-      const collegeData = JSON.parse(result.content[0].text);
+      const text = result.content[0].text;
+      if (typeof text !== 'string') {
+        throw new Error('Invalid response: expected text to be a string');
+      }
+      const collegeData = JSON.parse(text);
       res.json(collegeData);
     } catch (mcpError) {
       console.error('Backend - MCP tool error:', mcpError);
@@ -59,7 +63,11 @@ const getCollegeDetails: RequestHandler<{ id: string }> = async (req, res) => {
       throw new Error('Invalid response format from college-data server');
     }
 
-    const collegeDetails = JSON.parse(result.content[0].text);
+    const text = result.content[0].text;
+    if (typeof text !== 'string') {
+      throw new Error('Invalid response: expected text to be a string');
+    }
+    const collegeDetails = JSON.parse(text);
     res.json(collegeDetails);
   } catch (error) {
     console.error('Backend - Get college details error:', error);
@@ -82,7 +90,11 @@ const compareColleges: RequestHandler<{}, any, CompareRequest> = async (req, res
       throw new Error('Invalid response format from college-data server');
     }
 
-    const comparison = JSON.parse(result.content[0].text);
+    const text = result.content[0].text;
+    if (typeof text !== 'string') {
+      throw new Error('Invalid response: expected text to be a string');
+    }
+    const comparison = JSON.parse(text);
     res.json(comparison);
   } catch (error) {
     console.error('Backend - Compare colleges error:', error);
@@ -94,4 +106,4 @@ router.post('/search', searchColleges);
 router.get('/:id', getCollegeDetails);
 router.post('/compare', compareColleges);
 
-export default router; 
+export default router;

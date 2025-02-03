@@ -1,5 +1,5 @@
 import { db } from '../config/firebase.js';
-import { WhitelistedUser, Student, Chat, MapLocation, AdminUser } from '../types/firestore.js';
+import { WhitelistedUser, Student, Chat, ChatDTO, MapLocation, AdminUser } from '../types/firestore.js';
 import { Timestamp, DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // Collection references
@@ -10,20 +10,33 @@ const mapLocationsRef = db.collection('map_locations');
 const adminUsersRef = db.collection('admin-users');
 const userChatsRef = db.collection('user-chats');
 
-// Types for chat operations
-export interface ChatMessage {
-  id: string;
-  threadId: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
+// Thread types
 export interface ChatThread {
   id: string;
   title: string;
   lastMessageTimestamp: number;
 }
+
+// Helper functions for safe type conversions
+const safeToTimestamp = (value: any): Timestamp | null => {
+  if (!value) return null;
+  if (value instanceof Timestamp) return value;
+  if (typeof value === 'string') {
+    try {
+      return Timestamp.fromDate(new Date(value));
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+};
+
+const safeToISOString = (value: any): string | null => {
+  if (!value) return null;
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  if (typeof value === 'string') return value;
+  return null;
+};
 
 // Whitelist operations
 export const getWhitelistedUsers = async (): Promise<WhitelistedUser[]> => {
@@ -49,8 +62,15 @@ export const getStudents = async (userId: string): Promise<Student[]> => {
 };
 
 export const getStudent = async (id: string, userId: string): Promise<Student | null> => {
+  if (!id || typeof id !== 'string') {
+    console.error('Invalid student ID:', id);
+    return null;
+  }
   const doc = await studentsRef.doc(id).get();
-  if (!doc.exists || doc.data()?.userId !== userId) return null;
+  if (!doc.exists || doc.data()?.userId !== userId) {
+    console.error('Student not found or unauthorized:', { id, userId, exists: doc.exists, docUserId: doc.data()?.userId });
+    return null;
+  }
   return { ...doc.data(), id: doc.id } as Student;
 };
 
@@ -73,19 +93,54 @@ export const deleteStudent = async (id: string, userId: string): Promise<void> =
   await doc.ref.delete();
 };
 
+// Conversion functions
+const chatToDTO = (chat: Chat): ChatDTO => ({
+  ...chat,
+  createdAt: safeToISOString(chat.createdAt) ?? new Date().toISOString(),
+  updatedAt: safeToISOString(chat.updatedAt) ?? new Date().toISOString(),
+  processedAt: safeToISOString(chat.processedAt),
+  messages: chat.messages.map(msg => ({
+    ...msg,
+    timestamp: safeToISOString(msg.timestamp) ?? new Date().toISOString()
+  }))
+});
+
+const dtoToChat = (dto: Omit<ChatDTO, 'createdAt' | 'updatedAt'>): Omit<Chat, 'createdAt' | 'updatedAt'> => ({
+  ...dto,
+  messages: dto.messages.map(msg => ({
+    ...msg,
+    timestamp: safeToTimestamp(msg.timestamp) ?? Timestamp.now()
+  })),
+  processedAt: safeToTimestamp(dto.processedAt)
+});
+
 // Chat operations
-export const getChats = async (studentId: string): Promise<Chat[]> => {
+export const getChats = async (studentId: string): Promise<ChatDTO[]> => {
   const snapshot = await chatsRef.where('studentId', '==', studentId).get();
-  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Chat));
+  return snapshot.docs.map(doc => {
+    const data = doc.data() as Chat;
+    return chatToDTO({
+      ...data,
+      id: doc.id,
+      studentId: data.studentId,
+      processed: data.processed ?? false,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+      processedAt: data.processedAt,
+      messages: data.messages || []
+    });
+  });
 };
 
-export const saveChat = async (chat: Omit<Chat, 'createdAt' | 'updatedAt'>): Promise<void> => {
+export const saveChat = async (chat: ChatDTO): Promise<void> => {
   const now = Timestamp.now();
   const doc = chatsRef.doc(chat.id);
   const exists = (await doc.get()).exists;
 
+  const firestoreChat = dtoToChat(chat);
+
   await doc.set({
-    ...chat,
+    ...firestoreChat,
     createdAt: exists ? (await doc.get()).data()?.createdAt : now,
     updatedAt: now
   });
@@ -122,14 +177,19 @@ export const getMapLocations = async (studentId: string, userId: string): Promis
 };
 
 export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'createdAt'>, userId: string): Promise<void> => {
-  console.log('Adding map location:', location);
+  console.log('Adding map location:', JSON.stringify(location, null, 2));
   
+  if (!location.studentId || typeof location.studentId !== 'string') {
+    console.error('Invalid student ID in location:', location.studentId);
+    throw new Error('Invalid student ID');
+  }
+
   // First verify the student exists and belongs to this user
   const student = await getStudent(location.studentId, userId);
   console.log('Found student:', student ? 'yes' : 'no');
   
   if (!student) {
-    console.log('No student found with ID:', location.studentId);
+    console.error('No student found with ID:', location.studentId);
     throw new Error('Student not found');
   }
 
@@ -139,8 +199,10 @@ export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'created
     createdAt: Timestamp.now()
   };
   
+  console.log('Creating new location document:', JSON.stringify(newLocation, null, 2));
   const docRef = mapLocationsRef.doc();
   await docRef.set(newLocation);
+  console.log('Location document created with ID:', docRef.id);
 };
 
 export const deleteMapLocation = async (studentId: string, locationId: string, userId: string): Promise<void> => {
@@ -182,41 +244,4 @@ export const addAdmin = async (email: string, uid: string): Promise<void> => {
     role: 'admin',
     createdAt: Timestamp.now()
   });
-};
-
-// New chat operations
-export const getChatThreads = async (userId: string): Promise<ChatThread[]> => {
-  const snapshot = await userChatsRef.doc(userId).collection('threads').get();
-  return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() } as ChatThread));
-};
-
-export const getChatHistory = async (userId: string, threadId: string): Promise<ChatMessage[]> => {
-  const snapshot = await userChatsRef
-    .doc(userId)
-    .collection('threads')
-    .doc(threadId)
-    .collection('messages')
-    .orderBy('timestamp', 'asc')
-    .get();
-  return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ id: doc.id, ...doc.data() } as ChatMessage));
-};
-
-export const addChatMessage = async (userId: string, message: ChatMessage): Promise<void> => {
-  await userChatsRef
-    .doc(userId)
-    .collection('threads')
-    .doc(message.threadId)
-    .collection('messages')
-    .doc(message.id)
-    .set(message);
-
-  // Update thread metadata
-  await userChatsRef
-    .doc(userId)
-    .collection('threads')
-    .doc(message.threadId)
-    .set({
-      lastMessageTimestamp: message.timestamp,
-      title: message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
-    }, { merge: true });
 };

@@ -25,16 +25,18 @@ export interface WordCloudWord {
 export interface AiChatMessage {
   role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer' | 'question';
   content: string;
+  timestamp: string;
 }
 
 export interface AiChat {
   id: string;
+  studentId: string;
   messages: AiChatMessage[];
+  processed: boolean;
+  processedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  studentId?: string;
-  processed?: boolean;
-  processedAt?: string;
+  title?: string;
 }
 
 // Chat history is now handled through StudentWithChats interface in wizard.ts

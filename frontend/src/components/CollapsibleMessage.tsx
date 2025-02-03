@@ -52,6 +52,29 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
   const messageContent = message.content || '';
   const hasToolData = messageContent.includes('Tool Data:');
 
+  const renderMessageContent = (content: string, showTimestamp: boolean = true) => (
+    <Box>
+      <Typography sx={{ 
+        whiteSpace: 'pre-wrap',
+        fontFamily: hasToolData ? 'monospace' : 'inherit',
+        fontSize: hasToolData ? '0.85em' : 'inherit'
+      }}>
+        {content}
+      </Typography>
+      {showTimestamp && message.timestamp && (
+        <Typography variant="caption" sx={{ 
+          display: 'block',
+          mt: 1,
+          opacity: 0.7,
+          textAlign: message.role === 'user' ? 'right' : 'left',
+          color: message.role === 'user' || message.role === 'answer' || message.role === 'question' ? 'white' : 'text.secondary'
+        }}>
+          {new Date(message.timestamp).toLocaleTimeString()}
+        </Typography>
+      )}
+    </Box>
+  );
+
   return (
     <Paper
       elevation={1}
@@ -96,24 +119,11 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
             )}
           </Box>
           <Collapse in={expanded}>
-            <Typography sx={{ 
-              whiteSpace: 'pre-wrap',
-              fontFamily: hasToolData ? 'monospace' : 'inherit',
-              fontSize: hasToolData ? '0.85em' : 'inherit',
-              mt: 1
-            }}>
-              {messageContent}
-            </Typography>
+            {renderMessageContent(messageContent)}
           </Collapse>
         </Box>
       ) : (
-        <Typography sx={{ 
-          whiteSpace: 'pre-wrap',
-          fontFamily: hasToolData ? 'monospace' : 'inherit',
-          fontSize: hasToolData ? '0.85em' : 'inherit'
-        }}>
-          {messageContent}
-        </Typography>
+        renderMessageContent(messageContent)
       )}
     </Paper>
   );
