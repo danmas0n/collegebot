@@ -1,49 +1,23 @@
-# Active Development Context
+# Active Context
 
-## Current Task
-Fixing map functionality and improving student data handling:
-1. Implementing proper map location processing
-2. Enhancing map controls functionality
-3. Migrating student-data tools to Firestore
-4. Improving user experience in map stage
+## Current Status
+- Successfully deployed backend to Cloud Run at https://backend-859016258149.us-central1.run.app
+- Successfully deployed frontend to Firebase Hosting at https://collegebot-dev-52f43.web.app
+- Set up Firestore database in Google Cloud Console
+- Created initial collections (admin_users, whitelisted_users)
+- Set up dan.mason@gmail.com as admin user
+- Deployed Firestore security rules
+- Google Authentication is working
+- Admin access is confirmed working
 
 ## Recent Changes
-- Fixed map functionality issues:
-  - Remapped student-data tools to use Firestore directly:
-    - geocode
-    - create_map_location
-    - get_map_locations
-    - clear_map_locations
-  - Added proper userId handling through service chain:
-    - AIServiceFactory accepts userId
-    - ClaudeService stores and passes userId
-    - Chat routes pass req.user.uid
-  - Updated mcp-tools.ts to include student-data tools
-  - Implemented proper error handling for map operations
-  - Fixed map control buttons functionality
+- Created and deployed Firestore security rules
+- Initialized Firestore database with required collections
+- Created admin user account
+- Deployed backend to Cloud Run
+- Deployed frontend to Firebase Hosting
 
 ## Next Steps
-1. Verify map functionality:
-   - Test automatic processing of unprocessed chats
-   - Validate map control buttons
-   - Monitor location processing
-
-2. Enhance map features:
-   - Improve location clustering
-   - Add custom map markers
-   - Enhance interactive tooltips
-
-3. Test student data operations:
-   - Verify geocoding functionality
-   - Test map location CRUD operations
-   - Validate ownership checks
-
-4. Documentation:
-   - Update map feature documentation
-   - Document student-data tool changes
-   - Add map stage usage instructions
-
-5. User experience improvements:
-   - Add loading states for map operations
-   - Enhance error messaging
-   - Improve map control responsiveness
+- Begin adding students to the system
+- Test all admin functionality
+- Monitor application performance in production

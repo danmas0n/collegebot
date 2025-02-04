@@ -28,8 +28,8 @@ RUN npm install && npm run build
 # Return to backend directory
 WORKDIR /workspace/backend
 
-# Expose port 3001
-EXPOSE 3001
+# Expose port 8080 for Cloud Run
+EXPOSE 8080
 
 # Start the server
-CMD ["npm", "start"] 
+CMD ["npm", "start"]

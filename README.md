@@ -45,20 +45,87 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
 ### Deployment Flow
 
 1. **Frontend Deployment**:
-   - Build process: TypeScript compilation + Vite bundling
-   - Assets deployed to Firebase Hosting CDN
-   - Automatic versioning and rollback support
+   ```bash
+   cd frontend
+   npm run build
+   firebase deploy --only hosting
+   ```
 
 2. **Backend Deployment**:
-   - Docker container built for linux/amd64
-   - Image pushed to Google Container Registry
-   - Deployed to Cloud Run with automatic scaling
-   - Environment variables managed through Cloud Run
+   ```bash
+   # From project root
+   docker build --platform linux/amd64 -t gcr.io/collegebot-dev/backend -f backend/Dockerfile .
+   docker push gcr.io/collegebot-dev/backend
+   gcloud run deploy backend --image gcr.io/collegebot-dev/backend --platform managed --region us-central1 --project collegebot-dev
+   ```
 
-3. **Database Updates**:
-   - Firestore security rules deployed via Firebase CLI
-   - Indexes automatically updated
-   - Backup and restore available through GCP Console
+3. **Database Setup**:
+   a. Create Firestore Database:
+      - Go to Google Cloud Console > Firestore
+      - Click "Create Database"
+      - Choose "Native Mode"
+      - Select region (us-central1 recommended)
+      - Click "Enable"
+
+   b. Deploy Security Rules:
+      ```bash
+      firebase deploy --only firestore:rules
+      ```
+
+   c. Initialize Collections:
+      ```bash
+      cd scripts
+      npm install
+      node init-firestore.js  # Creates initial collections
+      node create-admin-prod.js  # Sets up admin user
+      ```
+
+4. **Environment Variables**:
+   - Backend Cloud Run requires:
+     ```
+     NODE_ENV=production
+     FIREBASE_PROJECT_ID=collegebot-dev-52f43
+     FIREBASE_CREDENTIALS_FILE=/workspace/backend/service-account.json
+     GOOGLE_CLOUD_PROJECT=collegebot-dev-52f43
+     CLAUDE_API_KEY=your_claude_api_key
+     GOOGLE_MAPS_API_KEY=your_maps_api_key
+     ```
+
+### Authentication Setup
+
+1. Go to Firebase Console > Authentication > Sign-in method
+2. Enable Google authentication
+3. Add authorized domains:
+   - localhost
+   - collegebot-dev-52f43.web.app
+
+### Managing Firestore Data
+
+#### Production Setup
+1. Create Firestore database in Google Cloud Console
+2. Deploy security rules:
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+3. Initialize collections:
+   ```bash
+   cd scripts
+   node init-firestore.js
+   ```
+4. Create admin user:
+   ```bash
+   node create-admin-prod.js
+   ```
+
+#### Security Rules
+- Deploy updated rules with:
+  ```bash
+  firebase deploy --only firestore:rules
+  ```
+- Rules control access for:
+  - Admin users collection
+  - Whitelisted users collection
+  - User data
 
 ### Monitoring and Maintenance
 
@@ -137,98 +204,6 @@ The application will be available at:
 - Backend: http://localhost:3001
 - Firebase Emulator UI: http://localhost:4000
 
-### Deploying to Production
-
-1. Deploy the backend to Cloud Run:
-   ```bash
-   # From project root
-   docker build --platform linux/amd64 -t gcr.io/collegebot-dev/backend -f backend/Dockerfile .
-   docker push gcr.io/collegebot-dev/backend
-   gcloud run deploy backend --image gcr.io/collegebot-dev/backend --platform managed --region us-central1 --project collegebot-dev
-   ```
-
-2. Deploy the frontend to Firebase Hosting:
-   ```bash
-   cd frontend
-   npm run build
-   firebase deploy --only hosting
-   ```
-
-The application will be available at:
-- Frontend: https://collegebot-dev-52f43.web.app
-- Backend: https://backend-859016258149.us-central1.run.app
-
-## Authentication Setup
-
-### Setting up Google Auth
-
-1. Go to Firebase Console > Authentication > Sign-in method
-2. Enable Google authentication
-3. Add authorized domains:
-   - localhost
-   - collegebot-dev-52f43.web.app
-
-### Creating Admin Users
-
-To create an admin user:
-
-1. Make sure you have the Firebase service account credentials:
-   ```bash
-   cd backend
-   source .env  # Load environment variables
-   ```
-
-2. Run the admin creation script:
-   ```bash
-   node scripts/create-admin.js your-email@gmail.com
-   ```
-
-## Managing Firestore Data
-
-### Local Development (Emulator)
-1. Start the Firebase emulators
-2. Open http://localhost:4000/firestore in your browser
-3. Use the Firestore Emulator UI to:
-   - Browse collections and documents
-   - Add/edit/delete data
-   - Run queries
-   - Monitor realtime updates
-
-### Production
-1. Go to https://console.firebase.google.com/project/collegebot-dev/firestore
-2. Click on "Data" in the left sidebar to:
-   - Browse collections and documents
-   - Use the query bar for simple queries
-   - Export/import data
-   - Monitor usage
-
-3. Use "Rules Playground" to:
-   - Test security rules
-   - Simulate user access
-   - Debug permissions
-
-### Data Structure
-
-The application uses the following Firestore collections:
-
-- `users`: User profiles and roles
-  ```javascript
-  {
-    email: string,
-    role: 'admin' | 'user',
-    createdAt: timestamp
-  }
-  ```
-
-- `students`: Student data per user
-  ```javascript
-  {
-    // Student preferences and data
-    createdAt: timestamp,
-    updatedAt: timestamp
-  }
-  ```
-
 ## Environment Setup
 
 The application uses different environment configurations for development and production:
@@ -254,24 +229,6 @@ cd frontend
 NODE_ENV=production npm run dev
 ```
 
-## Environment Variables
-
-### Backend
-- `PORT` - Server port (default: 3001)
-- `NODE_ENV` - Environment (development/production)
-- `LOG_LEVEL` - Winston log level (default: info)
-- `GOOGLE_CLOUD_PROJECT` - GCP project ID for Cloud Logging
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key
-- `CLAUDE_API_KEY` - Anthropic Claude API key
-- `GOOGLE_API_KEY` - Google API key for Maps and Search
-- `GOOGLE_MAPS_API_KEY` - Google Maps API key
-- `GOOGLE_CSE_ID` - Google Custom Search Engine ID
-- `FIREBASE_CREDENTIALS` - Base64 encoded Firebase service account JSON
-
-### Frontend
-- `VITE_API_URL` - Backend API URL
-- `VITE_FIREBASE_*` - Firebase configuration variables
-
 ## Firebase Emulators
 
 The following emulators are configured:
@@ -285,10 +242,11 @@ The following emulators are configured:
 
 1. **Backend build failing**: Make sure you're in the project root when building the Docker image
 2. **Frontend proxy errors**: Check that the backend is running and VITE_API_URL is set correctly
-3. **Firestore permission denied**: Ensure you're authenticated with Firebase (`firebase login`)
+3. **Firestore permission denied**: Ensure security rules are deployed and user has correct permissions
 4. **Docker push failing**: Run `gcloud auth configure-docker` and ensure you're authenticated
 5. **Google Auth not working**: Check authorized domains in Firebase Console
 6. **Admin access denied**: Verify user has admin claims set using create-admin script
+7. **Firestore "NOT_FOUND" error**: Ensure Firestore database is created in Google Cloud Console
 
 ### Useful Commands
 
@@ -306,4 +264,3 @@ The following emulators are configured:
   ```bash
   firebase emulators:start
   # Open http://localhost:4000/firestore
-  ```

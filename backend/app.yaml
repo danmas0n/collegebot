@@ -10,6 +10,7 @@ automatic_scaling:
 
 env_variables:
   NODE_ENV: "production"
+  FIREBASE_CREDENTIALS_FILE: service-account.json
 
 handlers:
 - url: /.*

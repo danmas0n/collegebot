@@ -1,17 +1,17 @@
 {
-  "name": "scripts",
+  "name": "collegebot-scripts",
   "version": "1.0.0",
+  "description": "Scripts for CollegeBot administration",
   "type": "module",
-  "main": "init-admin.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "create-admin": "node create-admin-prod.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "dotenv": "^16.4.7",
-    "firebase": "^10.8.0"
+    "firebase-admin": "^11.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
