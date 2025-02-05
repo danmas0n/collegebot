@@ -29,7 +29,7 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
   - Containerized Node.js service
   - Automatic scaling based on demand
   - Pay-per-use pricing model
-  - URL: https://backend-859016258149.us-central1.run.app
+  - URL: https://backend-75043580028.us-central1.run.app
 
 - **Database**: Firebase Firestore
   - NoSQL document database
@@ -54,9 +54,27 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
 2. **Backend Deployment**:
    ```bash
    # From project root
-   docker build --platform linux/amd64 -t gcr.io/collegebot-dev/backend -f backend/Dockerfile .
-   docker push gcr.io/collegebot-dev/backend
-   gcloud run deploy backend --image gcr.io/collegebot-dev/backend --platform managed --region us-central1 --project collegebot-dev
+   # Build and push the Docker image
+   docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/collegebot-dev-52f43/backend/backend -f backend/Dockerfile .
+   docker push us-central1-docker.pkg.dev/collegebot-dev-52f43/backend/backend
+
+   # Deploy to Cloud Run with environment variables
+   gcloud run deploy backend \
+     --image us-central1-docker.pkg.dev/collegebot-dev-52f43/backend/backend \
+     --platform managed \
+     --region us-central1 \
+     --project collegebot-dev-52f43 \
+     --set-env-vars NODE_ENV=production,FIREBASE_PROJECT_ID=collegebot-dev-52f43,GOOGLE_CLOUD_PROJECT=collegebot-dev-52f43,FIREBASE_CREDENTIALS_FILE=/workspace/backend/service-account.json
+
+   # Configure IAM policy to allow unauthenticated access (required for CORS)
+   cat > policy.yaml << EOL
+   bindings:
+   - members:
+     - allUsers
+     role: roles/run.invoker
+   EOL
+
+   gcloud run services set-iam-policy backend policy.yaml --region us-central1 --project collegebot-dev-52f43
    ```
 
 3. **Database Setup**:
@@ -217,7 +235,7 @@ The application uses different environment configurations for development and pr
 
 - `.env.production` - Production settings
   ```
-  VITE_API_URL=https://backend-859016258149.us-central1.run.app
+  VITE_API_URL=https://backend-75043580028.us-central1.run.app
   ```
 
 ### Testing Production Backend Locally
@@ -247,12 +265,13 @@ The following emulators are configured:
 5. **Google Auth not working**: Check authorized domains in Firebase Console
 6. **Admin access denied**: Verify user has admin claims set using create-admin script
 7. **Firestore "NOT_FOUND" error**: Ensure Firestore database is created in Google Cloud Console
+8. **CORS errors**: Ensure Cloud Run service allows unauthenticated access and CORS is properly configured in backend
 
 ### Useful Commands
 
 - Check backend logs in Cloud Run:
   ```bash
-  gcloud run services logs read backend --project collegebot-dev
+  gcloud run services logs read backend --project collegebot-dev-52f43
   ```
 
 - Check Firebase deployment status:
@@ -264,3 +283,8 @@ The following emulators are configured:
   ```bash
   firebase emulators:start
   # Open http://localhost:4000/firestore
+  ```
+
+- Check Cloud Run IAM policy:
+  ```bash
+  gcloud run services get-iam-policy backend --region us-central1 --project collegebot-dev-52f43

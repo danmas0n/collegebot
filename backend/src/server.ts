@@ -18,12 +18,26 @@ config();
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors({
-  origin: true,
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'https://collegebot-dev-52f43.web.app',
+    'https://collegebot-dev-52f43.firebaseapp.com',
+    'http://localhost:3000'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
   exposedHeaders: ['x-api-key'],
-  allowedHeaders: ['Content-Type', 'x-api-key', 'Authorization']
-}));
+  credentials: true,
+  maxAge: 86400,
+  optionsSuccessStatus: 200,
+  preflightContinue: false
+};
+
+// Apply CORS before any other middleware
+app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
+app.use(cors(corsOptions));
+
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
@@ -42,6 +56,7 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction): 
   console.log('Authentication middleware called');
   console.log('URL:', req.originalUrl);
   console.log('Headers:', req.headers);
+  console.log('Origin:', req.headers.origin);
   
   try {
     const authHeader = req.headers.authorization;

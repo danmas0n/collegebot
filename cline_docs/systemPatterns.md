@@ -7,6 +7,24 @@
 - Custom middleware for route protection
 - Role-based access control (admin vs regular users)
 
+### Cloud Run Deployment
+- Containerized Node.js service
+- Configuration patterns:
+  - Environment variables for service configuration
+  - Service account for Firebase authentication
+  - IAM policy for unauthenticated access
+- CORS Configuration:
+  - Explicit CORS middleware setup
+  - Preflight request handling
+  - Origin whitelisting
+  - Proper header configuration
+  - Credentials support
+- Deployment considerations:
+  - Platform-specific image builds (linux/amd64)
+  - Container registry management
+  - Environment variable management
+  - IAM policy configuration
+
 ### Data Storage
 - Firestore for main data storage
   - Collections:
@@ -37,6 +55,11 @@
 ### API Design
 - RESTful endpoints with Express
 - Protected routes requiring authentication
+- CORS Configuration:
+  - Explicit handling of preflight requests
+  - Origin validation
+  - Proper header configuration
+  - Support for credentials
 - Chat endpoints:
   - GET /api/chat/chats: List student chats
   - POST /api/chat/chats: Save chat
@@ -129,7 +152,16 @@
 - Comprehensive logging for debugging
 
 ### Deployment
-- Firebase hosting
-- Environment-based configuration
-- Continuous development workflow
+- Frontend:
+  - Firebase hosting
+  - Environment-based configuration
+  - Continuous development workflow
+- Backend:
+  - Cloud Run containerized deployment
+  - Docker image management
+  - IAM policy configuration:
+    - Allow unauthenticated access for CORS
+    - Role-based access control
+  - Environment variable management
+  - Service account configuration
 - Service-specific configuration management

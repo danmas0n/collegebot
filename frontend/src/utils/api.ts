@@ -1,5 +1,7 @@
 import { getAuthHeaders } from './auth';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 interface ApiOptions extends RequestInit {
   skipAuth?: boolean;
   stream?: boolean;
@@ -12,7 +14,9 @@ export const api = {
       { 'Content-Type': 'application/json' } : 
       await getAuthHeaders();
 
-    const response = await fetch(endpoint, {
+    const fullUrl = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
+
+    const response = await fetch(fullUrl, {
       ...fetchOptions,
       headers: {
         ...headers,
