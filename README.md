@@ -106,6 +106,9 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
      FIREBASE_CREDENTIALS_FILE=/workspace/backend/service-account.json
      GOOGLE_CLOUD_PROJECT=collegebot-dev-52f43
      CLAUDE_API_KEY=your_claude_api_key
+     CLAUDE_MODEL=claude-3-5-sonnet-20241022
+     GEMINI_API_KEY=your_gemini_api_key
+     GEMINI_MODEL=gemini-2.0-flash
      GOOGLE_MAPS_API_KEY=your_maps_api_key
      ```
 

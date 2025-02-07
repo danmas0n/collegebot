@@ -16,7 +16,9 @@ export class GeminiService {
 
   constructor(apiKey: string) {
     this.client = new GoogleGenerativeAI(apiKey);
-    this.model = this.client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    this.model = this.client.getGenerativeModel({ 
+      model: process.env.GEMINI_MODEL || "gemini-2.0-flash" 
+    });
   }
 
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
