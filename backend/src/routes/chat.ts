@@ -72,6 +72,21 @@ router.post('/chat', async (req: Request, res: Response) => {
     if (!chat.studentId) {
       chat.studentId = studentId;
     }
+
+    // Get existing chat to compare
+    const existingChats = await getChats(studentId);
+    const existingChat = existingChats.find(c => c.id === chat.id);
+
+    // Mark as unprocessed if:
+    // 1. It's a new chat (!existingChat)
+    // 2. The number of messages has changed
+    // 3. The chat was never processed
+    if (!existingChat || 
+        !chat.processed || 
+        (existingChat && existingChat.messages.length !== chat.messages.length)) {
+      chat.processed = false;
+      chat.processedAt = null;
+    }
     
     await saveChat(chat);
     console.log('Backend - Chat saved successfully');
