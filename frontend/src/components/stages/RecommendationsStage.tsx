@@ -48,21 +48,12 @@ export const RecommendationsStage: React.FC = () => {
     if (currentStudent?.id) {
       loadChats().then(loadedChats => {
         if (loadedChats.length === 0) {
-          // Create a new chat if there are none
-          const newChat = createNewChat();
-          setCurrentChat(newChat);
+          // If there are no chats, populate the text field with a default message
+          setCurrentMessage("What are a few colleges and/or scholarships that might be good fits for me?");
         } else {
           // Select the most recent chat
           const mostRecentChat = loadedChats[loadedChats.length - 1];
           setCurrentChat(mostRecentChat);
-          
-          // If this is the initial recommendations chat and it only has one message,
-          // automatically start the conversation
-          if (mostRecentChat.title === 'Initial Recommendations' && 
-              mostRecentChat.messages.length === 1 &&
-              mostRecentChat.messages[0].role === 'user') {
-            handleSendMessage(mostRecentChat.messages[0].content);
-          }
         }
       });
     }
@@ -126,6 +117,14 @@ export const RecommendationsStage: React.FC = () => {
         chat
       });
       console.log('Frontend - Chat saved successfully');
+      
+      // Refresh the chat list to show updated titles
+      const loadedChats = await loadChats();
+      // Keep the current chat selected after refresh
+      const refreshedCurrentChat = loadedChats.find(c => c.id === chat.id);
+      if (refreshedCurrentChat) {
+        setCurrentChat(refreshedCurrentChat);
+      }
     } catch (error) {
       console.error('Frontend - Error saving chat:', error);
       setError(error instanceof Error ? error.message : 'Failed to save chat');

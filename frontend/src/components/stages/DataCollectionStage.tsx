@@ -47,26 +47,6 @@ export const DataCollectionStage: React.FC = () => {
     return (completed / dataSources.length) * 100;
   };
 
-  const createInitialChat = async () => {
-    if (!currentStudent?.id) return;
-    
-    const chat: AiChat = {
-      id: crypto.randomUUID(),
-      title: 'Initial Recommendations',
-      messages: [{
-        role: 'user',
-        content: 'What are a few colleges and/or scholarships that might be good fits for me?',
-        timestamp: new Date().toISOString()
-      }],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      studentId: currentStudent.id,
-      processed: false,
-      processedAt: null
-    };
-    await saveChat(currentStudent.id, chat);
-  };
-
   useEffect(() => {
     const processDataSources = async () => {
       // Start CDS collection
@@ -102,9 +82,6 @@ export const DataCollectionStage: React.FC = () => {
         setDataSources(prev => prev.map(s => 
           s.id === 'scholarships' ? { ...s, status: 'complete' } : s
         ));
-
-        // Create initial chat
-        await createInitialChat();
 
         // Update wizard data with completion status
         updateData({

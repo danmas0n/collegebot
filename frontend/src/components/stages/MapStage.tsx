@@ -84,41 +84,47 @@ export const MapStage = (): JSX.Element => {
   const [processingLogs, setProcessingLogs] = useState<string[]>([]);
   const [showProcessingLogs, setShowProcessingLogs] = useState<boolean>(true);
 
-  // Load map locations
+  // Function to load map locations
+  const loadLocations = async (setLoadingState = true) => {
+    if (!currentStudent?.id) {
+      setLocations([]);
+      return;
+    }
+
+    try {
+      if (setLoadingState) setIsLoading(true);
+      const response = await api.post('/api/students/map-locations/get', {
+        studentId: currentStudent.id
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to load locations: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log('Loaded map locations:', data);
+      setLocations(data);
+    } catch (err) {
+      console.error('Error loading locations:', err);
+      setError('Failed to load locations: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      if (setLoadingState) setIsLoading(false);
+    }
+  };
+
+  // Load map locations on mount and stage change
   const { currentStage } = useWizard();
   useEffect(() => {
-    const loadLocations = async () => {
-      if (!currentStudent?.id || currentStage !== 'map') {
-        setLocations([]);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const response = await api.post('/api/students/map-locations/get', {
-          studentId: currentStudent.id
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(errorData.error || `Failed to load locations: ${response.status}`);
-        }
-        const data = await response.json();
-        setLocations(data);
-      } catch (err) {
-        console.error('Error loading locations:', err);
-        setError('Failed to load locations: ' + (err instanceof Error ? err.message : 'Unknown error'));
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
+    if (currentStage !== 'map') {
+      setLocations([]);
+      return;
+    }
     loadLocations();
   }, [currentStudent?.id, currentStage]);
 
   // Process chats after map is loaded
   useEffect(() => {
     const processChats = async () => {
-      if (!currentStudent?.id || currentStage !== 'map' || isLoading) {
+      if (!currentStudent?.id || currentStage !== 'map' || isLoading || !chats) {
         setIsProcessing(false); // Ensure processing is false when conditions aren't met
         return;
       }
@@ -128,11 +134,19 @@ export const MapStage = (): JSX.Element => {
 
       try {
         // Only set processing if we actually have unprocessed chats
-        const hasUnprocessedChats = chats?.some(chat => !chat.processed);
+        const hasUnprocessedChats = chats.some(chat => !chat.processed);
+        console.log('Checking for unprocessed chats:', { 
+          hasUnprocessedChats, 
+          chats: chats.map(c => ({ id: c.id, processed: c.processed }))
+        });
+        
         if (!hasUnprocessedChats) {
           setIsProcessing(false);
           return;
         }
+
+        // Show processing UI immediately
+        setShowProcessingLogs(true);
 
         setIsProcessing(true);
         
@@ -184,16 +198,8 @@ export const MapStage = (): JSX.Element => {
           }
         }
 
-        // Reload locations after processing
-        const response = await api.post('/api/students/map-locations/get', {
-          studentId: currentStudent.id
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(errorData.error || `Failed to load locations: ${response.status}`);
-        }
-        const data = await response.json();
-        setLocations(data);
+        // After processing is complete, reload locations
+        await loadLocations(false); // Don't set loading state since we're already in a loading state
       } catch (err) {
         console.error('Error processing chats:', err);
         setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -203,7 +209,7 @@ export const MapStage = (): JSX.Element => {
     };
 
     processChats();
-  }, [currentStudent?.id, currentStage, isLoading]);
+  }, [currentStudent?.id, currentStage, isLoading, chats]);
 
   const handleDeleteLocation = async (location: MapLocation) => {
     if (!currentStudent?.id) return;
@@ -494,13 +500,7 @@ export const MapStage = (): JSX.Element => {
 
                     // Reload chats and locations
                     await loadChats(currentStudent.id);
-                    const locationsResponse = await api.post('/api/students/map-locations/get', {
-                      studentId: currentStudent.id
-                    });
-                    if (locationsResponse.ok) {
-                      const data = await locationsResponse.json();
-                      setLocations(data);
-                    }
+                    await loadLocations(false); // Don't set loading state since we're already in a loading state
                   } catch (err) {
                     console.error('Failed to process chats:', err);
                     setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
