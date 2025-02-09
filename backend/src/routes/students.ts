@@ -7,10 +7,26 @@ import {
   getMapLocations,
   addMapLocation,
   deleteMapLocation,
-  clearMapLocations
+  clearMapLocations,
+  getUserEmails
 } from '../services/firestore';
 
 const router = express.Router();
+
+// Get user emails by IDs
+router.post('/user-emails', async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    if (!Array.isArray(userIds)) {
+      return res.status(400).json({ error: 'userIds must be an array' });
+    }
+    const emails = await getUserEmails(userIds);
+    res.json(emails);
+  } catch (error) {
+    console.error('Error getting user emails:', error);
+    res.status(500).json({ error: 'Failed to get user emails' });
+  }
+});
 
 // Debug logging for route registration
 console.log('Registering student routes...');

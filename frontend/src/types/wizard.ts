@@ -12,6 +12,7 @@ export interface Student {
   name: string;
   lastUpdated: string;
   data: WizardData;
+  userId: string;  // The owner of the student
 }
 
 export interface StudentProfile {

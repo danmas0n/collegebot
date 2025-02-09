@@ -13,17 +13,6 @@ export const AdminPanel = ({ onBack }: AdminPanelProps) => {
   const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
 
-  if (!isAdmin) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Paper sx={{ p: 3 }}>
-          <Typography color="error">
-            You do not have permission to access the admin panel.
-          </Typography>
-        </Paper>
-      </Box>
-    );
-  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -36,24 +25,42 @@ export const AdminPanel = ({ onBack }: AdminPanelProps) => {
           Back to App
         </Button>
         <Typography variant="h4">
-          Admin Panel
+          {isAdmin ? "Admin Panel" : "Settings"}
         </Typography>
       </Box>
       
-      <Paper sx={{ mb: 3 }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, newValue) => setActiveTab(newValue)}
-          indicatorColor="primary"
-          textColor="primary"
-        >
-          <Tab label="Whitelist Management" />
-          <Tab label="AI Settings" />
-        </Tabs>
-      </Paper>
+      {isAdmin ? (
+        <>
+          <Paper sx={{ mb: 3 }}>
+            <Tabs
+              value={activeTab}
+              onChange={(_, newValue) => setActiveTab(newValue)}
+              indicatorColor="primary"
+              textColor="primary"
+            >
+              <Tab label="Users & Access" />
+              <Tab label="AI Settings" />
+            </Tabs>
+          </Paper>
 
-      {activeTab === 0 && <WhitelistManager />}
-      {activeTab === 1 && <AISettingsManager />}
+          {activeTab === 0 && <WhitelistManager adminView={true} />}
+          {activeTab === 1 && <AISettingsManager />}
+        </>
+      ) : (
+        <>
+          <Paper sx={{ mb: 3 }}>
+            <Tabs
+              value={0}
+              indicatorColor="primary"
+              textColor="primary"
+            >
+              <Tab label="Family Sharing" />
+            </Tabs>
+          </Paper>
+
+          <WhitelistManager adminView={false} />
+        </>
+      )}
     </Box>
   );
 };

@@ -2,47 +2,74 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is in whitelist
+    // Helper functions
     function isWhitelisted(email) {
       return exists(/databases/$(database)/documents/whitelisted_users/$(email));
     }
 
-    // Helper function to check if user is admin
     function isAdmin(email) {
       return exists(/databases/$(database)/documents/admin_users/$(email));
     }
 
-    // Only authenticated and whitelisted users can access their own data
+    // Users collection
     match /users/{userId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == userId 
+      allow read: if request.auth != null 
         && isWhitelisted(request.auth.token.email);
+      allow write: if request.auth != null 
+        && request.auth.uid == userId
+        && isWhitelisted(request.auth.token.email);
+    }
+
+    // Students collection
+    match /students/{studentId} {
+      allow read, write: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && (
+          request.auth.uid == resource.data.userId ||
+          exists(/databases/$(database)/documents/whitelisted_users/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/whitelisted_users/$(request.auth.token.email)).data.parentUserId == resource.data.userId
+        );
+      allow create: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && request.resource.data.userId == request.auth.uid;
     }
 
     // Admin users collection
     match /admin_users/{email} {
-      // Allow read by the admin themselves
       allow read: if request.auth != null 
         && request.auth.token.email == email;
-      // Allow write by other admins
       allow write: if request.auth != null 
         && isAdmin(request.auth.token.email);
     }
 
     // Whitelisted users collection
     match /whitelisted_users/{email} {
-      // Allow read by authenticated users
       allow read: if request.auth != null;
-      // Allow write by admins
-      allow write: if request.auth != null 
-        && isAdmin(request.auth.token.email);
+      allow write: if request.auth != null && (
+        isAdmin(request.auth.token.email) || (
+          isWhitelisted(request.auth.token.email) &&
+          (
+            // For creating/updating: Ensure parentUserId matches
+            (
+              request.resource.data.parentUserId == request.auth.uid &&
+              // Check if user is already shared by someone else
+              !(exists(/databases/$(database)/documents/whitelisted_users/$(email)) && 
+                get(/databases/$(database)/documents/whitelisted_users/$(email)).data.parentUserId != null &&
+                get(/databases/$(database)/documents/whitelisted_users/$(email)).data.parentUserId != request.auth.uid)
+            ) ||
+            // For deleting: Allow if user is the parent
+            (
+              !request.resource.data.keys().hasAll(['parentUserId']) &&
+              resource.data.parentUserId == request.auth.uid
+            )
+          )
+        )
+      );
     }
 
     // Settings collection (AI settings, etc.)
     match /settings/{document} {
-      // Allow read by authenticated users
       allow read: if request.auth != null;
-      // Allow write by admins only
       allow write: if request.auth != null 
         && isAdmin(request.auth.token.email);
     }

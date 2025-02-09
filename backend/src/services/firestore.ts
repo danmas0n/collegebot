@@ -44,10 +44,25 @@ export const getWhitelistedUsers = async (): Promise<WhitelistedUser[]> => {
   return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ ...doc.data(), email: doc.id } as WhitelistedUser));
 };
 
-export const addWhitelistedUser = async (email: string, createdBy: string): Promise<void> => {
+export const getSharedUsers = async (userId: string): Promise<WhitelistedUser[]> => {
+  const snapshot = await whitelistedUsersRef.where('parentUserId', '==', userId).get();
+  return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ ...doc.data(), email: doc.id } as WhitelistedUser));
+};
+
+export const addWhitelistedUser = async (email: string, userId: string, createdBy: string, parentUserId?: string): Promise<void> => {
+  // Check sharing limit if this is a shared user
+  if (parentUserId) {
+    const sharedUsers = await getSharedUsers(parentUserId);
+    if (sharedUsers.length >= 5) {
+      throw new Error('Maximum number of shared users (5) reached');
+    }
+  }
+
   await whitelistedUsersRef.doc(email).set({
     createdAt: Timestamp.now(),
-    createdBy
+    createdBy,
+    userId,
+    ...(parentUserId && { parentUserId })
   });
 };
 
@@ -55,10 +70,86 @@ export const removeWhitelistedUser = async (email: string): Promise<void> => {
   await whitelistedUsersRef.doc(email).delete();
 };
 
+export const removeSharedAccess = async (email: string, parentUserId: string): Promise<void> => {
+  const doc = await whitelistedUsersRef.doc(email).get();
+  if (!doc.exists || doc.data()?.parentUserId !== parentUserId) {
+    throw new Error('User not found or not shared by you');
+  }
+  await doc.ref.delete();
+};
+
 // Student operations
 export const getStudents = async (userId: string): Promise<Student[]> => {
-  const snapshot = await studentsRef.where('userId', '==', userId).get();
-  return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Student));
+  // Get all users in the family group (including the current user)
+  const familyUsers = new Set<string>([userId]);
+  
+  // Get users who were invited by this user
+  const invitedSnapshot = await whitelistedUsersRef
+    .where('parentUserId', '==', userId)
+    .get();
+  invitedSnapshot.forEach(doc => {
+    const invitedUserId = doc.data().userId;
+    if (invitedUserId) familyUsers.add(invitedUserId);
+  });
+
+  // Get the user who invited this user (if any)
+  const userDoc = await whitelistedUsersRef.doc(userId).get();
+  if (userDoc.exists) {
+    const parentId = userDoc.data()?.parentUserId;
+    if (parentId) {
+      familyUsers.add(parentId);
+      // Also get other users invited by the same parent
+      const siblingsSnapshot = await whitelistedUsersRef
+        .where('parentUserId', '==', parentId)
+        .get();
+      siblingsSnapshot.forEach(doc => {
+        const siblingUserId = doc.data().userId;
+        if (siblingUserId) familyUsers.add(siblingUserId);
+      });
+    }
+  }
+
+  // Get all students owned by any user in the family group
+  const studentsPromises = Array.from(familyUsers).map(async familyUserId => {
+    const snapshot = await studentsRef.where('userId', '==', familyUserId).get();
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Student));
+  });
+
+  const allStudents = await Promise.all(studentsPromises);
+  return allStudents.flat();
+};
+
+// Helper function to get all users in a family group
+const getFamilyGroupUsers = async (userId: string): Promise<Set<string>> => {
+  const familyUsers = new Set<string>([userId]);
+  
+  // Get users who were invited by this user
+  const invitedSnapshot = await whitelistedUsersRef
+    .where('parentUserId', '==', userId)
+    .get();
+  invitedSnapshot.forEach(doc => {
+    const invitedUserId = doc.data().userId;
+    if (invitedUserId) familyUsers.add(invitedUserId);
+  });
+
+  // Get the user who invited this user (if any)
+  const userDoc = await whitelistedUsersRef.doc(userId).get();
+  if (userDoc.exists) {
+    const parentId = userDoc.data()?.parentUserId;
+    if (parentId) {
+      familyUsers.add(parentId);
+      // Also get other users invited by the same parent
+      const siblingsSnapshot = await whitelistedUsersRef
+        .where('parentUserId', '==', parentId)
+        .get();
+      siblingsSnapshot.forEach(doc => {
+        const siblingUserId = doc.data().userId;
+        if (siblingUserId) familyUsers.add(siblingUserId);
+      });
+    }
+  }
+
+  return familyUsers;
 };
 
 export const getStudent = async (id: string, userId: string): Promise<Student | null> => {
@@ -66,12 +157,24 @@ export const getStudent = async (id: string, userId: string): Promise<Student | 
     console.error('Invalid student ID:', id);
     return null;
   }
+
   const doc = await studentsRef.doc(id).get();
-  if (!doc.exists || doc.data()?.userId !== userId) {
-    console.error('Student not found or unauthorized:', { id, userId, exists: doc.exists, docUserId: doc.data()?.userId });
+  if (!doc.exists) {
+    console.error('Student not found:', { id });
     return null;
   }
-  return { ...doc.data(), id: doc.id } as Student;
+
+  const studentData = doc.data();
+  const studentUserId = studentData?.userId;
+
+  // Check if student belongs to anyone in the family group
+  const familyUsers = await getFamilyGroupUsers(userId);
+  if (familyUsers.has(studentUserId)) {
+    return { ...studentData, id: doc.id } as Student;
+  }
+
+  console.error('Unauthorized access:', { id, userId, studentUserId });
+  return null;
 };
 
 export const saveStudent = async (student: Omit<Student, 'createdAt' | 'updatedAt'>, userId: string): Promise<void> => {
@@ -79,9 +182,20 @@ export const saveStudent = async (student: Omit<Student, 'createdAt' | 'updatedA
   const doc = studentsRef.doc(student.id);
   const exists = (await doc.get()).exists;
 
+  if (exists) {
+    const studentData = (await doc.get()).data();
+    const studentUserId = studentData?.userId;
+
+    // Check if student belongs to anyone in the family group
+    const familyUsers = await getFamilyGroupUsers(userId);
+    if (!familyUsers.has(studentUserId)) {
+      throw new Error('Unauthorized to modify this student');
+    }
+  }
+
   await doc.set({
     ...student,
-    userId,
+    userId: exists ? (await doc.get()).data()?.userId : userId, // Preserve original owner
     createdAt: exists ? (await doc.get()).data()?.createdAt : now,
     updatedAt: now
   });
@@ -89,8 +203,16 @@ export const saveStudent = async (student: Omit<Student, 'createdAt' | 'updatedA
 
 export const deleteStudent = async (id: string, userId: string): Promise<void> => {
   const doc = await studentsRef.doc(id).get();
-  if (!doc.exists || doc.data()?.userId !== userId) return;
-  await doc.ref.delete();
+  if (!doc.exists) return;
+
+  const studentData = doc.data();
+  const studentUserId = studentData?.userId;
+
+  // Check if student belongs to anyone in the family group
+  const familyUsers = await getFamilyGroupUsers(userId);
+  if (familyUsers.has(studentUserId)) {
+    await doc.ref.delete();
+  }
 };
 
 // Conversion functions
@@ -230,6 +352,29 @@ export const clearMapLocations = async (studentId: string, userId: string): Prom
     batch.delete(doc.ref);
   });
   await batch.commit();
+};
+
+// User operations
+export const getUserEmails = async (userIds: string[]): Promise<Record<string, string>> => {
+  const emailMap: Record<string, string> = {};
+  
+  // Get all users in batches of 10 (Firestore limit)
+  for (let i = 0; i < userIds.length; i += 10) {
+    const batch = userIds.slice(i, i + 10);
+    const snapshot = await db.collection('users')
+      .where('uid', 'in', batch)
+      .select('email')
+      .get();
+      
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.email) {
+        emailMap[doc.id] = data.email;
+      }
+    });
+  }
+  
+  return emailMap;
 };
 
 // Admin operations

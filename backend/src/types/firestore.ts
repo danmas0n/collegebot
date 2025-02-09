@@ -4,6 +4,8 @@ export interface WhitelistedUser {
   email: string;
   createdAt: Timestamp | null;
   createdBy: string;
+  userId: string;  // The Firebase auth UID of this user
+  parentUserId?: string;  // The user who shared access
 }
 
 export interface Student {

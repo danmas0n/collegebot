@@ -7,7 +7,7 @@ import {
   Box,
   Button,
 } from '@mui/material';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -74,14 +74,14 @@ const AppContent: React.FC = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             CollegeBot
           </Typography>
-          {isAdmin && !showAdmin && (
+          {!showAdmin && (
             <Button
               color="inherit"
-              startIcon={<AdminPanelSettingsIcon />}
+              startIcon={<SettingsIcon />}
               onClick={() => setShowAdmin(true)}
               sx={{ mr: 2 }}
             >
-              Admin
+              {isAdmin ? "Admin" : "Settings"}
             </Button>
           )}
           <Login />

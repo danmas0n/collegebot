@@ -2,8 +2,103 @@ import express, { Request, Response } from 'express';
 import { db } from '../config/firebase.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import { AISettings } from '../types/firestore.js';
+import { 
+  addWhitelistedUser, 
+  removeWhitelistedUser, 
+  getWhitelistedUsers,
+  getSharedUsers,
+  removeSharedAccess,
+  addAdmin, 
+  isAdmin 
+} from '../services/firestore';
 
 const router = express.Router();
+
+// User Management Routes
+
+// Get all whitelisted users
+router.get('/whitelisted-users', async (req: Request, res: Response) => {
+  try {
+    const users = await getWhitelistedUsers();
+    res.json(users);
+  } catch (error) {
+    console.error('Error getting whitelisted users:', error);
+    res.status(500).json({ error: 'Failed to get whitelisted users' });
+  }
+});
+
+// Add a user to whitelist
+router.post('/whitelist', async (req: Request, res: Response) => {
+  try {
+    const { email, userId } = req.body;
+    if (!email || !userId) {
+      return res.status(400).json({ error: 'Email and userId are required' });
+    }
+    // @ts-ignore - user is added by middleware
+    await addWhitelistedUser(email, userId, req.user.email);
+    res.json({ message: 'User whitelisted successfully' });
+  } catch (error) {
+    console.error('Error whitelisting user:', error);
+    res.status(500).json({ error: 'Failed to whitelist user' });
+  }
+});
+
+// Remove a user from whitelist
+router.delete('/whitelist/:email', async (req: Request, res: Response) => {
+  try {
+    await removeWhitelistedUser(req.params.email);
+    res.json({ message: 'User removed from whitelist successfully' });
+  } catch (error) {
+    console.error('Error removing user from whitelist:', error);
+    res.status(500).json({ error: 'Failed to remove user from whitelist' });
+  }
+});
+
+// Get shared users for the current user
+router.get('/shared-users', async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore - user is added by middleware
+    const users = await getSharedUsers(req.user.uid);
+    res.json(users);
+  } catch (error) {
+    console.error('Error getting shared users:', error);
+    res.status(500).json({ error: 'Failed to get shared users' });
+  }
+});
+
+// Share access with a user
+router.post('/share', async (req: Request, res: Response) => {
+  try {
+    const { email, userId } = req.body;
+    if (!email || !userId) {
+      return res.status(400).json({ error: 'Email and userId are required' });
+    }
+    // @ts-ignore - user is added by middleware
+    await addWhitelistedUser(email, userId, req.user.email, req.user.uid);
+    res.json({ message: 'Access shared successfully' });
+  } catch (error) {
+    console.error('Error sharing access:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to share access'
+    });
+  }
+});
+
+// Remove shared access
+router.delete('/share/:email', async (req: Request, res: Response) => {
+  try {
+    // @ts-ignore - user is added by middleware
+    await removeSharedAccess(req.params.email, req.user.uid);
+    res.json({ message: 'Shared access removed successfully' });
+  } catch (error) {
+    console.error('Error removing shared access:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to remove shared access'
+    });
+  }
+});
+
+// AI Settings Routes
 
 // Get current AI settings
 router.get('/ai-settings', async (req: Request, res: Response) => {

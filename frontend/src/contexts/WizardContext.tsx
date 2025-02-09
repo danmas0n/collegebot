@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { WizardStage, WizardData, WizardContextType, Student } from '../types/wizard';
 import { api } from '../utils/api';
+import { useAuth } from './AuthContext';
 
 const stages: WizardStage[] = [
   'student-selection',
@@ -29,6 +30,7 @@ export const useWizard = () => {
 };
 
 export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser } = useAuth();
   const [currentStage, setCurrentStage] = useState<WizardStage>('student-selection');
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -123,11 +125,16 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [findFirstIncompleteStage]);
 
   const createStudent = useCallback(async (name: string) => {
+    if (!currentUser) {
+      throw new Error('Must be logged in to create a student');
+    }
+
     const newStudent: Student = {
       id: crypto.randomUUID(),
       name,
       lastUpdated: new Date().toISOString(),
-      data: initialData
+      data: initialData,
+      userId: currentUser.uid
     };
 
     try {
@@ -140,7 +147,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.error('Error creating student:', error);
       throw error; // Re-throw to be handled by the UI
     }
-  }, [selectStudent]);
+  }, [selectStudent, currentUser]);
 
   const deleteStudent = useCallback(async (id: string) => {
     try {
