@@ -112,6 +112,45 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
      GOOGLE_MAPS_API_KEY=your_maps_api_key
      ```
 
+### AI Service Configuration
+
+The application supports both Claude and Gemini AI services. AI settings are managed through the admin panel and stored in Firestore:
+
+1. **Settings Management**:
+   - Access the admin panel through the app
+   - Navigate to "AI Settings" tab
+   - Configure:
+     - Service type (Claude/Gemini)
+     - Model name
+     - API keys
+
+2. **Environment Variables**:
+   - Environment variables serve as fallbacks if Firestore settings are not available
+   - Required variables in `.env` or Cloud Run:
+     ```
+     AI_SERVICE_TYPE=claude # or gemini
+     CLAUDE_MODEL=claude-3-5-sonnet-20241022
+     CLAUDE_API_KEY=your_claude_api_key_here
+     GEMINI_MODEL=gemini-2.0-flash
+     GEMINI_API_KEY=your_gemini_api_key_here
+     ```
+
+3. **Firestore Settings**:
+   - Collection: `settings`
+   - Document: `ai`
+   - Fields:
+     ```typescript
+     {
+       id: string;
+       serviceType: 'claude' | 'gemini';
+       model: string;
+       claudeApiKey?: string;
+       geminiApiKey?: string;
+       updatedAt: Timestamp;
+       updatedBy: string;
+     }
+     ```
+
 ### Authentication Setup
 
 1. Go to Firebase Console > Authentication > Sign-in method

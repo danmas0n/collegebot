@@ -3,6 +3,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { WhitelistManager } from './WhitelistManager';
+import { AISettingsManager } from './AISettingsManager';
 
 interface AdminPanelProps {
   onBack: () => void;
@@ -47,11 +48,12 @@ export const AdminPanel = ({ onBack }: AdminPanelProps) => {
           textColor="primary"
         >
           <Tab label="Whitelist Management" />
-          {/* Add more tabs here as needed */}
+          <Tab label="AI Settings" />
         </Tabs>
       </Paper>
 
       {activeTab === 0 && <WhitelistManager />}
+      {activeTab === 1 && <AISettingsManager />}
     </Box>
   );
-}; 
+};

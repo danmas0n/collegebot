@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { findCompleteTagContent } from '../utils/helpers.js';
 import { executeMcpTool } from './mcp.js';
 import { toolServerMap } from '../config/mcp-tools.js';
+import { settingsService } from './settings.js';
 
 interface Message {
   role: 'user' | 'assistant' | 'answer' | 'question';
@@ -16,9 +17,14 @@ export class GeminiService {
 
   constructor(apiKey: string) {
     this.client = new GoogleGenerativeAI(apiKey);
-    this.model = this.client.getGenerativeModel({ 
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash" 
-    });
+  }
+
+  private async initModel() {
+    if (!this.model) {
+      const model = await settingsService.getCurrentModel();
+      this.model = this.client.getGenerativeModel({ model });
+    }
+    return this.model;
   }
 
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
@@ -72,7 +78,8 @@ export class GeminiService {
       });
 
       // Start chat and generate response
-      const chat = this.model.startChat({ history });
+      const model = await this.initModel();
+      const chat = model.startChat({ history });
       const result = await chat.sendMessageStream(
         messages[messages.length - 1]?.content || 'Hello'
       );

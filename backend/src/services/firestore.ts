@@ -3,12 +3,12 @@ import { WhitelistedUser, Student, Chat, ChatDTO, MapLocation, AdminUser } from 
 import { Timestamp, DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // Collection references
-const whitelistedUsersRef = db.collection('whitelisted-users');
+const whitelistedUsersRef = db.collection('whitelisted_users');
 const studentsRef = db.collection('students');
 const chatsRef = db.collection('chats');
 const mapLocationsRef = db.collection('map_locations');
-const adminUsersRef = db.collection('admin-users');
-const userChatsRef = db.collection('user-chats');
+const adminUsersRef = db.collection('admin_users');
+const userChatsRef = db.collection('user_chats');
 
 // Thread types
 export interface ChatThread {
@@ -233,13 +233,13 @@ export const clearMapLocations = async (studentId: string, userId: string): Prom
 };
 
 // Admin operations
-export const isAdmin = async (uid: string): Promise<boolean> => {
-  const doc = await adminUsersRef.doc(uid).get();
+export const isAdmin = async (email: string): Promise<boolean> => {
+  const doc = await adminUsersRef.doc(email).get();
   return doc.exists;
 };
 
-export const addAdmin = async (email: string, uid: string): Promise<void> => {
-  await adminUsersRef.doc(uid).set({
+export const addAdmin = async (email: string): Promise<void> => {
+  await adminUsersRef.doc(email).set({
     email,
     role: 'admin',
     createdAt: Timestamp.now()

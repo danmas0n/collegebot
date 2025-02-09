@@ -15,28 +15,11 @@ router.post('/message', async (req: Request, res: Response) => {
   try {
     const { message, studentData, studentName, history } = req.body;
     
-    // Get service type and API key
-    const serviceType = process.env.AI_SERVICE_TYPE || 'claude';
-    let apiKey;
-    
-    if (serviceType === 'claude') {
-      apiKey = process.env.CLAUDE_API_KEY || 
-               (Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key']) || 
-               (Array.isArray(req.headers['x-claude-api-key']) ? req.headers['x-claude-api-key'][0] : req.headers['x-claude-api-key']);
-    } else if (serviceType === 'gemini') {
-      apiKey = process.env.GEMINI_API_KEY || 
-               (Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key']);
-    }
-
-    if (!apiKey) {
-      throw new Error('API key not found for service: ' + serviceType);
-    }
-
     // Generate base prompt
     const systemPrompt = await getBasePrompt(studentName, studentData);
 
-    // Process message with selected service
-    const aiService = AIServiceFactory.createService(serviceType, apiKey, req.user.uid);
+    // Process message with service
+    const aiService = await AIServiceFactory.createService(req.user.uid);
     await aiService.processStream(history, systemPrompt, sendSSE);
     // Send complete event
     sendSSE({ type: 'complete' });
@@ -156,23 +139,6 @@ router.post('/process-all', async (req: Request, res: Response) => {
   try {
     const { studentId } = req.body;
     
-    // Get service type and API key
-    const serviceType = process.env.AI_SERVICE_TYPE || 'claude';
-    let apiKey;
-    
-    if (serviceType === 'claude') {
-      apiKey = process.env.CLAUDE_API_KEY || 
-               (Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key']) || 
-               (Array.isArray(req.headers['x-claude-api-key']) ? req.headers['x-claude-api-key'][0] : req.headers['x-claude-api-key']);
-    } else if (serviceType === 'gemini') {
-      apiKey = process.env.GEMINI_API_KEY || 
-               (Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key']);
-    }
-
-    if (!apiKey) {
-      throw new Error('API key not found for service: ' + serviceType);
-    }
-
     // Get student data
     const student = await getStudent(studentId, req.user.uid);
     if (!student) {
@@ -199,7 +165,7 @@ router.post('/process-all', async (req: Request, res: Response) => {
     const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
 
     // Process each chat
-    const aiService = AIServiceFactory.createService(serviceType, apiKey, req.user.uid);
+    const aiService = await AIServiceFactory.createService(req.user.uid);
     let processed = 0;
 
     for (const chat of unprocessedChats) {
@@ -250,24 +216,6 @@ router.post('/analyze', async (req: Request, res: Response) => {
     const { studentId, chatId, mode } = req.body;
     console.log('Backend - Analysis request:', { studentId, chatId, mode });
     
-    // Get service type and API key
-    const serviceType = process.env.AI_SERVICE_TYPE || 'claude';
-    let apiKey;
-    
-    if (serviceType === 'claude') {
-      apiKey = process.env.CLAUDE_API_KEY || 
-               (Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key']) || 
-               (Array.isArray(req.headers['x-claude-api-key']) ? req.headers['x-claude-api-key'][0] : req.headers['x-claude-api-key']);
-    } else if (serviceType === 'gemini') {
-      apiKey = process.env.GEMINI_API_KEY || 
-               (Array.isArray(req.headers['x-api-key']) ? req.headers['x-api-key'][0] : req.headers['x-api-key']);
-    }
-
-    if (!apiKey) {
-      console.error('Backend - Missing API key');
-      throw new Error('API key not found for service: ' + serviceType);
-    }
-
     // Get the chat content
     console.log('Backend - Fetching chat content');
     const chats = await getChats(studentId);
@@ -287,8 +235,8 @@ router.post('/analyze', async (req: Request, res: Response) => {
     console.log('Backend - Generating system prompt');
     const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
 
-    // Process chat with selected service
-    const aiService = AIServiceFactory.createService(serviceType, apiKey, req.user.uid);
+    // Process chat with service
+    const aiService = await AIServiceFactory.createService(req.user.uid);
     await aiService.analyzeChatHistory(chat, systemPrompt, sendSSE);
     sendSSE({ type: 'complete' });
 

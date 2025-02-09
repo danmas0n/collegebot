@@ -122,3 +122,15 @@ export interface AdminUser {
   role: 'admin';
   createdAt: Timestamp;
 }
+
+export interface AISettings {
+  id: string;
+  serviceType: 'claude' | 'gemini';
+  model: string;
+  claudeModel?: string;
+  geminiModel?: string;
+  claudeApiKey?: string;
+  geminiApiKey?: string;
+  updatedAt: Timestamp;
+  updatedBy: string;
+}

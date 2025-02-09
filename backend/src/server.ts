@@ -11,6 +11,7 @@ import chatRouter from './routes/chat.js';
 import studentsRouter from './routes/students.js';
 import collegesRouter from './routes/colleges.js';
 import studentDataRouter from './routes/student-data.js';
+import adminRouter from './routes/admin.js';
 
 // Load environment variables
 config();
@@ -95,7 +96,8 @@ const adminMiddleware = async (req: Request, res: Response, next: NextFunction):
       return;
     }
 
-    if (!req.user.isAdmin) {
+    const userIsAdmin = await isAdmin(req.user.email);
+    if (!userIsAdmin) {
       console.log('Not authorized');
       res.status(403).json({ error: 'Not authorized' });
       return;
@@ -119,6 +121,7 @@ app.use('/api/chat', authMiddleware, chatRouter);
 app.use('/api/students', authMiddleware, studentsRouter);
 app.use('/api/colleges', authMiddleware, collegesRouter);
 app.use('/api/student-data', authMiddleware, studentDataRouter);
+app.use('/api/admin', authMiddleware, adminMiddleware, adminRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

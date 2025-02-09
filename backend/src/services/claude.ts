@@ -2,6 +2,7 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { findCompleteTagContent } from '../utils/helpers.js';
 import { executeMcpTool } from './mcp.js';
 import { toolServerMap } from '../config/mcp-tools.js';
+import { settingsService } from './settings.js';
 
 interface Message {
   role: 'user' | 'assistant' | 'answer' | 'question';
@@ -72,8 +73,9 @@ export class ClaudeService {
         totalLength: systemPrompt.length
       });
 
+      const model = await settingsService.getCurrentModel();
       const stream = await this.client.messages.stream({
-        model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
+        model,
         max_tokens: 4096,
         messages: claudeMessages,
         system: systemPrompt,
