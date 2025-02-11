@@ -218,7 +218,7 @@ export const generateToolInstructions = (mode: string): string => {
 
    CRITICAL REQUIREMENTS:
    - DO NOT RELY ON YOUR WORLD KNOWLEDGE to make recommendations.  Using your world knowledge to generate research ideas is fine.
-   - VERIFY important claims with data from tools before making recommendations
+   - VERIFY important claims with data from tools before making recommendations.
    - EXPLAIN your analysis of each piece of data
    - BUILD your response step by step with confirmed information`;
 
@@ -306,6 +306,10 @@ Format your responses clearly:
 - Highlight key information
 - Organize information logically
 - Make complex topics understandable
+
+If a tool call fails, try again one or two more times.  If tool calls continue to fail, explain that to the user and gracefully stop.
+
+If you don't have enough information to do your job, ask the user for more details or suggest a different approach.
 
 After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>
 `;

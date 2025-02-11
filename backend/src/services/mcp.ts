@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from 'axios';
 import { addMapLocation, getMapLocations, deleteMapLocation, clearMapLocations } from './firestore.js';
+import { settingsService } from './settings.js';
 
 // Helper function to create MCP client
 export const createMcpClient = async (serverName: string) => {
@@ -11,15 +12,19 @@ export const createMcpClient = async (serverName: string) => {
   let command: string, args: string[];
   
   switch (serverName) {
-    case 'college-data':
+    case 'college-data': {
       command = 'node';
       args = ['../mcp/college-data-server/build/index.js'];
+      const geminiConfig = await settingsService.getGeminiConfig();
       env = {
         ...env,
         GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || '',
-        GOOGLE_CSE_ID: process.env.GOOGLE_CSE_ID || ''
+        GOOGLE_CSE_ID: process.env.GOOGLE_CSE_ID || '',
+        GEMINI_API_KEY: geminiConfig.apiKey,
+        GEMINI_MODEL: geminiConfig.model
       };
       break;
+    }
     case 'fetch':
       command = 'uvx';
       args = ['--with','mcp==1.1.2','mcp-server-fetch'];

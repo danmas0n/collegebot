@@ -9,44 +9,103 @@ import {
   ReadResourceRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import PDFParser from 'pdf2json';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-// Google Custom Search configuration
+import axios from 'axios';
+import { GeminiService } from './services/gemini.js';
+
+// Google API configuration
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
+const GOOGLE_SEARCH_API = 'https://www.googleapis.com/customsearch/v1';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 if (!GOOGLE_API_KEY || !GOOGLE_CSE_ID) {
-  throw new Error('Google API key and Custom Search Engine ID are required');
+  throw new Error('GOOGLE_API_KEY and GOOGLE_CSE_ID environment variables are required');
 }
 
-const GOOGLE_SEARCH_API = 'https://www.googleapis.com/customsearch/v1';
+if (!GEMINI_API_KEY) {
+  throw new Error('GEMINI_API_KEY environment variable is required');
+}
+
+console.error('Using Gemini model:', GEMINI_MODEL);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORAGE_DIR = path.join(__dirname, '..', 'storage');
+const CACHE_DIR = path.join(__dirname, '..', 'cache');
+
+// Ensure cache directory exists
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
 
 interface CollegeData {
   name: string;
-  url: string;
-  cdsUrl?: string;
-  description?: string;
-  dataPoints?: Record<string, any>;
-  storedFile?: string;
-  lastUpdated?: string;
+  years: { [year: string]: { 
+    filename: string;
+    format: 'pdf' | 'xlsx';
+  }}; 
 }
+
+interface CDSData {
+  admissions?: string[];
+  expenses?: string[];
+  financialAid?: string[];
+  rawData?: any;
+  [key: string]: any; // Allow string indexing
+}
+
+interface ParsedCDSData extends CDSData {
+  metadata: {
+    collegeName: string;
+    year: string;
+    format: 'pdf' | 'xlsx';
+    lastUpdated: string;
+  };
+}
+
+function getCacheFilePath(collegeName: string, year: string): string {
+  return path.join(CACHE_DIR, `${collegeName.replace(/\s+/g, '_')}_${year}.json`);
+}
+
+function checkCache(collegeName: string, year: string): ParsedCDSData | null {
+  const cacheFile = getCacheFilePath(collegeName, year);
+  if (fs.existsSync(cacheFile)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+      return cached;
+    } catch (error) {
+      console.error('Error reading cache:', error);
+      return null;
+    }
+  }
+  return null;
+}
+
+function saveToCache(data: ParsedCDSData): void {
+  const cacheFile = getCacheFilePath(data.metadata.collegeName, data.metadata.year);
+  try {
+    fs.writeFileSync(cacheFile, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Error saving to cache:', error);
+  }
+}
+
 
 class CollegeDataServer {
   private server: Server;
-  private colleges: Map<string, CollegeData> = new Map();
+  private collegeMap: Map<string, CollegeData> = new Map();
 
   constructor() {
     // Ensure storage directory exists
     if (!fs.existsSync(STORAGE_DIR)) {
       fs.mkdirSync(STORAGE_DIR, { recursive: true });
     }
+
+    // Initialize college map from storage directory
+    this.initializeCollegeMap();
 
     this.server = new Server(
       {
@@ -58,25 +117,20 @@ class CollegeDataServer {
           resources: {},
           tools: {
             search_college_data: {
-              description: 'Search for college data sources and information',
+              description: 'Search for available college data',
               inputSchema: {
                 type: 'object',
                 properties: {
                   query: {
                     type: 'string',
                     description: 'Search query for college data'
-                  },
-                  includeWebSearch: {
-                    type: 'boolean',
-                    description: 'Whether to include web search results',
-                    default: true
                   }
                 },
                 required: ['query']
               }
             },
             get_cds_data: {
-              description: 'Get Common Data Set information and full content for a specific college',
+              description: 'Get Common Data Set information for a specific college and year',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -97,41 +151,7 @@ class CollegeDataServer {
       }
     );
 
-    // Set up tool handlers
     this.setupToolHandlers();
-
-    // Set up resource handlers
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      return {
-        resources: [
-          {
-            uri: "college://search",
-            name: "College Search",
-            description: "Search for colleges and their Common Data Set information"
-          }
-        ]
-      };
-    });
-
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      if (request.params.uri === "college://search") {
-        const results = await this.handleSearchCollegeData({
-          query: request.params.query || "",
-          includeWebSearch: true
-        });
-        return {
-          contents: [
-            {
-              uri: "college://search",
-              mimeType: "application/json",
-              text: JSON.stringify(results, null, 2)
-            }
-          ]
-        };
-      } else {
-        throw new McpError(ErrorCode.InvalidRequest, "Resource not found");
-      }
-    });
     
     this.server.onerror = (error) => console.error('[MCP Error]', error);
     process.on('SIGINT', async () => {
@@ -140,31 +160,57 @@ class CollegeDataServer {
     });
   }
 
+  private initializeCollegeMap() {
+    const files = fs.readdirSync(STORAGE_DIR);
+    
+    for (const file of files) {
+      // Support both xlsx and pdf files
+      if (!file.endsWith('.xlsx') && !file.endsWith('.pdf')) continue;
+
+      // Parse filename to get college name and year
+      // Format: College_Name_YYYY-YY.(xlsx|pdf)
+      const match = file.match(/(.+)_(\d{4}-\d{2})\.(xlsx|pdf)$/);
+      if (!match) continue;
+
+      const [_, collegeName, year, ext] = match;
+      const normalizedName = collegeName.replace(/_/g, ' ');
+      
+      const collegeData = this.collegeMap.get(normalizedName) || {
+        name: normalizedName,
+        years: {}
+      };
+      
+      collegeData.years[year] = {
+        filename: file,
+        format: ext as 'pdf' | 'xlsx'
+      };
+      
+      this.collegeMap.set(normalizedName, collegeData);
+    }
+
+    console.error('Initialized college map with', this.collegeMap.size, 'colleges');
+  }
+
   private setupToolHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'search_college_data',
-          description: 'Search for college data sources and information',
+          description: 'Search for available college data',
           inputSchema: {
             type: 'object',
             properties: {
               query: {
                 type: 'string',
                 description: 'Search query for college data',
-              },
-              includeWebSearch: {
-                type: 'boolean',
-                description: 'Whether to include web search results',
-                default: true,
-              },
+              }
             },
             required: ['query'],
           },
         },
         {
           name: 'get_cds_data',
-          description: 'Get Common Data Set information and full content for a specific college',
+          description: 'Get Common Data Set information for a specific college and year',
           inputSchema: {
             type: 'object',
             properties: {
@@ -209,80 +255,6 @@ class CollegeDataServer {
     });
   }
 
-  private async downloadAndStoreCDS(college: CollegeData): Promise<string | null> {
-    try {
-      const response = await axios.get(college.url, {
-        responseType: 'arraybuffer',
-      });
-
-      const contentType = response.headers['content-type'];
-      const isHTML = contentType?.includes('text/html');
-      const isPDF = contentType?.includes('application/pdf');
-
-      if (!isHTML && !isPDF) {
-        console.error('Unsupported content type:', contentType);
-        return null;
-      }
-
-      const filename = path.join(
-        STORAGE_DIR,
-        `${college.name.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${isHTML ? 'html' : 'pdf'}`
-      );
-
-      fs.writeFileSync(filename, response.data);
-      return filename;
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error('Error downloading CDS:', error.message.slice(0, 1000));
-      } else {
-        console.error('Error downloading CDS:', String(error).slice(0, 1000));
-      }
-      return null;
-    }
-  }
-
-  private async searchCDSFiles(query: string): Promise<CollegeData[]> {
-    try {
-      const searchResponse = await axios.get(GOOGLE_SEARCH_API, {
-        params: {
-          key: GOOGLE_API_KEY,
-          cx: GOOGLE_CSE_ID,
-          q: `${query} site:.edu "Common Data Set" filetype:pdf`,
-          num: 10
-        }
-      });
-
-      const results: CollegeData[] = [];
-      if (searchResponse.data.items) {
-        for (const item of searchResponse.data.items) {
-          if (item.title && item.link) {
-            const collegeData: CollegeData = {
-              name: item.title,
-              url: item.link,
-              description: item.snippet || '',
-              lastUpdated: new Date().toISOString()
-            };
-
-            const storedFile = await this.downloadAndStoreCDS(collegeData);
-            if (storedFile) {
-              collegeData.storedFile = storedFile;
-            }
-
-            results.push(collegeData);
-            this.colleges.set(item.title, collegeData);
-          }
-        }
-      }
-      return results;
-    } catch (error) {
-      console.error('Google Custom Search error:', error);
-      if (error instanceof Error) {
-        throw new McpError(ErrorCode.InternalError, `CDS search failed: ${error.message}`);
-      }
-      return [];
-    }
-  }
-
   private async handleSearchCollegeData(args: any) {
     console.error('MCP Server - Handling search request with args:', JSON.stringify(args, null, 2));
     if (!args.query || typeof args.query !== 'string') {
@@ -306,7 +278,6 @@ class CollegeDataServer {
         description: item.snippet || '',
         source: new URL(item.link).hostname
       })) || [];
-
       return {
         content: [
           {
@@ -342,110 +313,8 @@ class CollegeDataServer {
       throw new McpError(ErrorCode.InvalidParams, 'Invalid college name parameter');
     }
 
-    // First try to find college in memory
-    let college = this.colleges.get(args.collegeName);
-    
-    // If not in memory, try to find existing stored file
+    const college = this.collegeMap.get(args.collegeName);
     if (!college) {
-      const files = fs.readdirSync(STORAGE_DIR);
-      const collegeFilePattern = new RegExp(`^${args.collegeName.replace(/[^a-zA-Z0-9]/g, '_')}_\\d+\\.(pdf|html)$`);
-      const matchingFiles = files.filter(f => collegeFilePattern.test(f));
-      
-      if (matchingFiles.length > 0) {
-        // Use most recent file based on timestamp in filename
-        const mostRecentFile = matchingFiles.sort().pop()!;
-        college = {
-          name: args.collegeName,
-          url: '', // URL not available for restored entries
-          storedFile: path.join(STORAGE_DIR, mostRecentFile),
-          lastUpdated: new Date().toISOString()
-        };
-        this.colleges.set(args.collegeName, college);
-      } else {
-        // If no stored file, try to search for new CDS files
-        const results = await this.searchCDSFiles(args.collegeName);
-        if (results.length === 0) {
-          throw new McpError(
-            ErrorCode.InvalidRequest,
-            `No CDS data found for college: ${args.collegeName}`
-          );
-        }
-        college = results[0]; // Use the first result
-      }
-    }
-
-    try {
-      let content: Buffer;
-      if (college.storedFile) {
-        content = fs.readFileSync(college.storedFile);
-      } else {
-        const response = await axios.get(college.url, {
-          responseType: 'arraybuffer',
-        });
-        content = Buffer.from(response.data);
-        
-        // Store for future use
-        const storedFile = await this.downloadAndStoreCDS(college);
-        if (storedFile) {
-          college.storedFile = storedFile;
-          this.colleges.set(args.collegeName, college);
-        }
-      }
-
-      // Parse content based on file type
-      const isPDF = college.url.toLowerCase().endsWith('.pdf') || 
-                   college.storedFile?.toLowerCase().endsWith('.pdf');
-      
-      let fullText: string;
-      let sections;
-
-      if (isPDF) {
-        try {
-          const pdfParser = new PDFParser();
-          fullText = await new Promise<string>((resolve, reject) => {
-            pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
-              const pages = pdfData.Pages || [];
-              const text = pages.map((page: any) => {
-                const texts = page.Texts || [];
-                return texts.map((text: any) => {
-                  const runs = text.R || [];
-                  return runs.map((r: any) => r.T || '').join(' ');
-                }).join(' ');
-              }).join('\n');
-              resolve(decodeURIComponent(text));
-            });
-            pdfParser.on('pdfParser_dataError', (error: any) => {
-              // Check for encryption error
-              if (error.message?.includes('encryption')) {
-                reject(new Error(`The PDF file for ${args.collegeName} is encrypted or password-protected. Please try searching for an unencrypted version.`));
-              } else {
-                reject(error);
-              }
-            });
-            pdfParser.parseBuffer(content);
-          });
-        } catch (error: any) {
-          // If PDF parsing fails, try to find an HTML version
-          console.error(`PDF parsing failed for ${args.collegeName}, searching for HTML version...`);
-          const htmlResults = await this.searchCDSFiles(`${args.collegeName} "Common Data Set" -filetype:pdf`);
-          if (htmlResults.length > 0) {
-            const htmlCollege = htmlResults[0];
-            const htmlResponse = await axios.get(htmlCollege.url);
-            const $ = cheerio.load(htmlResponse.data);
-            fullText = $.text();
-          } else {
-            throw error;
-          }
-        }
-      } else {
-        // Handle HTML content
-        const $ = cheerio.load(content);
-        fullText = $.text();
-      }
-
-      // Parse sections from the full text
-      sections = this.parseCDSContent(fullText);
-
       return {
         content: [
           {
@@ -453,11 +322,7 @@ class CollegeDataServer {
             text: JSON.stringify(
               {
                 collegeName: args.collegeName,
-                year: args.year || 'latest',
-                url: college.url,
-                sections,
-                fullText,
-                hasStoredFile: !!college.storedFile
+                error: 'No data available for this college'
               },
               null,
               2
@@ -465,26 +330,77 @@ class CollegeDataServer {
           },
         ],
       };
+    }
+
+    // If year is not specified, use the most recent year
+    const year = args.year || Object.keys(college.years).sort().pop();
+    const fileInfo = college.years[year];
+    
+    if (!fileInfo) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                collegeName: args.collegeName,
+                error: `No data available for year ${year}`
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+
+    try {
+      // Check cache first
+      const cached = checkCache(args.collegeName, year);
+      if (cached) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(cached, null, 2),
+            },
+          ],
+        };
+      }
+
+      // Parse if not in cache
+      const filePath = path.join(STORAGE_DIR, fileInfo.filename);
+      const gemini = new GeminiService(GEMINI_API_KEY!, GEMINI_MODEL);
+      const sections = await gemini.parseCDSFile(filePath, fileInfo.format);
+
+      // Create parsed data with metadata
+      const parsedData: ParsedCDSData = {
+        ...sections,
+        metadata: {
+          collegeName: args.collegeName,
+          year,
+          format: fileInfo.format,
+          lastUpdated: new Date().toISOString()
+        }
+      };
+
+      // Save to cache
+      saveToCache(parsedData);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(parsedData, null, 2),
+          },
+        ],
+      };
     } catch (error: unknown) {
       throw new McpError(
         ErrorCode.InternalError,
-        `Error fetching CDS data: ${error instanceof Error ? error.message : String(error)}`
+        `Error reading CDS data: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-  }
-
-  private parseCDSContent(text: string) {
-    return {
-      admissions: this.extractSection(text, /B\. ENROLLMENT AND PERSISTENCE[\s\S]*?C\. FIRST-TIME/i),
-      enrollment: this.extractSection(text, /C\. FIRST-TIME[\s\S]*?D\. TRANSFER/i),
-      expenses: this.extractSection(text, /G\. ANNUAL EXPENSES[\s\S]*?H\. FINANCIAL AID/i),
-      financialAid: this.extractSection(text, /H\. FINANCIAL AID[\s\S]*?I\. INSTRUCTIONAL/i)
-    };
-  }
-
-  private extractSection(text: string, pattern: RegExp): string {
-    const match = text.match(pattern);
-    return match ? match[0].trim() : '';
   }
 
   async run() {

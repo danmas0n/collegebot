@@ -89,6 +89,21 @@ export class SettingsService {
       apiKey
     };
   }
+
+  async getGeminiConfig(): Promise<{ model: string; apiKey: string }> {
+    const settings = await this.getAISettings();
+    const apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+    const model = settings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+
+    if (!apiKey) {
+      throw new Error('Gemini API key not found');
+    }
+
+    return {
+      model,
+      apiKey
+    };
+  }
 }
 
 export const settingsService = SettingsService.getInstance();

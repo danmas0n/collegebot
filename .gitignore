@@ -43,4 +43,5 @@ Thumbs.db
 *.tsbuildinfo
 
 mcp/college-data-server/storage/*
+mcp/college-data-server/cache
 backend/service-account.json

@@ -14,15 +14,20 @@
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "prepare": "npm run build",
     "watch": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "scrape-cds": "tsx src/scrape-cds.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@modelcontextprotocol/sdk": "0.6.0",
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
+    "node-html-parser": "^7.0.1",
     "pdf2json": "^3.1.5",
+    "puppeteer": "^24.2.0",
     "puppeteer-core": "^23.11.1",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
