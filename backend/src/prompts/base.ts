@@ -1,6 +1,5 @@
 import { recommendationsInstructions } from './recommendations_instructions.js';
 import { mapInstructions } from './map_instructions.js';
-import { executeMcpTool } from '../services/mcp.js';
 import { getMapLocations } from '../services/firestore.js';
 import { Request } from 'express';
 
@@ -187,40 +186,52 @@ export const generateToolInstructions = (mode: string): string => {
 
   instructions += `Tool Usage and Response Format Requirements:
 
-1. Tool Call Rules:
-   - Format tool calls like this:
-     <tool>
-      <name>search_college_data</name>
-      <parameters>
-        {"query": "Stanford University"}
-      </parameters>
-     </tool>
-   - You may call multiple tools in one message if you want to.
-   - To call a tool, respond with a correctly formatted <tool> tag, and then end your message.  
-     The tool call results will be passed to you on your next turn.
-   - CRITICAL: YOU MUST RETURN WELL FORMED XML AND JSON in your tool calls.  Ensure you close each tag.  If you don't, the system will break.
-   - CRITICAL: END YOUR MESSAGE IMMEDIATELY after the tool calls.  Don't keep thinking or answering until you get the tool results.
-   - CRITICAL: DO NOT EVER FABRICATE THE RESULTS OF TOOL CALLS!!!  Even if you think you know the answer, you must call the tool.
-
-2. Thinking, Tool and Answer Tags:
-   - Use <thinking></thinking> tags to show your analysis and reasoning process
+1. Thinking, Tool and Answer Tags:
+   - You are going to take turns with the user.  They go first.  
+   - After the user speaks, you will think and use tools until you have an answer to their question.
+   - CRITICAL: Start slow -- think a tiny bit, call a tool and end your message and wait for the result.
+     Don't try to do everything at once.
+   - Thinking:
+     - Use <thinking></thinking> tags to show your analysis and reasoning process
      - When thinking, be concise; don't talk to the user, just think out loud to yourself
-     - CRITICAL: ONLY ONE THINKING TAG PER MESSAGE!!!  If you want to think more, call a tool and then you can
-       think more when you have the results.
-   - Use <answer></answer> tags when you have a response for the user.  
+     - After thinking, you must either call a tool to get more data, or answer the question, and then end
+       the message.  No exceptions.
+     - It's OK to pause your thinking while you wait for the results of a tool call.
+   - Tool Calls:
+    - Format tool calls like this:
+      <tool>
+        <name>search_college_data</name>
+        <parameters>
+          {"query": "Stanford University"}
+        </parameters>
+      </tool>
+    - To call a tool, respond with a correctly formatted <tool> tag, and then end your message.  
+      The tool call results will be passed back to you so you can keep thinking.
+      - CRITICAL: ONLY CALL ONE TOOL AT A TIME!  Don't worry, you'll get called back to continue your thought process.
+      - CRITICAL: YOU MUST RETURN WELL FORMED XML AND/OR JSON in your tool calls.  Ensure you close each tag.  
+        If you don't, the system will break.
+      - CRITICAL: END YOUR MESSAGE IMMEDIATELY AFTER THE </tool> TAG.  
+        This signals the system to call the tool and return the results to you.
+   - Answers:
+     - When you're ready, you can stop thinking and respond to the user's question.
+     - Use <answer></answer> tags to do this.  
      - This can be either a summary of your findings or a question to the user on how to proceed.
-     - You can provide an <answer> in the same message as a <thinking> tag if you are done thinking and have an answer.
-     - CRITICAL: IF THERE ARE TOOL CALLS IN YOUR CURRENT MESSAGE, YOU CAN'T PROVIDE AN ANSWER.
-       YOU MUST WAIT FOR THE RESULTS AND ANSWER ON YOUR NEXT TURN.
+     - You can provide an <answer> right after a <thinking> tag if you are done thinking and have an answer.
    - You MUST end every full thought process (which can span multiple messages and tool calls) with 
      an <answer> to the user, wrapped in well formed <answer> and </answer> tags.  
-   - Once you have sent your answer, the user will respond or ask a new question, and you can continue the conversation.
+   - Once you have answered, the user will respond or ask a new question, and you can continue the conversation.
 
-   CRITICAL REQUIREMENTS:
-   - DO NOT RELY ON YOUR WORLD KNOWLEDGE to make recommendations.  Using your world knowledge to generate research ideas is fine.
-   - VERIFY important claims with data from tools before making recommendations.
+   Important Notes:
+   - You don't know the latest college costs, reviews, etc.  Use the tools to get actual data.  
+   - Don't worry about calculating distances -- we'll do that when we add things to the map.  Just consider
+     regional or state preferences.
    - EXPLAIN your analysis of each piece of data
-   - BUILD your response step by step with confirmed information`;
+   - BUILD your response step by step with confirmed information
+   - If a tool call fails, try again one or two more times.  If tool calls continue to fail, explain that to the 
+     user and gracefully stop.
+   - If you don't have enough information to do your job, ask the user for more details or suggest a different approach.
+
+`;
 
   return instructions;
 };
@@ -306,10 +317,6 @@ Format your responses clearly:
 - Highlight key information
 - Organize information logically
 - Make complex topics understandable
-
-If a tool call fails, try again one or two more times.  If tool calls continue to fail, explain that to the user and gracefully stop.
-
-If you don't have enough information to do your job, ask the user for more details or suggest a different approach.
 
 After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>
 `;
