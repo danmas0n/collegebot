@@ -70,7 +70,7 @@ const RECOMMENDATION_TOOLS: Tool[] = [
       {
         name: 'collegeName',
         type: 'string',
-        description: 'Name of the college',
+        description: 'Full, formal name of the college (e.g., "University of Massachusetts - Amherst" not "UMass Amherst")',
         required: true
       },
       {
@@ -223,6 +223,8 @@ export const generateToolInstructions = (mode: string): string => {
 
    Important Notes:
    - You don't know the latest college costs, reviews, etc.  Use the tools to get actual data.  
+   - When using get_cds_data, always use the full, formal name of the college with proper punctuation 
+     (e.g., "University of Massachusetts - Amherst" not "UMass Amherst").
    - Don't worry about calculating distances -- we'll do that when we add things to the map.  Just consider
      regional or state preferences.
    - EXPLAIN your analysis of each piece of data

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../../utils/api';
 import {
   Box,
@@ -59,6 +59,7 @@ const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [];
 export const MapStage = (): JSX.Element => {
   const { currentStudent } = useWizard();
   const { chats, loadChats } = useChat();
+  const stageRef = React.useRef<HTMLDivElement>(null);
   // State definitions
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -111,33 +112,84 @@ export const MapStage = (): JSX.Element => {
     }
   };
 
-  // Load map locations on mount and stage change
+  // Handle stage transitions and data loading
   const { currentStage } = useWizard();
   useEffect(() => {
+    // Reset state when leaving map stage
     if (currentStage !== 'map') {
       setLocations([]);
+      setProcessingStatus('');
+      setProcessingLogs([]);
+      setError(null);
       return;
     }
-    loadLocations();
+
+    // Load data when entering map stage
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        setProcessingStatus('');
+        setProcessingLogs([]);
+
+        // Load locations first
+        console.log('Loading locations...');
+        await loadLocations(false); // Don't set loading state since we're managing it here
+
+        // Then load chats
+        if (currentStudent?.id) {
+          console.log('Loading chats...');
+          await loadChats(currentStudent.id);
+        }
+
+        // Show debug controls if there are unprocessed chats
+        if (chats?.some(chat => !chat.processed)) {
+          console.log('Found unprocessed chats, showing debug controls');
+          setShowDebugControls(true);
+        }
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setError('Failed to load data: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
   }, [currentStudent?.id, currentStage]);
 
-  // Process chats after map is loaded
+  // Show debug controls when there are unprocessed chats
+  useEffect(() => {
+    if (chats?.some(chat => !chat.processed)) {
+      console.log('Found unprocessed chats, showing debug controls');
+      setShowDebugControls(true);
+    }
+  }, [chats]);
+
+  // Add ref to track if we're already processing
+  const processingRef = useRef(false);
+
+  // Process chats after loading completes
   useEffect(() => {
     const processChats = async () => {
-      if (!currentStudent?.id || currentStage !== 'map' || isLoading || !chats) {
-        setIsProcessing(false); // Ensure processing is false when conditions aren't met
+      if (!currentStudent?.id || currentStage !== 'map' || isLoading || !chats || processingRef.current) {
+        setIsProcessing(false);
         return;
       }
-
-      // Wait a bit to ensure map is rendered and interactive
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       try {
         // Only set processing if we actually have unprocessed chats
         const hasUnprocessedChats = chats.some(chat => !chat.processed);
         console.log('Checking for unprocessed chats:', { 
           hasUnprocessedChats, 
-          chats: chats.map(c => ({ id: c.id, processed: c.processed }))
+          chats: chats.map(c => ({ 
+            id: c.id, 
+            title: c.title,
+            processed: c.processed,
+            processedAt: c.processedAt,
+            updatedAt: c.updatedAt,
+            messageCount: c.messages.length
+          }))
         });
         
         if (!hasUnprocessedChats) {
@@ -145,9 +197,10 @@ export const MapStage = (): JSX.Element => {
           return;
         }
 
-        // Show processing UI immediately
+        // Set processing flag and show UI
+        processingRef.current = true;
+        setShowDebugControls(true);
         setShowProcessingLogs(true);
-
         setIsProcessing(true);
         
         // Process any unprocessed chats
@@ -198,13 +251,26 @@ export const MapStage = (): JSX.Element => {
           }
         }
 
-        // After processing is complete, reload locations
-        await loadLocations(false); // Don't set loading state since we're already in a loading state
+        // After processing is complete, reload chats and locations
+        console.log('Processing complete, reloading data...');
+        
+        // First reload chats to get updated processed status
+        await loadChats(currentStudent.id);
+        
+        // Then reload locations with loading state off
+        console.log('Reloading map locations...');
+        await loadLocations(false);
+        
+        // Force a re-render of the map
+        setLocations(prev => [...prev]);
+        
+        console.log('Reload complete');
       } catch (err) {
         console.error('Error processing chats:', err);
         setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
       } finally {
         setIsProcessing(false);
+        processingRef.current = false;
       }
     };
 
@@ -318,7 +384,7 @@ export const MapStage = (): JSX.Element => {
   }
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }}>
+    <Paper elevation={0} sx={{ p: 3 }} ref={stageRef}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h5">
           College & Scholarship Map
@@ -430,7 +496,9 @@ export const MapStage = (): JSX.Element => {
                   
                   try {
                     setIsProcessing(true);
-                    const response = await api.post(`/api/students/${currentStudent.id}/clear-map-locations`);
+                    const response = await api.post('/api/students/map-locations/clear', {
+                      studentId: currentStudent.id
+                    });
 
                     if (!response.ok) {
                       throw new Error('Failed to clear map locations');
@@ -488,19 +556,74 @@ export const MapStage = (): JSX.Element => {
                   if (!currentStudent?.id || !chats) return;
                   
                   try {
+                    // Set processing flag and show UI
+                    processingRef.current = true;
+                    setShowDebugControls(true);
+                    setShowProcessingLogs(true);
                     setIsProcessing(true);
-                    const response = await api.post(`/api/chat/process-all`, {
-                      studentId: currentStudent.id,
-                      chatIds: chats.map(chat => chat.id)
-                    });
 
-                    if (!response.ok) {
+                    // Process any unprocessed chats
+                    const processStream = await api.post(`/api/chat/process-all`, {
+                      studentId: currentStudent.id
+                    }, { stream: true });
+
+                    if (!processStream.ok) {
                       throw new Error('Failed to process chats');
                     }
 
-                    // Reload chats and locations
+                    const reader = processStream.body?.getReader();
+                    if (!reader) {
+                      throw new Error('No stream reader available');
+                    }
+
+                    // Reset processing state
+                    setProcessingLogs([]);
+                    setProcessingProgress(0);
+                    setProcessingTotal(0);
+
+                    while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) break;
+
+                      // Parse SSE data
+                      const text = new TextDecoder().decode(value);
+                      const lines = text.split('\n');
+
+                      for (const line of lines) {
+                        if (!line.trim() || !line.startsWith('data: ')) continue;
+                        
+                        try {
+                          const data = JSON.parse(line.slice(6));
+                          
+                          if (data.type === 'status') {
+                            setProcessingStatus(data.content);
+                            if (data.total) setProcessingTotal(data.total);
+                            if (data.progress) setProcessingProgress(data.progress);
+                          } else if (data.type === 'thinking') {
+                            setProcessingLogs(prev => [...prev, data.content]);
+                          } else if (data.type === 'error') {
+                            setError(data.content);
+                          }
+                        } catch (e) {
+                          console.error('Error parsing SSE data:', e);
+                        }
+                      }
+                    }
+
+                    // After processing is complete, reload chats and locations
+                    console.log('Processing complete, reloading data...');
+                    
+                    // First reload chats to get updated processed status
                     await loadChats(currentStudent.id);
-                    await loadLocations(false); // Don't set loading state since we're already in a loading state
+                    
+                    // Then reload locations with loading state off
+                    console.log('Reloading map locations...');
+                    await loadLocations(false);
+                    
+                    // Force a re-render of the map
+                    setLocations(prev => [...prev]);
+                    
+                    console.log('Reload complete');
                   } catch (err) {
                     console.error('Failed to process chats:', err);
                     setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));

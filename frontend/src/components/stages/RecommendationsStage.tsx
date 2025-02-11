@@ -24,13 +24,10 @@ interface Message extends AiChatMessage {
   toolData?: string;
 }
 
-interface Chat {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: string;
-  updatedAt: string;
-  studentId?: string;
+import { AiChat } from '../../types/college';
+
+interface Chat extends AiChat {
+  toolData?: string;
 }
 
 export const RecommendationsStage: React.FC = () => {
@@ -60,9 +57,13 @@ export const RecommendationsStage: React.FC = () => {
   }, [currentStudent?.id]);
 
   const loadChats = async (): Promise<Chat[]> => {
+    if (!currentStudent?.id) {
+      return [];
+    }
+
     try {
       const response = await api.post('/api/chat/chats', {
-        studentId: currentStudent?.id
+        studentId: currentStudent.id
       });
 
       const data = await response.json();
@@ -76,14 +77,20 @@ export const RecommendationsStage: React.FC = () => {
     }
   };
 
-  const createNewChat = (): Chat => {
+  const createNewChat = (): Chat | null => {
+    if (!currentStudent?.id) {
+      return null;
+    }
+
     const newChat: Chat = {
       id: crypto.randomUUID(),
       title: `Chat ${chats.length + 1}`,
       messages: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      studentId: currentStudent?.id
+      studentId: currentStudent.id,
+      processed: false,
+      processedAt: null
     };
     const updatedChats = [...chats, newChat];
     setChats(updatedChats);
@@ -132,12 +139,16 @@ export const RecommendationsStage: React.FC = () => {
   };
 
   const handleSendMessage = async (messageContent?: string) => {
+    if (!currentStudent?.id) return;
+    
     const message = messageContent || currentMessage;
     if (!message.trim()) return;
 
     let activeChat: Chat;
     if (!currentChat) {
-      activeChat = createNewChat();
+      const newChat = createNewChat();
+      if (!newChat) return;
+      activeChat = newChat;
       await new Promise(resolve => setTimeout(resolve, 0)); // Let state update
     } else {
       activeChat = currentChat;
@@ -160,7 +171,7 @@ export const RecommendationsStage: React.FC = () => {
         ...activeChat,
         messages: [...activeChat.messages, userMessage],
         updatedAt: new Date().toISOString(),
-        studentId: currentStudent?.id
+        studentId: currentStudent.id
       };
       setCurrentChat(updatedChat);
       activeChat = updatedChat; // Update activeChat reference
@@ -206,9 +217,9 @@ export const RecommendationsStage: React.FC = () => {
           message: messageToSend,
           studentData: {
             ...data,
-            id: currentStudent?.id
+            id: currentStudent.id
           },
-          studentName: currentStudent?.name,
+          studentName: currentStudent.name || 'Student',
           history: filteredMessages,
           currentChat: updatedChat
       });
