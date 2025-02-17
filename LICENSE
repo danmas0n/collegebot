@@ -1,0 +1,35 @@
+# Collegebot License
+
+This software is licensed under two components:
+
+1. The Commons Clause License Condition v1.0
+2. The Apache License 2.0
+
+## License Summary
+
+This dual-license approach means:
+
+- You CAN:
+  - Use the software privately
+  - Modify the software
+  - Distribute the software for non-commercial purposes
+  - Use the software for personal educational purposes
+
+- You CANNOT:
+  - Sell the software
+  - Use the software in a commercial service
+  - Offer hosting or consulting services based primarily on this software
+
+## Full License Texts
+
+- Commons Clause License Condition v1.0: https://commonsclause.com/
+- Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
+## Software Details
+
+- Software: Collegebot
+- Base License: Apache License 2.0
+- Additional Condition: Commons Clause
+- Licensor: Dan
+
+The Commons Clause is added to the Apache License 2.0 to prevent commercial use of the software while still allowing private use and modification. This means that while anyone can use, modify, and share this software for private or personal educational purposes, no one except the original licensor can sell the software or offer it as a commercial service.

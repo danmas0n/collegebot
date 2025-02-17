@@ -2,6 +2,21 @@
 
 A web application that helps students find and evaluate colleges that match their preferences and requirements.
 
+## License
+
+This project is licensed under the Apache License 2.0 with Commons Clause - see the [LICENSE](LICENSE) file for details.
+
+This means you can:
+- Use the software privately
+- Modify the software
+- Distribute the software for non-commercial purposes
+- Use the software for personal educational purposes
+
+But you cannot:
+- Sell the software
+- Use the software in a commercial service
+- Offer hosting or consulting services based primarily on this software
+
 ## Project Structure
 
 ```
