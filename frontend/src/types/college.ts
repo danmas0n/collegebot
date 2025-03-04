@@ -26,6 +26,7 @@ export interface AiChatMessage {
   role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer' | 'question';
   content: string;
   timestamp: string;
+  toolData?: string; // Optional tool data for thinking messages
 }
 
 export interface AiChat {

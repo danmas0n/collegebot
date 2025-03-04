@@ -111,8 +111,8 @@ router.get('/ai-settings', async (req: Request, res: Response) => {
       const defaultSettings: AISettings = {
         id: 'current',
         serviceType: (process.env.AI_SERVICE_TYPE || 'claude') as 'claude' | 'gemini',
-        model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
-        claudeModel: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
+        model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-20250219',
+        claudeModel: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-20250219',
         geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
         claudeApiKey: process.env.CLAUDE_API_KEY || '',
         geminiApiKey: process.env.GEMINI_API_KEY || '',

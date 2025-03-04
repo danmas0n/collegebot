@@ -5,7 +5,8 @@ export type WizardStage =
   | 'budget'
   | 'data-collection'
   | 'recommendations'
-  | 'map';
+  | 'map'
+  | 'calendar';
 
 export interface Student {
   id: string;

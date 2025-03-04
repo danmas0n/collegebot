@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../../utils/api';
+import DOMPurify from 'dompurify';
 import {
   Box,
   Typography,
@@ -17,7 +18,6 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  ListItemSecondaryAction,
   Link,
   Dialog,
   DialogTitle,
@@ -29,20 +29,21 @@ import {
   FormControl,
   InputLabel,
   FormHelperText,
+  Badge,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SortByAlphaIcon from '@mui/icons-material/SortByAlpha';
 import SchoolIcon from '@mui/icons-material/School';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
+import LinkIcon from '@mui/icons-material/Link';
 import { GoogleMap, useLoadScript, MarkerF, InfoWindowF } from '@react-google-maps/api';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
 import { MapLocation } from '../../types/wizard';
+import { useResearch } from '../../contexts/ResearchContext';
 
 const mapContainerStyle = {
   width: '100%',
@@ -59,7 +60,9 @@ const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [];
 export const MapStage = (): JSX.Element => {
   const { currentStudent } = useWizard();
   const { chats, loadChats } = useChat();
+  const { tasks } = useResearch();
   const stageRef = React.useRef<HTMLDivElement>(null);
+  
   // State definitions
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -71,12 +74,29 @@ export const MapStage = (): JSX.Element => {
   const [editingLocation, setEditingLocation] = useState<MapLocation | null>(null);
   const [locationFormErrors, setLocationFormErrors] = useState<Record<string, string>>({});
   const [showDebugControls, setShowDebugControls] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<'name' | 'type'>('name');
 
   // Google Maps setup
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
     libraries,
   });
+  
+  // Reference to the Google Map instance
+  const mapRef = useRef<google.maps.Map | null>(null);
+  
+  // Function to handle map load
+  const onMapLoad = React.useCallback((map: google.maps.Map) => {
+    mapRef.current = map;
+  }, []);
+  
+  // Function to center map on a location
+  const centerMapOnLocation = (location: MapLocation) => {
+    if (mapRef.current) {
+      mapRef.current.panTo({ lat: location.latitude, lng: location.longitude });
+      mapRef.current.setZoom(10); // Zoom in when centering on a location
+    }
+  };
 
   // State for processing status
   const [processingStatus, setProcessingStatus] = useState<string>('');
@@ -84,6 +104,153 @@ export const MapStage = (): JSX.Element => {
   const [processingTotal, setProcessingTotal] = useState<number>(0);
   const [processingLogs, setProcessingLogs] = useState<string[]>([]);
   const [showProcessingLogs, setShowProcessingLogs] = useState<boolean>(true);
+
+  // Function to process all chats
+  const handleProcessAllChats = async () => {
+    if (!currentStudent?.id) return;
+    
+    try {
+      setIsProcessing(true);
+      setProcessingStatus('Processing chats...');
+      setProcessingLogs([]);
+      
+      const response = await api.post('/api/chat/process-all', {
+        studentId: currentStudent.id
+      }, { stream: true });
+      
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Failed to get reader');
+      
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+          
+          try {
+            const data = JSON.parse(line.slice(5)); // Remove 'data: '
+            
+            if (data.type === 'thinking') {
+              // Ensure content is a string before adding to logs
+              const content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
+              
+              // Check if the previous log entry also has <analysis> tags
+              // If so, we want to combine them to keep the analysis with the context
+              const prevLog = processingLogs.length > 0 ? processingLogs[processingLogs.length - 1] : '';
+              const hasPrevAnalysis = typeof prevLog === 'string' && 
+                                      prevLog.includes('<analysis>') && 
+                                      prevLog.includes('</analysis>');
+              const hasCurrentAnalysis = content.includes('<analysis>') && content.includes('</analysis>');
+              
+              if (hasPrevAnalysis && !hasCurrentAnalysis) {
+                // Append to previous log if it had an analysis section
+                setProcessingLogs(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = prev[prev.length - 1] + '\n' + content;
+                  return updated;
+                });
+              } else if (hasCurrentAnalysis && processingLogs.length > 0 && !hasPrevAnalysis) {
+                // If this is an analysis message, append it to the previous regular message
+                setProcessingLogs(prev => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = prev[prev.length - 1] + '\n' + content;
+                  return updated;
+                });
+              } else {
+                // Otherwise add as a new log entry
+                setProcessingLogs(prev => [...prev, content]);
+              }
+            } else if (data.type === 'status') {
+              setProcessingStatus(data.content);
+              if (data.total) setProcessingTotal(data.total);
+              if (data.progress) setProcessingProgress(data.progress);
+            } else if (data.type === 'complete') {
+              try {
+                // Add a final line to indicate completion
+                setProcessingLogs(prev => [...prev, "✅ Processing complete"]);
+                
+                // Reload locations after processing
+                await loadLocations();
+              } catch (err) {
+                console.error('Error loading locations after completion:', err);
+                setError('Failed to refresh map data after processing');
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error processing chats:', err);
+      setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Function to mark all chats as unprocessed
+  const handleMarkChatsUnprocessed = async () => {
+    if (!currentStudent?.id || !chats?.length) return;
+    
+    try {
+      setIsProcessing(true);
+      setProcessingStatus('Marking chats as unprocessed...');
+      
+      await api.post('/api/chat/mark-unprocessed', {
+        studentId: currentStudent.id,
+        chatIds: chats.map(chat => chat.id)
+      });
+      
+      // Reload chats
+      await loadChats(currentStudent.id);
+      
+      setProcessingStatus('Chats marked as unprocessed');
+    } catch (err) {
+      console.error('Error marking chats as unprocessed:', err);
+      setError('Failed to mark chats as unprocessed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Function to clear all map locations
+  const handleClearAllLocations = async () => {
+    if (!currentStudent?.id) return;
+    
+    // Confirm before deleting
+    if (!window.confirm('Are you sure you want to clear ALL map locations? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      const response = await api.post('/api/students/map-locations/clear', {
+        studentId: currentStudent.id
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to clear locations: ${response.status}`);
+      }
+      
+      // Clear local state
+      setLocations([]);
+      setSelectedLocation(null);
+      
+    } catch (err) {
+      console.error('Error clearing locations:', err);
+      setError('Failed to clear locations: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Function to load map locations
   const loadLocations = async (setLoadingState = true) => {
@@ -109,6 +276,40 @@ export const MapStage = (): JSX.Element => {
       setError('Failed to load locations: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       if (setLoadingState) setIsLoading(false);
+    }
+  };
+  
+  // Function to delete a map location
+  const handleDeleteLocation = async (locationId: string) => {
+    if (!currentStudent?.id) return;
+    
+    try {
+      setIsLoading(true);
+      const response = await api.post('/api/students/map-locations/delete', {
+        studentId: currentStudent.id,
+        locationId
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to delete location: ${response.status}`);
+      }
+      
+      // Remove from local state
+      setLocations(prev => prev.filter(location => location.id !== locationId));
+      
+      // Close the info window if the deleted location is selected
+      if (selectedLocation?.id === locationId) {
+        setSelectedLocation(null);
+      }
+      
+      // Show success message
+      setError(null);
+    } catch (err) {
+      console.error('Error deleting location:', err);
+      setError('Failed to delete location: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -158,218 +359,6 @@ export const MapStage = (): JSX.Element => {
     loadData();
   }, [currentStudent?.id, currentStage]);
 
-  // Show debug controls when there are unprocessed chats
-  useEffect(() => {
-    if (chats?.some(chat => !chat.processed)) {
-      console.log('Found unprocessed chats, showing debug controls');
-      setShowDebugControls(true);
-    }
-  }, [chats]);
-
-  // Add ref to track if we're already processing
-  const processingRef = useRef(false);
-
-  // Process chats after loading completes
-  useEffect(() => {
-    const processChats = async () => {
-      if (!currentStudent?.id || currentStage !== 'map' || isLoading || !chats || processingRef.current) {
-        setIsProcessing(false);
-        return;
-      }
-
-      try {
-        // Only set processing if we actually have unprocessed chats
-        const hasUnprocessedChats = chats.some(chat => !chat.processed);
-        console.log('Checking for unprocessed chats:', { 
-          hasUnprocessedChats, 
-          chats: chats.map(c => ({ 
-            id: c.id, 
-            title: c.title,
-            processed: c.processed,
-            processedAt: c.processedAt,
-            updatedAt: c.updatedAt,
-            messageCount: c.messages.length
-          }))
-        });
-        
-        if (!hasUnprocessedChats) {
-          setIsProcessing(false);
-          return;
-        }
-
-        // Set processing flag and show UI
-        processingRef.current = true;
-        setShowDebugControls(true);
-        setShowProcessingLogs(true);
-        setIsProcessing(true);
-        
-        // Process any unprocessed chats
-        const processStream = await api.post(`/api/chat/process-all`, {
-          studentId: currentStudent.id
-        }, { stream: true });
-
-        if (!processStream.ok) {
-          throw new Error('Failed to process chats');
-        }
-
-        const reader = processStream.body?.getReader();
-        if (!reader) {
-          throw new Error('No stream reader available');
-        }
-
-        // Reset processing state
-        setProcessingLogs([]);
-        setProcessingProgress(0);
-        setProcessingTotal(0);
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          // Parse SSE data
-          const text = new TextDecoder().decode(value);
-          const lines = text.split('\n');
-
-          for (const line of lines) {
-            if (!line.trim() || !line.startsWith('data: ')) continue;
-            
-            try {
-              const data = JSON.parse(line.slice(6));
-              
-              if (data.type === 'status') {
-                setProcessingStatus(data.content);
-                if (data.total) setProcessingTotal(data.total);
-                if (data.progress) setProcessingProgress(data.progress);
-              } else if (data.type === 'thinking') {
-                setProcessingLogs(prev => [...prev, data.content]);
-              } else if (data.type === 'error') {
-                setError(data.content);
-              }
-            } catch (e) {
-              console.error('Error parsing SSE data:', e);
-            }
-          }
-        }
-
-        // After processing is complete, reload chats and locations
-        console.log('Processing complete, reloading data...');
-        
-        // First reload chats to get updated processed status
-        await loadChats(currentStudent.id);
-        
-        // Then reload locations with loading state off
-        console.log('Reloading map locations...');
-        await loadLocations(false);
-        
-        // Force a re-render of the map
-        setLocations(prev => [...prev]);
-        
-        console.log('Reload complete');
-      } catch (err) {
-        console.error('Error processing chats:', err);
-        setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
-      } finally {
-        setIsProcessing(false);
-        processingRef.current = false;
-      }
-    };
-
-    processChats();
-  }, [currentStudent?.id, currentStage, isLoading, chats]);
-
-  const handleDeleteLocation = async (location: MapLocation) => {
-    if (!currentStudent?.id) return;
-    
-    try {
-      setIsProcessing(true);
-      
-      // Delete the location
-      const response = await api.post('/api/students/map-locations/delete', {
-        studentId: currentStudent.id,
-        locationId: location.id
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Failed to delete location: ${response.status}`);
-      }
-
-      // Update local state
-      setLocations(prev => prev.filter(loc => loc.id !== location.id));
-      setIsDeleteDialogOpen(false);
-      setSelectedLocation(null);
-    } catch (err) {
-      console.error('Failed to delete location:', err);
-      setError('Failed to delete location: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleSaveLocation = async (formData: Partial<MapLocation>) => {
-    if (!currentStudent?.id) return;
-    
-    try {
-      setIsProcessing(true);
-      
-      // Geocode the address if provided
-      if (formData.metadata?.address) {
-        const response = await api.post('/api/student-data/geocode', {
-          address: formData.metadata.address,
-          name: formData.name
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(errorData.error || 'Failed to geocode address');
-        }
-
-        const geocodeResult = await response.json();
-        formData.latitude = geocodeResult.latitude;
-        formData.longitude = geocodeResult.longitude;
-      }
-
-      // Create or update the location
-      const response = await api.post('/api/students/map-locations', {
-        ...formData,
-        studentId: currentStudent.id
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'Failed to save location');
-      }
-
-      // Update local state with the response
-      const updatedLocations = await response.json();
-      setLocations(updatedLocations);
-
-      setIsEditDialogOpen(false);
-      setEditingLocation(null);
-    } catch (err) {
-      console.error('Failed to save location:', err);
-      setError('Failed to save location: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const validateLocationForm = (formData: Partial<MapLocation>): boolean => {
-    const errors: Record<string, string> = {};
-    
-    if (!formData.name?.trim()) {
-      errors.name = 'Name is required';
-    }
-    if (!formData.type) {
-      errors.type = 'Type is required';
-    }
-    if (!formData.metadata?.address?.trim() && (!formData.latitude || !formData.longitude)) {
-      errors.address = 'Either address or coordinates are required';
-    }
-    
-    setLocationFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
 
   if (loadError) {
     return <Alert severity="error">Error loading Google Maps</Alert>;
@@ -417,228 +406,238 @@ export const MapStage = (): JSX.Element => {
         </Box>
       </Box>
 
+      <Collapse in={showDebugControls}>
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Debug Controls
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleProcessAllChats}
+              disabled={isProcessing || !currentStudent}
+            >
+              Process All Chats
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={handleMarkChatsUnprocessed}
+              disabled={isProcessing || !currentStudent}
+            >
+              Mark All Chats Unprocessed
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={handleClearAllLocations}
+              disabled={isLoading || isProcessing || !currentStudent || locations.length === 0}
+            >
+              Clear All Locations
+            </Button>
+          </Box>
+          
+          {/* Processing status and logs */}
+          {isProcessing && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2">{typeof processingStatus === 'object' ? JSON.stringify(processingStatus) : processingStatus}</Typography>
+              <LinearProgress 
+                variant={processingTotal > 0 ? "determinate" : "indeterminate"} 
+                value={processingTotal > 0 ? (processingProgress / processingTotal) * 100 : 0}
+                sx={{ my: 1 }}
+              />
+              <Collapse in={showProcessingLogs}>
+                <Paper variant="outlined" sx={{ p: 1, mt: 1, maxHeight: 400, overflow: 'auto' }}>
+                  {processingLogs.map((log, index) => {
+                    // Parse JSON strings if needed
+                    let parsedLog = log;
+                    if (typeof log === 'string' && log.trim().startsWith('{') && log.includes('"type"')) {
+                      try {
+                        parsedLog = JSON.parse(log);
+                      } catch (e) {
+                        // If parsing fails, keep the original string
+                        console.warn('Failed to parse log JSON:', e);
+                      }
+                    }
+                    
+                    // Process based on content type
+                    let content;
+                    let toolData;
+                    
+                    if (typeof parsedLog === 'object' && parsedLog !== null) {
+                      // Extract toolData if present
+                      if (parsedLog.toolData) {
+                        toolData = parsedLog.toolData;
+                        try {
+                          // Try to format toolData as pretty JSON
+                          const jsonData = JSON.parse(toolData);
+                          toolData = JSON.stringify(jsonData, null, 2);
+                        } catch (e) {
+                          // Keep original if can't parse
+                        }
+                      }
+                      
+                      // Format main content
+                      content = parsedLog.content || JSON.stringify(parsedLog);
+                    } else {
+                      content = typeof parsedLog === 'object' ? JSON.stringify(parsedLog) : parsedLog;
+                    }
+                    
+                    // Check if content contains <analysis> tags
+                    const isAnalysis = content.includes('<analysis>') && content.includes('</analysis>');
+                    
+                    if (isAnalysis) {
+                      // Extract and format analysis content
+                      const analysisMatch = content.match(/<analysis>([\s\S]*?)<\/analysis>/);
+                      const analysisContent = analysisMatch ? analysisMatch[1].trim() : '';
+                      const regularContent = content.replace(/<analysis>[\s\S]*?<\/analysis>/, '').trim();
+                      
+                      return (
+                        <Box key={index} sx={{ mb: 2 }}>
+                          {regularContent && (
+                            <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                whiteSpace: 'pre-wrap', 
+                                mb: 1,
+                                fontFamily: 'monospace', 
+                                fontSize: '0.85rem' 
+                              }}
+                            >
+                              {regularContent}
+                            </Typography>
+                          )}
+                          {analysisContent && (
+                            <Paper 
+                              elevation={0} 
+                              sx={{ 
+                                p: 1.5, 
+                                bgcolor: 'grey.100', 
+                                borderLeft: '4px solid', 
+                                borderColor: 'info.main',
+                                fontStyle: 'italic'
+                              }}
+                            >
+                              <Typography 
+                                variant="subtitle2" 
+                                color="info.main" 
+                                sx={{ mb: 0.5, fontWeight: 'bold' }}
+                              >
+                                Analysis
+                              </Typography>
+                              <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                  whiteSpace: 'pre-wrap',
+                                  fontFamily: 'monospace', 
+                                  fontSize: '0.85rem' 
+                                }}
+                              >
+                                {analysisContent}
+                              </Typography>
+                            </Paper>
+                          )}
+                        </Box>
+                      );
+                    } else {
+                      // Check if content looks like HTML (contains HTML tags)
+                      const isHtml = typeof content === 'string' && 
+                        (content.includes('<h') || 
+                         content.includes('<p>') || 
+                         content.includes('<ul>') || 
+                         content.includes('<ol>') ||
+                         content.includes('<div'));
+                         
+                      if (isHtml) {
+                        // Render as HTML with DOMPurify sanitization
+                        return (
+                          <Box 
+                            key={index}
+                            className="ai-message-html"
+                            sx={{ mb: 1 }}
+                            dangerouslySetInnerHTML={{ 
+                              __html: typeof DOMPurify !== 'undefined' 
+                                ? DOMPurify.sanitize(content)
+                                : content // Fallback if DOMPurify not available
+                            }}
+                          />
+                        );
+                      }
+                      
+                      // Display toolData if available
+                      if (toolData) {
+                        return (
+                          <Box key={index} sx={{ mb: 2 }}>
+                            <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                whiteSpace: 'pre-wrap',
+                                mb: 1
+                              }}
+                            >
+                              {content}
+                            </Typography>
+                            <Box sx={{ 
+                              backgroundColor: 'rgba(0,0,0,0.03)', 
+                              p: 1, 
+                              borderRadius: 1, 
+                              mt: 1,
+                              borderLeft: '3px solid #ddd' 
+                            }}>
+                              <Typography 
+                                variant="body2"
+                                sx={{ 
+                                  whiteSpace: 'pre-wrap',
+                                  fontFamily: 'monospace', 
+                                  fontSize: '0.85rem' 
+                                }}
+                              >
+                                {toolData}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        );
+                      }
+                      
+                      // Regular log entry (non-HTML)
+                      return (
+                        <Typography 
+                          key={index} 
+                          variant="body2" 
+                          sx={{ 
+                            whiteSpace: 'pre-wrap',
+                            mb: 1,
+                            fontFamily: content.includes('Tool') || content.includes('Using') ? 'monospace' : 'inherit', 
+                            fontSize: content.includes('Tool') || content.includes('Using') ? '0.85rem' : 'inherit' 
+                          }}
+                        >
+                          {content}
+                        </Typography>
+                      );
+                    }
+                  })}
+                </Paper>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                  <Button 
+                    size="small"
+                    onClick={() => setShowProcessingLogs(!showProcessingLogs)}
+                    startIcon={showProcessingLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  >
+                    {showProcessingLogs ? 'Hide' : 'Show'} Logs
+                  </Button>
+                </Box>
+              </Collapse>
+            </Box>
+          )}
+        </Paper>
+      </Collapse>
+
       {error && (
         <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
-
-      <Collapse in={showDebugControls || !!processingStatus}>
-        <Paper sx={{ p: 2, mb: 2 }} variant="outlined">
-          {processingStatus && (
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography variant="subtitle2">{processingStatus}</Typography>
-                <Button
-                  size="small"
-                  onClick={() => setShowProcessingLogs(!showProcessingLogs)}
-                  endIcon={showProcessingLogs ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                >
-                  {showProcessingLogs ? 'Hide' : 'Show'} Details
-                </Button>
-              </Box>
-              {processingTotal > 0 && (
-                <LinearProgress 
-                  variant="determinate" 
-                  value={(processingProgress / processingTotal) * 100} 
-                  sx={{ mb: 1 }}
-                />
-              )}
-              <Collapse in={showProcessingLogs}>
-                <Paper 
-                  variant="outlined" 
-                  sx={{ 
-                    mt: 1, 
-                    p: 1, 
-                    maxHeight: '200px', 
-                    overflow: 'auto',
-                    bgcolor: 'grey.100'
-                  }}
-                >
-                  {processingLogs.map((log, index) => {
-                    // Handle both string and object logs
-                    const logContent = typeof log === 'string' ? log : (log as { content: string }).content;
-                    return (
-                      <React.Fragment key={index}>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            fontFamily: 'monospace',
-                            whiteSpace: 'pre-wrap',
-                            mb: 0.5
-                          }}
-                        >
-                          {logContent}
-                        </Typography>
-                        {index < processingLogs.length - 1 && (
-                          <Box 
-                            sx={{ 
-                              borderBottom: '1px solid',
-                              borderColor: 'divider',
-                              my: 1
-                            }} 
-                          />
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </Paper>
-              </Collapse>
-            </Box>
-          )}
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button 
-                variant="outlined"
-                size="small"
-                onClick={async () => {
-                  if (!currentStudent?.id) return;
-                  
-                  try {
-                    setIsProcessing(true);
-                    const response = await api.post('/api/students/map-locations/clear', {
-                      studentId: currentStudent.id
-                    });
-
-                    if (!response.ok) {
-                      throw new Error('Failed to clear map locations');
-                    }
-
-                    // Clear local state
-                    setLocations([]);
-                  } catch (err) {
-                    console.error('Failed to clear map:', err);
-                    setError('Failed to clear map: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                  } finally {
-                    setIsProcessing(false);
-                  }
-                }}
-                disabled={!currentStudent || isProcessing}
-              >
-                Clear Map
-              </Button>
-
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={async () => {
-                  if (!currentStudent?.id || !chats) return;
-                  
-                  try {
-                    setIsProcessing(true);
-                    const response = await api.post(`/api/chat/mark-unprocessed`, {
-                      studentId: currentStudent.id,
-                      chatIds: chats.map(chat => chat.id)
-                    });
-
-                    if (!response.ok) {
-                      throw new Error('Failed to mark chats as unprocessed');
-                    }
-
-                    // Reload chats to update UI
-                    await loadChats(currentStudent.id);
-                  } catch (err) {
-                    console.error('Failed to mark chats as unprocessed:', err);
-                    setError('Failed to mark chats as unprocessed: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                  } finally {
-                    setIsProcessing(false);
-                  }
-                }}
-                disabled={!currentStudent || isProcessing}
-              >
-                Mark Chats Unprocessed
-              </Button>
-
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={async () => {
-                  if (!currentStudent?.id || !chats) return;
-                  
-                  try {
-                    // Set processing flag and show UI
-                    processingRef.current = true;
-                    setShowDebugControls(true);
-                    setShowProcessingLogs(true);
-                    setIsProcessing(true);
-
-                    // Process any unprocessed chats
-                    const processStream = await api.post(`/api/chat/process-all`, {
-                      studentId: currentStudent.id
-                    }, { stream: true });
-
-                    if (!processStream.ok) {
-                      throw new Error('Failed to process chats');
-                    }
-
-                    const reader = processStream.body?.getReader();
-                    if (!reader) {
-                      throw new Error('No stream reader available');
-                    }
-
-                    // Reset processing state
-                    setProcessingLogs([]);
-                    setProcessingProgress(0);
-                    setProcessingTotal(0);
-
-                    while (true) {
-                      const { done, value } = await reader.read();
-                      if (done) break;
-
-                      // Parse SSE data
-                      const text = new TextDecoder().decode(value);
-                      const lines = text.split('\n');
-
-                      for (const line of lines) {
-                        if (!line.trim() || !line.startsWith('data: ')) continue;
-                        
-                        try {
-                          const data = JSON.parse(line.slice(6));
-                          
-                          if (data.type === 'status') {
-                            setProcessingStatus(data.content);
-                            if (data.total) setProcessingTotal(data.total);
-                            if (data.progress) setProcessingProgress(data.progress);
-                          } else if (data.type === 'thinking') {
-                            setProcessingLogs(prev => [...prev, data.content]);
-                          } else if (data.type === 'error') {
-                            setError(data.content);
-                          }
-                        } catch (e) {
-                          console.error('Error parsing SSE data:', e);
-                        }
-                      }
-                    }
-
-                    // After processing is complete, reload chats and locations
-                    console.log('Processing complete, reloading data...');
-                    
-                    // First reload chats to get updated processed status
-                    await loadChats(currentStudent.id);
-                    
-                    // Then reload locations with loading state off
-                    console.log('Reloading map locations...');
-                    await loadLocations(false);
-                    
-                    // Force a re-render of the map
-                    setLocations(prev => [...prev]);
-                    
-                    console.log('Reload complete');
-                  } catch (err) {
-                    console.error('Failed to process chats:', err);
-                    setError('Failed to process chats: ' + (err instanceof Error ? err.message : 'Unknown error'));
-                  } finally {
-                    setIsProcessing(false);
-                  }
-                }}
-                disabled={!currentStudent || isProcessing}
-              >
-                Process All Chats
-              </Button>
-            </Box>
-          </Box>
-        </Paper>
-      </Collapse>
 
       {!currentStudent ? (
         <Typography>Please select a student first.</Typography>
@@ -648,446 +647,302 @@ export const MapStage = (): JSX.Element => {
         </Box>
       ) : (
         <Grid container spacing={2}>
-          {/* List View */}
-          <Grid item xs={4}>
-            <Card sx={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
-              <CardContent sx={{ 
-                flex: 1, 
-                p: 2, 
-                '&:last-child': { pb: 2 },
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden'
-              }}>
-                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="h6">Locations</Typography>
-                  <IconButton 
-                    size="small" 
-                    onClick={() => {
-                      const sorted = [...locations].sort((a, b) => a.name.localeCompare(b.name));
-                      setLocations(sorted);
-                    }}
-                  >
-                    <SortByAlphaIcon />
-                  </IconButton>
-                </Box>
-                <Box sx={{ flex: 1, overflow: 'auto' }}>
-                  <List>
-                    {locations.map((location) => (
-                      <ListItem 
-                        key={location.id}
-                        sx={{ 
-                          cursor: 'pointer',
-                          bgcolor: selectedLocation?.id === location.id ? 'action.selected' : 'transparent',
-                          '&:hover': {
-                            bgcolor: 'action.hover',
-                          }
-                        }}
-                        onClick={() => setSelectedLocation(location)}
-                      >
-                        <ListItemIcon>
-                          {location.type === 'college' ? (
-                            <SchoolIcon color="primary" />
-                          ) : (
-                            <AttachMoneyIcon color="secondary" />
-                          )}
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={location.name}
-                          secondary={
-                            <Box component="div">
-                              {location.type === 'college' && location.metadata.fitScore && (
-                                <Box component="div" sx={{ display: 'block' }}>
-                                  Fit Score: {location.metadata.fitScore}
-                                </Box>
-                              )}
-                              {location.type === 'scholarship' && location.metadata.amount && (
-                                <Box component="div" sx={{ display: 'block' }}>
-                                  Amount: ${location.metadata.amount}
-                                </Box>
-                              )}
-                              {location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0 && (
-                                <Box component="div">
-                                  <Button
-                                    size="small"
-                                    endIcon={location.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                    onClick={(e: React.MouseEvent) => {
-                                      e.stopPropagation();
-                                      setLocations(prev => prev.map(loc => 
-                                        loc.id === location.id 
-                                          ? { 
-                                              ...loc, 
-                                              metadata: { 
-                                                ...loc.metadata, 
-                                                showLinks: !loc.metadata.showLinks 
-                                              } 
-                                            }
-                                          : loc
-                                      ));
-                                    }}
-                                  >
-                                    {`${location.metadata.referenceLinks.length} Reference Links`}
-                                  </Button>
-                                  <Collapse in={location.metadata.showLinks}>
-                                    <List dense>
-                                      {location.metadata.referenceLinks.map((link, index) => (
-                                        <ListItem key={index}>
-                                          <Link 
-                                            href={link.url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                                          >
-                                            {link.title || `Reference ${index + 1}`}
-                                          </Link>
-                                        </ListItem>
-                                      ))}
-                                    </List>
-                                  </Collapse>
-                                </Box>
-                              )}
-                            </Box>
-                          }
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
           {/* Map View */}
-          <Grid item xs={8}>
-            <Card>
-              <CardContent sx={{ p: 0 }}>
-                <GoogleMap
-                  mapContainerStyle={mapContainerStyle}
-                  zoom={4}
-                  center={defaultCenter}
-                  options={{
-                    mapTypeControl: false,
-                    streetViewControl: false,
-                  }}
-                >
-                  {locations.map((location) => (
-                    <MarkerF
-                      key={location.id}
-                      position={{ lat: location.latitude, lng: location.longitude }}
-                      onClick={() => setSelectedLocation(location)}
-                      icon={{
-                        url: location.type === 'college' 
-                          ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                          : 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
-                      }}
-                    />
-                  ))}
-
-                  {selectedLocation && (
-                    <InfoWindowF
-                      position={{ 
-                        lat: selectedLocation.latitude, 
-                        lng: selectedLocation.longitude 
-                      }}
-                      onCloseClick={() => setSelectedLocation(null)}
-                    >
-                      <Box sx={{ maxWidth: 300 }}>
-                        <Typography variant="subtitle1" sx={{ mb: 1 }}>{selectedLocation.name}</Typography>
-                        {selectedLocation.metadata.website && (
-                          <Typography variant="body2" sx={{ mb: 1 }}>
+          <Grid item xs={12} md={8}>
+            <Box sx={{ width: '100%', height: '600px' }}>
+              <GoogleMap
+                mapContainerStyle={mapContainerStyle}
+                center={defaultCenter}
+                zoom={4}
+                options={{
+                  streetViewControl: false,
+                  mapTypeControl: false,
+                  fullscreenControl: true,
+                }}
+                onLoad={onMapLoad}
+              >
+                {locations.map((location) => (
+                  <MarkerF
+                    key={location.id}
+                    position={{
+                      lat: location.latitude,
+                      lng: location.longitude,
+                    }}
+                    onClick={() => {
+                      setSelectedLocation(location);
+                      centerMapOnLocation(location);
+                    }}
+                    icon={{
+                      url: location.type === 'college' 
+                        ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' 
+                        : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+                    }}
+                  />
+                ))}
+                
+                {selectedLocation && (
+                  <InfoWindowF
+                    position={{
+                      lat: selectedLocation.latitude,
+                      lng: selectedLocation.longitude,
+                    }}
+                    onCloseClick={() => setSelectedLocation(null)}
+                  >
+                    <Box sx={{ width: 320, maxHeight: 400, overflow: 'auto' }}>
+                      <Typography variant="h6" fontWeight="bold">
+                        {selectedLocation.name}
+                      </Typography>
+                      
+                      {/* Basic Info */}
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        {selectedLocation.metadata.address || 'No address available'}
+                      </Typography>
+                      
+                      {selectedLocation.metadata.description && (
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          {selectedLocation.metadata.description}
+                        </Typography>
+                      )}
+                      
+                      {/* College-specific info */}
+                      {selectedLocation.type === 'college' && (
+                        <>
+                          {selectedLocation.metadata.reason && (
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              <strong>Why it's a good fit:</strong> {selectedLocation.metadata.reason}
+                            </Typography>
+                          )}
+                          
+                          {selectedLocation.metadata.acceptanceRate !== undefined && (
+                            <Typography variant="body2">
+                              <strong>Acceptance Rate:</strong> {(selectedLocation.metadata.acceptanceRate * 100).toFixed(1)}%
+                            </Typography>
+                          )}
+                          
+                          {selectedLocation.metadata.costOfAttendance?.total && (
+                            <Typography variant="body2">
+                              <strong>Cost of Attendance:</strong> ${selectedLocation.metadata.costOfAttendance.total.toLocaleString()}
+                            </Typography>
+                          )}
+                          
+                          {/* Merit Scholarships */}
+                          {selectedLocation.metadata.meritScholarships && (
+                            <Typography variant="body2">
+                              <strong>Merit Scholarships:</strong> ${selectedLocation.metadata.meritScholarships.minAmount.toLocaleString()} - 
+                              ${selectedLocation.metadata.meritScholarships.maxAmount.toLocaleString()}
+                            </Typography>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Scholarship-specific info */}
+                      {selectedLocation.type === 'scholarship' && (
+                        <>
+                          {selectedLocation.metadata.amount && (
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              <strong>Amount:</strong> ${selectedLocation.metadata.amount.toLocaleString()}
+                            </Typography>
+                          )}
+                          
+                          {selectedLocation.metadata.deadline && (
+                            <Typography variant="body2">
+                              <strong>Deadline:</strong> {new Date(selectedLocation.metadata.deadline).toLocaleDateString()}
+                            </Typography>
+                          )}
+                          
+                          {selectedLocation.metadata.eligibility && (
+                            <Typography variant="body2">
+                              <strong>Eligibility:</strong> {selectedLocation.metadata.eligibility}
+                            </Typography>
+                          )}
+                          
+                          {selectedLocation.metadata.applicationUrl && (
                             <Link 
-                              href={selectedLocation.metadata.website} 
+                              href={selectedLocation.metadata.applicationUrl} 
                               target="_blank" 
                               rel="noopener noreferrer"
+                              sx={{ display: 'block', mt: 1 }}
                             >
-                              Visit Website
+                              Apply Now
                             </Link>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Reference Links */}
+                      {selectedLocation.metadata.referenceLinks && selectedLocation.metadata.referenceLinks.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            Related Links
                           </Typography>
-                        )}
-                        {selectedLocation.metadata.description && (
-                          <Typography variant="body2" sx={{ mb: 1 }}>
-                            {selectedLocation.metadata.description}
-                          </Typography>
-                        )}
-                        {selectedLocation.type === 'college' && (
-                          <Box sx={{ mb: 1 }}>
-                            {selectedLocation.metadata.fitScore && (
-                              <Typography variant="body2">
-                                Fit Score: {selectedLocation.metadata.fitScore}
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.reason && (
-                              <Typography variant="body2">
-                                Reason: {selectedLocation.metadata.reason}
-                              </Typography>
-                            )}
-                          </Box>
-                        )}
-                        {selectedLocation.type === 'scholarship' && (
-                          <Box sx={{ mb: 1 }}>
-                            {selectedLocation.metadata.amount && (
-                              <Typography variant="body2">
-                                Amount: ${selectedLocation.metadata.amount}
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.deadline && (
-                              <Typography variant="body2">
-                                Deadline: {selectedLocation.metadata.deadline}
-                              </Typography>
-                            )}
-                            {selectedLocation.metadata.eligibility && (
-                              <Typography variant="body2">
-                                Eligibility: {selectedLocation.metadata.eligibility}
-                              </Typography>
-                            )}
-                          </Box>
-                        )}
-                        {(selectedLocation.metadata.referenceLinks && selectedLocation.metadata.referenceLinks.length > 0) && (
-                          <Box sx={{ mt: 2 }}>
-                            <Button
-                              size="small"
-                              endIcon={selectedLocation.metadata.showLinks ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                              onClick={(e: React.MouseEvent) => {
-                                e.stopPropagation();
-                                setLocations(prev => prev.map(loc => 
-                                  loc.id === selectedLocation.id 
-                                    ? { 
-                                        ...loc, 
-                                        metadata: { 
-                                          ...loc.metadata, 
-                                          showLinks: !loc.metadata.showLinks 
-                                        } 
-                                      }
-                                    : loc
-                                ));
-                              }}
-                            >
-                              {`${selectedLocation.metadata.referenceLinks.length} Reference Links`}
-                            </Button>
-                            <Collapse in={selectedLocation.metadata.showLinks}>
-                              <List dense>
-                                {selectedLocation.metadata.referenceLinks.map((link, index) => (
-                                  <ListItem key={index}>
+                          <List dense disablePadding>
+                            {selectedLocation.metadata.referenceLinks.map((link, index) => (
+                              <ListItem key={index} disablePadding sx={{ py: 0.5 }}>
+                                <ListItemText
+                                  primary={
                                     <Link 
                                       href={link.url} 
                                       target="_blank" 
                                       rel="noopener noreferrer"
-                                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
                                     >
-                                      {link.title || `Reference ${index + 1}`}
+                                      {link.title || link.url}
                                     </Link>
-                                  </ListItem>
-                                ))}
-                              </List>
-                            </Collapse>
-                          </Box>
-                        )}
+                                  }
+                                  secondary={link.category}
+                                />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </Box>
+                      )}
+                      
+                      {/* Main Website Link */}
+                      {selectedLocation.metadata.website && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          component={Link}
+                          href={selectedLocation.metadata.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ mt: 2, display: 'block' }}
+                        >
+                          Visit Official Website
+                        </Button>
+                      )}
+                      
+                      {/* Action Buttons */}
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent the click from bubbling to the map
+                            if (window.confirm(`Are you sure you want to delete ${selectedLocation.name}?`)) {
+                              handleDeleteLocation(selectedLocation.id);
+                            }
+                          }}
+                          disabled={isLoading}
+                        >
+                          Delete
+                        </Button>
                       </Box>
-                    </InfoWindowF>
-                  )}
-                </GoogleMap>
-              </CardContent>
-            </Card>
+                    </Box>
+                  </InfoWindowF>
+                )}
+              </GoogleMap>
+            </Box>
+          </Grid>
+          
+          {/* Location List */}
+          <Grid item xs={12} md={4}>
+            <Paper elevation={1} sx={{ p: 2, height: '600px', overflow: 'auto' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Map Locations
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<SortByAlphaIcon />}
+                  onClick={() => setSortBy(sortBy === 'name' ? 'type' : 'name')}
+                >
+                  Sort by {sortBy === 'name' ? 'Type' : 'Name'}
+                </Button>
+              </Box>
+              
+              {locations.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No locations found. Add locations using the "Add Location" button.
+                </Typography>
+              ) : (
+                <List>
+                  {[...locations]
+                    .sort((a, b) => {
+                      if (sortBy === 'name') {
+                        return a.name.localeCompare(b.name);
+                      } else {
+                        // Sort by type first, then by name
+                        return a.type === b.type 
+                          ? a.name.localeCompare(b.name) 
+                          : a.type.localeCompare(b.type);
+                      }
+                    })
+                    .map((location) => (
+                    <ListItem 
+                      key={location.id}
+                      button
+                      onClick={() => {
+                        setSelectedLocation(location);
+                        centerMapOnLocation(location);
+                      }}
+                      sx={{
+                        bgcolor: selectedLocation?.id === location.id ? 'action.selected' : 'inherit',
+                        borderRadius: 1,
+                        mb: 1
+                      }}
+                    >
+                      <ListItemIcon>
+                        {location.type === 'college' ? (
+                          location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0 ? (
+                            <Badge 
+                              badgeContent={<LinkIcon fontSize="small" />} 
+                              color="primary"
+                              anchorOrigin={{
+                                vertical: 'bottom',
+                                horizontal: 'right',
+                              }}
+                              sx={{ '& .MuiBadge-badge': { fontSize: '0.5rem', width: 16, height: 16 } }}
+                            >
+                              <SchoolIcon color="primary" />
+                            </Badge>
+                          ) : (
+                            <SchoolIcon color="primary" />
+                          )
+                        ) : (
+                          location.metadata.referenceLinks && location.metadata.referenceLinks.length > 0 ? (
+                            <Badge 
+                              badgeContent={<LinkIcon fontSize="small" />} 
+                              color="success"
+                              anchorOrigin={{
+                                vertical: 'bottom',
+                                horizontal: 'right',
+                              }}
+                              sx={{ '& .MuiBadge-badge': { fontSize: '0.5rem', width: 16, height: 16 } }}
+                            >
+                              <AttachMoneyIcon color="success" />
+                            </Badge>
+                          ) : (
+                            <AttachMoneyIcon color="success" />
+                          )
+                        )}
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={location.name}
+                        secondary={
+                          <>
+                            {location.metadata.address || 'No address available'}
+                            {location.type === 'college' && location.metadata.acceptanceRate !== undefined && (
+                              <Box component="span" sx={{ display: 'block' }}>
+                                Acceptance: {(location.metadata.acceptanceRate * 100).toFixed(1)}%
+                              </Box>
+                            )}
+                            {location.type === 'scholarship' && location.metadata.amount && (
+                              <Box component="span" sx={{ display: 'block' }}>
+                                Amount: ${location.metadata.amount.toLocaleString()}
+                              </Box>
+                            )}
+                          </>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Paper>
           </Grid>
         </Grid>
       )}
-
-      {/* Edit Dialog */}
-      <Dialog 
-        open={isEditDialogOpen} 
-        onClose={() => {
-          setIsEditDialogOpen(false);
-          setEditingLocation(null);
-          setLocationFormErrors({});
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          {editingLocation?.id.startsWith('custom-') ? 'Add Location' : 'Edit Location'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <TextField
-              label="Name"
-              fullWidth
-              value={editingLocation?.name || ''}
-              onChange={(e) => setEditingLocation(prev => prev ? { ...prev, name: e.target.value } : null)}
-              error={!!locationFormErrors.name}
-              helperText={locationFormErrors.name}
-            />
-            <FormControl fullWidth error={!!locationFormErrors.type}>
-              <InputLabel>Type</InputLabel>
-              <Select
-                value={editingLocation?.type || ''}
-                label="Type"
-                onChange={(e) => setEditingLocation(prev => prev ? { ...prev, type: e.target.value as 'college' | 'scholarship' } : null)}
-              >
-                <MenuItem value="college">College</MenuItem>
-                <MenuItem value="scholarship">Scholarship</MenuItem>
-              </Select>
-              {locationFormErrors.type && (
-                <FormHelperText>{locationFormErrors.type}</FormHelperText>
-              )}
-            </FormControl>
-            <TextField
-              label="Address"
-              fullWidth
-              value={editingLocation?.metadata?.address || ''}
-              onChange={(e) => setEditingLocation(prev => prev ? {
-                ...prev,
-                metadata: { ...prev.metadata, address: e.target.value }
-              } : null)}
-              error={!!locationFormErrors.address}
-              helperText={locationFormErrors.address || 'Enter address for automatic geocoding'}
-            />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField
-                label="Latitude"
-                type="number"
-                value={editingLocation?.latitude || ''}
-                onChange={(e) => setEditingLocation(prev => prev ? {
-                  ...prev,
-                  latitude: parseFloat(e.target.value)
-                } : null)}
-                disabled={!!editingLocation?.metadata?.address}
-              />
-              <TextField
-                label="Longitude"
-                type="number"
-                value={editingLocation?.longitude || ''}
-                onChange={(e) => setEditingLocation(prev => prev ? {
-                  ...prev,
-                  longitude: parseFloat(e.target.value)
-                } : null)}
-                disabled={!!editingLocation?.metadata?.address}
-              />
-            </Box>
-            {editingLocation?.type === 'college' && (
-              <>
-                <TextField
-                  label="Website"
-                  fullWidth
-                  value={editingLocation.metadata?.website || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, website: e.target.value }
-                  } : null)}
-                />
-                <TextField
-                  label="Description"
-                  fullWidth
-                  multiline
-                  rows={3}
-                  value={editingLocation.metadata?.description || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, description: e.target.value }
-                  } : null)}
-                />
-                <TextField
-                  label="Fit Score"
-                  type="number"
-                  value={editingLocation.metadata?.fitScore || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, fitScore: parseFloat(e.target.value) }
-                  } : null)}
-                />
-                <TextField
-                  label="Reason"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={editingLocation.metadata?.reason || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, reason: e.target.value }
-                  } : null)}
-                />
-              </>
-            )}
-            {editingLocation?.type === 'scholarship' && (
-              <>
-                <TextField
-                  label="Amount"
-                  type="number"
-                  value={editingLocation.metadata?.amount || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, amount: parseFloat(e.target.value) }
-                  } : null)}
-                />
-                <TextField
-                  label="Deadline"
-                  fullWidth
-                  value={editingLocation.metadata?.deadline || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, deadline: e.target.value }
-                  } : null)}
-                />
-                <TextField
-                  label="Eligibility"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={editingLocation.metadata?.eligibility || ''}
-                  onChange={(e) => setEditingLocation(prev => prev ? {
-                    ...prev,
-                    metadata: { ...prev.metadata, eligibility: e.target.value }
-                  } : null)}
-                />
-              </>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setIsEditDialogOpen(false);
-            setEditingLocation(null);
-            setLocationFormErrors({});
-          }}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={() => {
-              if (editingLocation && validateLocationForm(editingLocation)) {
-                handleSaveLocation(editingLocation);
-              }
-            }}
-            variant="contained"
-            disabled={isProcessing}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
-      >
-        <DialogTitle>Delete Location</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to delete this location?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsDeleteDialogOpen(false)}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={() => selectedLocation && handleDeleteLocation(selectedLocation)}
-            color="error"
-            disabled={isProcessing}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Paper>
   );
 };

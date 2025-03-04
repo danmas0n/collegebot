@@ -1,6 +1,6 @@
 # CollegeBot
 
-A web application that helps students find and evaluate colleges that match their preferences and requirements.
+A web application that helps students find and evaluate colleges that match their preferences and requirements. The application includes features for college research, map visualization, calendar planning, and task management to assist students throughout the college application process.
 
 ## License
 
@@ -17,16 +17,84 @@ But you cannot:
 - Use the software in a commercial service
 - Offer hosting or consulting services based primarily on this software
 
+## Features
+
+- **Student Profile Management**: Create and manage student profiles with academic information, interests, and preferences
+- **College Research**: AI-powered research to find colleges matching student preferences
+- **Interactive Map**: Visualize colleges and scholarships on a map with detailed information
+- **Calendar & Tasks**: Track application deadlines and manage college application tasks
+- **Recommendations**: Get personalized college recommendations based on student profile
+- **Admin Panel**: Manage users, AI settings, and application data
+
+## Recent Updates
+
+### XLSX to PDF Conversion
+- Added support for converting Excel (.xlsx) files to PDF format in the college-data-server
+- Implemented solution addresses compatibility issues with the Gemini API
+- Uses ExcelJS for reading Excel files and PDFKit for generating PDF output
+- Preserves tabular structure and formatting for better AI processing
+
+### Map Processing Improvements
+- Enhanced chat history processing for map location extraction:
+  - Restructured to treat chat history as reference data rather than continuing conversations
+  - Improved state management to prevent duplicate tool calls
+  - Added detailed logging for debugging tool execution
+  - Modified prompts to provide more explicit instructions for processing locations sequentially
+  - Added stronger type checking and error handling
+
 ## Project Structure
 
 ```
 collegebot/
 ├── backend/         # Express.js backend
+│   ├── src/         # Source code
+│   │   ├── routes/  # API routes
+│   │   ├── services/# Service implementations including geocoding and map locations
+│   │   ├── prompts/ # AI prompt templates
+│   │   └── utils/   # Utility functions
 ├── frontend/        # React frontend
-├── mcp/            # Model Context Protocol services
+│   ├── src/         # Source code
+│   │   ├── components/  # React components
+│   │   ├── contexts/    # React contexts
+│   │   ├── types/       # TypeScript type definitions
+│   │   └── utils/       # Utility functions
+├── mcp/             # Model Context Protocol services
+│   └── college-data-server/  # College data service with CDS extraction
 ├── firestore.rules  # Firestore security rules
 └── firebase.json    # Firebase configuration
 ```
+
+### MCP Services
+
+The application uses the Model Context Protocol (MCP) to enable AI models to access structured data:
+
+#### college-data-server
+- Provides access to Common Data Set (CDS) information for colleges
+- Implements tools for searching college data using Google Custom Search API
+- Extracts structured information from PDF and Excel files using Gemini
+- Recently enhanced with XLSX to PDF conversion for compatibility with AI models
+- Caches processed data for improved performance
+- Supports processing of both PDF and Excel-format CDS data files
+
+### Backend Services
+
+The backend implements several key services to support the application:
+
+- **Authentication Middleware**: Validates JWT tokens and enforces access control
+- **Firestore Integration**: CRUD operations for all application data
+- **AI Service Factory**: Dynamically selects AI service (Claude/Gemini) based on settings
+- **Map Services**: 
+  - Handles geocoding of addresses to coordinates
+  - Manages college and scholarship locations
+  - Includes analysis of preference matching and fit issues
+  - Recently enhanced with improved chat processing for more reliable extraction
+- **Tools System**:
+  - Implements a structured tool execution framework
+  - Handles detection and parsing of tool calls from AI responses
+  - Supports comprehensive logging for debugging
+  - Maintains conversation state for stateful interactions
+- **Research Services**: Processes chat content for insights and extracts research tasks
+- **Student Data Services**: Manages student profiles and preference data
 
 ## Cloud Architecture
 
@@ -121,11 +189,40 @@ CollegeBot is built on Google Cloud Platform (GCP) and Firebase, leveraging seve
      FIREBASE_CREDENTIALS_FILE=/workspace/backend/service-account.json
      GOOGLE_CLOUD_PROJECT=collegebot-dev-52f43
      CLAUDE_API_KEY=your_claude_api_key
-     CLAUDE_MODEL=claude-3-5-sonnet-20241022
+     CLAUDE_MODEL=claude-3-7-sonnet-20250219
      GEMINI_API_KEY=your_gemini_api_key
      GEMINI_MODEL=gemini-2.0-flash
      GOOGLE_MAPS_API_KEY=your_maps_api_key
      ```
+
+## Key Components
+
+### Map Visualization
+
+The Map stage provides an interactive visualization of colleges and scholarships:
+
+- **Interactive Google Map**: Displays colleges and scholarships as markers
+- **Detailed Information**: Shows comprehensive details about each location including:
+  - College information: acceptance rates, costs, merit scholarships
+  - Scholarship information: amounts, deadlines, eligibility
+  - Reference links to official websites and resources
+- **Location List**: Sortable list of all locations with filtering options
+- **Visual Indicators**: Special badges for locations with reference links
+- **Automated Processing**: AI-powered chat analysis to extract colleges and scholarships mentioned in conversations:
+  - Extracts college and scholarship information from chat history
+  - Geocodes addresses to get precise coordinates
+  - Adds locations to the map with comprehensive metadata
+  - Identifies potential fit issues (financial, academic, location)
+  - Detects match with student preferences
+  - Creates consistent and structured location data
+
+### Calendar & Tasks
+
+The Calendar stage helps students manage college application deadlines:
+
+- **Calendar View**: Visual representation of important dates and deadlines
+- **Task Management**: Create and track tasks for college applications and scholarships
+- **Integration**: Tasks can be created from research findings
 
 ### AI Service Configuration
 
@@ -144,7 +241,7 @@ The application supports both Claude and Gemini AI services. AI settings are man
    - Required variables in `.env` or Cloud Run:
      ```
      AI_SERVICE_TYPE=claude # or gemini
-     CLAUDE_MODEL=claude-3-5-sonnet-20241022
+     CLAUDE_MODEL=claude-3-7-sonnet-20250219
      CLAUDE_API_KEY=your_claude_api_key_here
      GEMINI_MODEL=gemini-2.0-flash
      GEMINI_API_KEY=your_gemini_api_key_here

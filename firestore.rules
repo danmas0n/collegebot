@@ -67,6 +67,37 @@ service cloud.firestore {
       );
     }
 
+    // Research tasks collection
+    match /research_tasks/{taskId} {
+      allow read: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && (
+          request.auth.uid == resource.data.userId ||
+          exists(/databases/$(database)/documents/whitelisted_users/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/whitelisted_users/$(request.auth.token.email)).data.parentUserId == resource.data.userId
+        );
+      allow create: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && (
+          request.auth.uid == resource.data.userId ||
+          exists(/databases/$(database)/documents/whitelisted_users/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/whitelisted_users/$(request.auth.token.email)).data.parentUserId == resource.data.userId
+        );
+    }
+    
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read: if request.auth != null 
+        && isWhitelisted(request.auth.token.email);
+      allow create: if request.auth != null 
+        && isWhitelisted(request.auth.token.email);
+      allow update, delete: if request.auth != null 
+        && isWhitelisted(request.auth.token.email);
+    }
+
     // Settings collection (AI settings, etc.)
     match /settings/{document} {
       allow read: if request.auth != null;

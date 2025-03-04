@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Paper,
   TextField,
   Button,
   List,
@@ -12,11 +11,20 @@ import {
   Alert,
   Grid,
   IconButton,
+  Collapse,
+  Paper,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useWizard } from '../../contexts/WizardContext';
+import { useResearch } from '../../contexts/ResearchContext';
+import { useNotification } from '../../contexts/NotificationContext';
 import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
+import { ResearchStatusPanel } from '../ResearchStatusPanel';
+import { ResearchFindingsDialog } from '../ResearchFindingsDialog';
+import { StageContainer, StageHeader, StageContent, StageFooter } from './StageContainer';
 import { api } from '../../utils/api';
 
 interface Message extends AiChatMessage {
@@ -25,6 +33,19 @@ interface Message extends AiChatMessage {
 }
 
 import { AiChat } from '../../types/college';
+
+interface AIResearchFinding {
+  detail: string;
+  category: 'deadline' | 'requirement' | 'contact' | 'financial' | 'other';
+  confidence?: 'high' | 'medium' | 'low';
+  source?: string;
+}
+
+interface AIResearchTask {
+  type: 'college' | 'scholarship';
+  name: string;
+  findings: AIResearchFinding[];
+}
 
 interface Chat extends AiChat {
   toolData?: string;
@@ -378,6 +399,36 @@ export const RecommendationsStage: React.FC = () => {
                   };
                   setCurrentChat(updatedChatWithAnswer);
                   activeChat = updatedChatWithAnswer;
+
+                  // Process research tasks from the response
+                  if (data.researchTasks) {
+                    for (const task of data.researchTasks as AIResearchTask[]) {
+                      try {
+                        await addTask({
+                          studentId: currentStudent.id,
+                          userId: currentStudent.userId,
+                          entityType: task.type,
+                          entityName: task.name,
+                          entityId: `${task.type}-${Date.now()}`,
+                          status: 'queued',
+                          progress: 0,
+                          currentOperation: 'Initializing research',
+                          findings: task.findings.map(f => ({
+                            detail: f.detail,
+                            category: f.category,
+                            confidence: f.confidence || 'medium',
+                            source: f.source,
+                            timestamp: new Date().toISOString()
+                          }))
+                        });
+                      } catch (error) {
+                        console.error('Error creating research task:', error);
+                        showNotification('Failed to create research task', 'error', {
+                          persist: true
+                        });
+                      }
+                    }
+                  }
                   break;
 
                 case 'complete':
@@ -435,33 +486,81 @@ export const RecommendationsStage: React.FC = () => {
     }
   }, [currentChat?.messages]);
 
+  // Research state
+  const { tasks, addTask, updateTask, addFinding } = useResearch();
+  const { showNotification } = useNotification();
+  const [showExamples, setShowExamples] = useState(true);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const selectedTask = selectedTaskId ? (tasks.find(t => t.id === selectedTaskId) || null) : null;
+  
+  // Auto-collapse examples after 5 seconds
+  useEffect(() => {
+    if (showExamples) {
+      const timer = setTimeout(() => {
+        setShowExamples(false);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showExamples]);
+
   return (
-    <Paper elevation={0} sx={{ p: 3, height: '100%' }}>
-      <Typography variant="h5" gutterBottom>
-        AI Recommendations
-      </Typography>
-      <Typography color="text.secondary" paragraph>
-        Ask questions about colleges that match your profile, or get recommendations based on your interests and budget. For example:
-      </Typography>
-      <Typography component="div" sx={{ mb: 2 }}>
-        <ul>
-          <li>"What colleges would be a good fit for me based on my GPA and test scores?"</li>
-          <li>"Which colleges offer strong programs in my areas of interest?"</li>
-          <li>"What are my chances of getting merit scholarships at these colleges?"</li>
-          <li>"Compare the financial aid packages at these schools."</li>
-        </ul>
-      </Typography>
+      <StageContainer elevation={0} sx={{ position: 'relative' }}>
+      <StageHeader>
+        <Typography variant="h5" gutterBottom>
+          AI Recommendations
+        </Typography>
+        
+        {tasks.length > 0 && (
+          <ResearchStatusPanel 
+            tasks={tasks}
+            onShowDetails={(taskId) => setSelectedTaskId(taskId)}
+          />
+        )}
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
+        <Collapse in={showExamples}>
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography color="text.secondary">
+                Example questions you can ask:
+              </Typography>
+              <IconButton size="small" onClick={() => setShowExamples(false)}>
+                <ExpandLessIcon />
+              </IconButton>
+            </Box>
+            <Typography component="div">
+              <ul>
+                <li>"What colleges would be a good fit for me based on my GPA and test scores?"</li>
+                <li>"Which colleges offer strong programs in my areas of interest?"</li>
+                <li>"What are my chances of getting merit scholarships at these colleges?"</li>
+                <li>"Compare the financial aid packages at these schools."</li>
+              </ul>
+            </Typography>
+          </Box>
+        </Collapse>
 
-      <Grid container spacing={2} sx={{ height: 'calc(100vh - 250px)' }}>
-        {/* Chat List */}
-        <Grid item xs={3} sx={{ height: '100%' }}>
-          <Paper elevation={0} sx={{ p: 2, height: '100%', overflowY: 'auto' }}>
+        {!showExamples && (
+          <Button
+            startIcon={<ExpandMoreIcon />}
+            onClick={() => setShowExamples(true)}
+            sx={{ mb: 2 }}
+          >
+            Show Example Questions
+          </Button>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </StageHeader>
+
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+        <Grid container spacing={2} sx={{ height: '100%' }}>
+          {/* Chat List */}
+          <Grid item xs={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 2, height: '100%', overflowY: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6">Chats</Typography>
               <Button
@@ -472,6 +571,11 @@ export const RecommendationsStage: React.FC = () => {
                 New Chat
               </Button>
             </Box>
+
+      <ResearchFindingsDialog
+        task={selectedTask}
+        onClose={() => setSelectedTaskId(null)}
+      />
             <List>
               {chats.map((chat) => (
                 <ListItem
@@ -499,54 +603,46 @@ export const RecommendationsStage: React.FC = () => {
                 </ListItem>
               ))}
             </List>
-          </Paper>
-        </Grid>
+            </Box>
+          </Grid>
 
-        {/* Chat Messages */}
-        <Grid item xs={9} sx={{ height: '100%' }}>
-          <Box 
-            sx={{ 
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            <Box 
-              sx={{ 
-                flex: 1,
-                overflowY: 'auto',
-                width: '100%',
-                mb: 2
-              }}
-              ref={paperRef}
-            >
-              <List sx={{ width: '100%' }}>
+          {/* Chat Messages */}
+          <Grid item xs={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ flex: 1, overflowY: 'auto', pr: 2 }}>
+              <List sx={{ width: '100%', flex: 1 }}>
                 {currentChat?.messages.map((msg, index) => renderMessage(msg, index))}
               </List>
             </Box>
 
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                fullWidth
-                label="Ask a question"
-                multiline
-                rows={2}
-                value={currentMessage}
-                onChange={(e) => setCurrentMessage(e.target.value)}
-                disabled={isLoading}
-              />
-              <Button
-                variant="contained"
-                onClick={() => handleSendMessage(currentMessage)}
-                disabled={!currentMessage.trim() || isLoading}
-                sx={{ minWidth: '100px' }}
-              >
-                {isLoading ? <CircularProgress size={24} /> : 'Send'}
-              </Button>
+            <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label="Ask a question"
+                  multiline
+                  rows={2}
+                  value={currentMessage}
+                  onChange={(e) => setCurrentMessage(e.target.value)}
+                  disabled={isLoading}
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => handleSendMessage(currentMessage)}
+                  disabled={!currentMessage.trim() || isLoading}
+                  sx={{ minWidth: '100px' }}
+                >
+                  {isLoading ? <CircularProgress size={24} /> : 'Send'}
+                </Button>
+              </Box>
             </Box>
-          </Box>
+          </Grid>
         </Grid>
-      </Grid>
-    </Paper>
+      </Box>
+
+      <ResearchFindingsDialog
+        task={selectedTask}
+        onClose={() => setSelectedTaskId(null)}
+      />
+    </StageContainer>
   );
 };

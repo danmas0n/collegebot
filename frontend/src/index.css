@@ -1,0 +1,99 @@
+/* Global CSS styles */
+
+/* AI Message HTML styling - Ultra compact version */
+.ai-message-html {
+  line-height: 1.1; /* Very tight line height */
+  font-size: 0.95em; /* Slightly smaller font */
+}
+
+/* Headings */
+.ai-message-html h1, 
+.ai-message-html h2, 
+.ai-message-html h3, 
+.ai-message-html h4, 
+.ai-message-html h5, 
+.ai-message-html h6 {
+  margin-top: 0.4rem;
+  margin-bottom: 0.1rem;
+  line-height: 1.2;
+}
+
+/* Paragraphs */
+.ai-message-html p {
+  margin-top: 0.1rem;
+  margin-bottom: 0.1rem;
+}
+
+/* Lists */
+.ai-message-html ul, 
+.ai-message-html ol {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 1.1rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* List items */
+.ai-message-html li {
+  margin: 0;
+  padding: 0;
+  line-height: 1.1;
+}
+
+/* Nested lists */
+.ai-message-html ul li ul, 
+.ai-message-html ol li ol {
+  margin: 0;
+  padding-left: 0.8rem;
+}
+
+/* Ultra-compact nested lists */
+.ai-message-html ul ul, 
+.ai-message-html ol ol, 
+.ai-message-html ul ol, 
+.ai-message-html ol ul {
+  margin: 0;
+  padding-left: 0.8rem;
+}
+
+/* Divs - ultra compact */
+.ai-message-html div {
+  margin: 0;
+  padding: 0;
+}
+
+/* Remove default browser spacing */
+.ai-message-html * {
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+/* Add more spacing between sections */
+.ai-message-html hr {
+  margin: 1rem 0;
+}
+
+/* Make sure content doesn't overflow */
+.ai-message-html img,
+.ai-message-html table {
+  max-width: 100%;
+}
+
+/* Table styling */
+.ai-message-html table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.ai-message-html th,
+.ai-message-html td {
+  border: 1px solid #ddd;
+  padding: 0.5rem;
+}
+
+/* Links should open in new tab by default */
+.ai-message-html a {
+  target: "_blank";
+  color: #1976d2;
+}

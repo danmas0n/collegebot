@@ -3,7 +3,9 @@ import { AIServiceFactory } from '../services/ai-service-factory.js';
 import { setupSSEResponse } from '../utils/helpers.js';
 import { getBasePrompt } from '../prompts/base.js';
 import { getChats, getStudent, saveChat, deleteChat } from '../services/firestore.js';
-import { Chat, ChatDTO } from '../types/firestore.js';
+import { processChat } from '../services/research.js';
+import { Chat, ChatDTO, DTOChatMessage, FirestoreChatMessage } from '../types/firestore.js';
+import { Timestamp } from 'firebase-admin/firestore';
 
 const router = express.Router();
 
@@ -71,8 +73,32 @@ router.post('/chat', async (req: Request, res: Response) => {
       chat.processedAt = null;
     }
     
+    // Save the chat
     await saveChat(chat);
     console.log('Backend - Chat saved successfully');
+
+    // DISABLED: Automatic chat processing - now using explicit processing via UI buttons
+    // Process chat for research tasks if it's not marked as processed
+    // if (!chat.processed) {
+    //   try {
+    //     // Convert DTO timestamps to Firestore timestamps
+    //     const firestoreChat: Chat = {
+    //       ...chat,
+    //       messages: chat.messages.map((msg: DTOChatMessage): FirestoreChatMessage => ({
+    //         ...msg,
+    //         timestamp: Timestamp.fromDate(new Date(msg.timestamp))
+    //       })),
+    //       processedAt: chat.processedAt ? Timestamp.fromDate(new Date(chat.processedAt)) : null,
+    //       createdAt: Timestamp.fromDate(new Date(chat.createdAt)),
+    //       updatedAt: Timestamp.fromDate(new Date(chat.updatedAt))
+    //     };
+    //     await processChat(firestoreChat, studentId, req.user.uid);
+    //   } catch (error) {
+    //     console.error('Error processing chat for research:', error);
+    //     // Don't fail the save operation if research processing fails
+    //   }
+    // }
+
     res.json({ message: 'Chat saved successfully' });
   } catch (error) {
     console.error('Backend - Error saving chat:', error);
@@ -177,18 +203,38 @@ router.post('/process-all', async (req: Request, res: Response) => {
           total: unprocessedChats.length
         });
 
-        await aiService.analyzeChatHistory(chat, systemPrompt, (update) => {
-          sendSSE({
-            type: 'thinking',
-            content: update
-          });
-        });
+    console.info(`Starting analysis of chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
+    await aiService.analyzeChatHistory(chat, systemPrompt, (update) => {
+      sendSSE({
+        type: 'thinking',
+        content: update
+      });
+    });
 
-        await saveChat({
-          ...chat,
-          processed: true,
-          processedAt: new Date().toISOString()
-        });
+    // Process chat for research tasks
+    try {
+      // Convert DTO timestamps to Firestore timestamps
+      const firestoreChat: Chat = {
+        ...chat,
+        messages: chat.messages.map((msg: DTOChatMessage): FirestoreChatMessage => ({
+          ...msg,
+          timestamp: Timestamp.fromDate(new Date(msg.timestamp))
+        })),
+        processedAt: chat.processedAt ? Timestamp.fromDate(new Date(chat.processedAt)) : null,
+        createdAt: Timestamp.fromDate(new Date(chat.createdAt)),
+        updatedAt: Timestamp.fromDate(new Date(chat.updatedAt))
+      };
+      await processChat(firestoreChat, studentId, req.user.uid);
+    } catch (error) {
+      console.error('Error processing chat for research:', error);
+      // Don't fail the analysis if research processing fails
+    }
+
+    await saveChat({
+      ...chat,
+      processed: true,
+      processedAt: new Date().toISOString()
+    });
 
         processed++;
       } catch (error) {
@@ -237,7 +283,9 @@ router.post('/analyze', async (req: Request, res: Response) => {
 
     // Process chat with service
     const aiService = await AIServiceFactory.createService(req.user.uid);
+    console.info(`Starting analysis of single chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
     await aiService.analyzeChatHistory(chat, systemPrompt, sendSSE);
+    console.info(`Completed analysis of chat ${chat.id}`);
     sendSSE({ type: 'complete' });
 
     // Mark chat as processed

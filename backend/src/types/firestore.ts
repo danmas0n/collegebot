@@ -48,16 +48,16 @@ export interface Student {
 }
 
 // Common chat message types
-interface BaseChatMessage {
+export interface BaseChatMessage {
   role: 'user' | 'assistant' | 'thinking' | 'system' | 'answer' | 'question';
   content: string;
 }
 
-interface FirestoreChatMessage extends BaseChatMessage {
+export interface FirestoreChatMessage extends BaseChatMessage {
   timestamp: Timestamp;
 }
 
-interface DTOChatMessage extends BaseChatMessage {
+export interface DTOChatMessage extends BaseChatMessage {
   timestamp: string;
 }
 
@@ -123,6 +123,45 @@ export interface AdminUser {
   email: string;
   role: 'admin';
   createdAt: Timestamp;
+}
+
+export interface ResearchFinding {
+  timestamp: Timestamp;
+  detail: string;
+  source?: string;
+  confidence: 'high' | 'medium' | 'low';
+  category: 'deadline' | 'requirement' | 'contact' | 'financial' | 'other';
+}
+
+export interface ResearchTask {
+  id: string;
+  studentId: string;
+  userId: string;
+  entityType: 'college' | 'scholarship';
+  entityId: string;
+  entityName: string;
+  status: 'queued' | 'in-progress' | 'complete';
+  progress: number;
+  currentOperation: string;
+  findings: ResearchFinding[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface Task {
+  id: string;
+  studentId: string;
+  title: string;
+  description?: string;
+  dueDate?: string;
+  completed: boolean;
+  category: 'application' | 'scholarship' | 'financial' | 'other';
+  relatedEntities: {
+    collegeIds: string[];
+    scholarshipIds: string[];
+  };
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface AISettings {

@@ -8,6 +8,7 @@ CollegeBot is an AI-powered web application designed to help students and famili
 2. Financial Planning: Helps families understand true costs and scholarship opportunities
 3. College Fit: Matches students with institutions based on academic, financial, and personal criteria
 4. Data Access: Aggregates information from multiple sources (Common Data Sets, reviews, etc.)
+5. Application Management: Organizes deadlines, tasks, and requirements for college applications
 
 ## Core Functionality
 1. Wizard-Style Flow:
@@ -17,12 +18,17 @@ CollegeBot is an AI-powered web application designed to help students and famili
    - Data Gathering (CDS, reviews)
    - AI-Powered Recommendations
    - Map of Scholarships and Colleges
+   - Calendar & Tasks for Application Management
 
 2. Key Features:
    - Personalized college recommendations
    - Scholarship opportunity identification
    - Cost analysis and affordability assessment
    - Data-driven insights from multiple sources
+   - Calendar view for application deadlines
+   - Task management for college applications
+   - Automatic task generation from research findings
+   - Deadline tracking and reminders
 
 ## Target Users
 1. Primary: Students seeking college recommendations

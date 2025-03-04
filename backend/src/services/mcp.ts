@@ -54,11 +54,14 @@ export const createMcpClient = async (serverName: string) => {
 };
 
 // Helper function to execute MCP tool
-export const executeMcpTool = async (serverName: string, toolName: string, args: Record<string, any>, userId?: string) => {
+export const executeMcpTool = async (serverName: string, toolName: string, args: Record<string, any> | string, userId?: string) => {
   // Handle student-data tools directly
   if (serverName === 'student-data') {
     switch (toolName) {
       case 'geocode': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for geocode');
+        }
         const { address, name } = args;
         if (!address || !name) {
           throw new Error('Address and name are required');
@@ -100,6 +103,9 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
 
       case 'create_map_location': {
         if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_map_location');
+        }
         const { studentId, location } = args;
         if (!studentId || !location) {
           throw new Error('Student ID and location are required');
@@ -110,6 +116,9 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
 
       case 'get_map_locations': {
         if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for get_map_locations');
+        }
         const { studentId } = args;
         if (!studentId) {
           throw new Error('Student ID is required');
@@ -120,6 +129,9 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
 
       case 'clear_map_locations': {
         if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for clear_map_locations');
+        }
         const { studentId } = args;
         if (!studentId) {
           throw new Error('Student ID is required');
@@ -147,7 +159,7 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
       method: "tools/call",
       params: {
         name: toolName,
-        arguments: args
+        arguments: typeof args === 'string' ? JSON.parse(args) : args
       }
     };
     console.log('Backend - Sending MCP request:', request);

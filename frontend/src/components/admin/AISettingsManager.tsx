@@ -30,8 +30,8 @@ interface AISettings {
 const defaultSettings: AISettings = {
   id: 'current',
   serviceType: 'claude',
-  model: 'claude-3-5-sonnet-20241022',
-  claudeModel: 'claude-3-5-sonnet-20241022',
+  model: 'claude-3-7-sonnet-20250219',
+  claudeModel: 'claude-3-7-sonnet-20250219',
   geminiModel: 'gemini-2.0-flash',
   claudeApiKey: '',
   geminiApiKey: '',
@@ -43,7 +43,7 @@ export const AISettingsManager = () => {
   const { currentUser } = useAuth();
   const [settings, setSettings] = useState<AISettings>({
     ...defaultSettings,
-    claudeModel: 'claude-3-5-sonnet-20241022',
+    claudeModel: 'claude-3-7-sonnet-20250219',
     geminiModel: 'gemini-2.0-flash'
   });
   const [loading, setLoading] = useState(true);
@@ -159,7 +159,7 @@ export const AISettingsManager = () => {
           }}
           helperText={
             settings.serviceType === 'claude' 
-              ? 'e.g., claude-3-5-sonnet-20241022' 
+              ? 'e.g., claude-3-7-sonnet-20250219' 
               : 'e.g., gemini-2.0-flash'
           }
         />

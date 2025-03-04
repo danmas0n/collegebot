@@ -11,6 +11,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ResearchProvider } from './contexts/ResearchContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import { Login } from './components/Login';
 import { WizardStepper } from './components/WizardStepper';
 import { StudentSelectionStage } from './components/stages/StudentSelectionStage';
@@ -20,6 +22,7 @@ import { BudgetStage } from './components/stages/BudgetStage';
 import { DataCollectionStage } from './components/stages/DataCollectionStage';
 import { RecommendationsStage } from './components/stages/RecommendationsStage';
 import { MapStage } from './components/stages/MapStage';
+import { CalendarStage } from './components/stages/CalendarStage';
 import { AdminPanel } from './components/admin/AdminPanel';
 
 const WizardContent: React.FC = () => {
@@ -46,6 +49,8 @@ const WizardContent: React.FC = () => {
         return <RecommendationsStage />;
       case 'map':
         return <MapStage />;
+      case 'calendar':
+        return <CalendarStage />;
       default:
         return null;
     }
@@ -97,13 +102,17 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <WizardProvider>
-        <ChatProvider>
-          <AppContent />
-        </ChatProvider>
-      </WizardProvider>
-    </AuthProvider>
+    <NotificationProvider>
+      <AuthProvider>
+        <WizardProvider>
+          <ChatProvider>
+            <ResearchProvider>
+              <AppContent />
+            </ResearchProvider>
+          </ChatProvider>
+        </WizardProvider>
+      </AuthProvider>
+    </NotificationProvider>
   );
 };
 

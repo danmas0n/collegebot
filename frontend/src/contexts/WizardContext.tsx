@@ -10,7 +10,8 @@ const stages: WizardStage[] = [
   'budget',
   'data-collection',
   'recommendations',
-  'map'
+  'map',
+  'calendar'
 ];
 
 const initialData: WizardData = {
@@ -179,6 +180,8 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       case 'recommendations':
         return true;
       case 'map':
+        return true;
+      case 'calendar':
         return true;
       default:
         return false;

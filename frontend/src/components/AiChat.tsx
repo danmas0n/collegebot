@@ -169,7 +169,8 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   console.log('Frontend - Adding thinking message');
                   const thinkingMessage: AiChatMessage = {
                     role: 'thinking',
-                    content: data.content + (data.toolData ? `\n\nTool Data:\n${data.toolData}` : ''),
+                    content: data.content,
+                    toolData: data.toolData, // Store tool data separately
                     timestamp: new Date().toISOString()
                   };
                   updateState(() => {

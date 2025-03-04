@@ -76,7 +76,7 @@ const RECOMMENDATION_TOOLS: Tool[] = [
       {
         name: 'year',
         type: 'string',
-        description: 'Academic year (e.g., "2022-2023")',
+        description: 'Academic year (e.g., "2024-2025")',
         required: false
       }
     ]
@@ -187,51 +187,39 @@ export const generateToolInstructions = (mode: string): string => {
   instructions += `Tool Usage and Response Format Requirements:
 
 1. Thinking, Tool and Answer Tags:
-   - You are going to take turns with the user.  They go first.  
+   - You are going to take turns with the user. They go first.  
    - After the user speaks, you will think and use tools until you have an answer to their question.
-   - CRITICAL: Start slow -- think a tiny bit, call a tool and end your message and wait for the result.
-     Don't try to do everything at once.
    - Thinking:
-     - Use <thinking></thinking> tags to show your analysis and reasoning process
-     - When thinking, be concise; don't talk to the user, just think out loud to yourself
-     - After thinking, you must either call a tool to get more data, or answer the question, and then end
-       the message.  No exceptions.
-     - It's OK to pause your thinking while you wait for the results of a tool call.
+     - Use <thinking></thinking> tags to share your concise reasoning process
+     - Keep thinking tags brief and focused on your current analysis, not recapping previous information
+     - Use your creativity and world knowledge to generate insightful ideas for the student
+     - Only use tools to verify specific facts, figures, and details that may have changed since your training
    - Tool Calls:
-    - Format tool calls like this:
-      <tool>
-        <name>search_college_data</name>
-        <parameters>
-          {"query": "Stanford University"}
-        </parameters>
-      </tool>
-    - To call a tool, respond with a correctly formatted <tool> tag, and then end your message.  
-      The tool call results will be passed back to you so you can keep thinking.
-      - CRITICAL: ONLY CALL ONE TOOL AT A TIME!  Don't worry, you'll get called back to continue your thought process.
-      - CRITICAL: YOU MUST RETURN WELL FORMED XML AND/OR JSON in your tool calls.  Ensure you close each tag.  
-        If you don't, the system will break.
-      - CRITICAL: END YOUR MESSAGE IMMEDIATELY AFTER THE </tool> TAG.  
-        This signals the system to call the tool and return the results to you.
+     - Format tool calls like this:
+       <tool>
+         <name>search_college_data</name>
+         <parameters>
+           {"query": "Stanford University"}
+         </parameters>
+       </tool>
+     - When you make a tool call, the system will automatically execute it and return the results to you
+     - You only need to provide one complete tool call - the system will detect it and execute it
+     - Make sure your tool calls have well-formed XML and JSON
    - Answers:
-     - When you're ready, you can stop thinking and respond to the user's question.
-     - Use <answer></answer> tags to do this.  
-     - This can be either a summary of your findings or a question to the user on how to proceed.
-     - You can provide an <answer> right after a <thinking> tag if you are done thinking and have an answer.
-   - You MUST end every full thought process (which can span multiple messages and tool calls) with 
-     an <answer> to the user, wrapped in well formed <answer> and </answer> tags.  
-   - Once you have answered, the user will respond or ask a new question, and you can continue the conversation.
+     - When you're ready, respond to the user's question with <answer></answer> tags
+     - Format your answer in HTML, not Markdown (use <ul>, <li>, <p>, <strong>, <em>, etc.)
+     - This can be either a summary of your findings or a question to the user on how to proceed
+   - Once you have answered, the user will respond or ask a new question, and you can continue the conversation
 
    Important Notes:
-   - You don't know the latest college costs, reviews, etc.  Use the tools to get actual data.  
+   - Balance your world knowledge with tool use - you know general facts about colleges, but verify specifics (costs, deadlines, etc.)
    - When using get_cds_data, always use the full, formal name of the college with proper punctuation 
      (e.g., "University of Massachusetts - Amherst" not "UMass Amherst").
-   - Don't worry about calculating distances -- we'll do that when we add things to the map.  Just consider
+   - Don't worry about calculating distances -- we'll do that when we add things to the map. Just consider
      regional or state preferences.
-   - EXPLAIN your analysis of each piece of data
-   - BUILD your response step by step with confirmed information
-   - If a tool call fails, try again one or two more times.  If tool calls continue to fail, explain that to the 
-     user and gracefully stop.
-   - If you don't have enough information to do your job, ask the user for more details or suggest a different approach.
+   - Be creative with suggestions - students want insightful recommendations they couldn't easily find elsewhere
+   - If a tool call fails, try again with a different approach or ask the user for more information
+   - If you don't have enough information to do your job, ask the user for more details or suggest a different approach
 
 `;
 
@@ -314,7 +302,7 @@ ${generateToolInstructions(mode)}
 ${additionalContext}
 
 Format your responses clearly:
-- Use bullet points for lists
+- Use HTML formatting for structure and emphasis
 - Include relevant statistics
 - Highlight key information
 - Organize information logically

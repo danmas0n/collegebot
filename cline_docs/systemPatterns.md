@@ -34,6 +34,8 @@
     - whitelisted-users: Access control
     - admin-users: Admin user management
     - user-chats: User chat threads and messages
+    - research_tasks: Research tasks and findings
+    - tasks: Calendar tasks and deadlines
 
 ### AI Service Architecture
 - Factory pattern for AI service instantiation
@@ -66,6 +68,13 @@
   - DELETE /api/chat/chats/:id: Delete chat (with ownership verification)
   - POST /api/chat/message: Send message (with streaming response)
   - POST /api/chat/analyze: Analyze chat history
+- Task endpoints:
+  - GET /api/tasks/:studentId: Get all tasks for a student
+  - POST /api/tasks: Create a new task
+  - PUT /api/tasks/:taskId: Update a task
+  - DELETE /api/tasks/:taskId: Delete a task
+  - DELETE /api/tasks/student/:studentId: Delete all tasks for a student
+  - POST /api/tasks/from-findings: Create tasks from research findings
 - MCP servers for specialized operations
   - college-data: College information and search
   - claude-docs: Documentation access
@@ -92,6 +101,28 @@
   - Student ownership verification
   - Role-based access control
 
+### Calendar & Tasks Management
+- Task data structure:
+  - id: Unique identifier
+  - studentId: Links task to student
+  - title: Task name/description
+  - description: Detailed information
+  - dueDate: Deadline for the task
+  - completed: Task completion status
+  - category: Type of task (application, scholarship, financial, other)
+  - relatedEntities: Links to colleges and scholarships
+- Integration with research findings:
+  - Automatic task generation from research findings
+  - Date extraction from text using regex
+  - Categorization based on entity type
+- Calendar view:
+  - Visual representation of tasks by date
+  - Filtering by category and status
+  - Task management interface
+- Operations secured by:
+  - User authentication
+  - Student ownership verification
+
 ### Authentication Flow
 - Frontend:
   - api utility wraps all HTTP requests
@@ -111,6 +142,14 @@
   - AuthContext: User authentication state
   - ChatContext: Chat interactions
   - WizardContext: Application flow state
+  - ResearchContext: Research tasks and findings
+  - NotificationContext: Toast notifications and alerts
+- Calendar components
+  - CalendarStage: Main calendar view container
+  - CalendarView: Visual calendar representation
+  - TaskList: Task management interface
+  - ResearchStatusPanel: Shows active research tasks
+  - ResearchFindingsDialog: Displays research findings
 
 ### Data Flow
 - API utilities for backend communication

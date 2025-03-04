@@ -35,7 +35,7 @@ const RECOMMENDATION_TOOLS = [
       {
         name: 'year',
         type: 'string',
-        description: 'Academic year (e.g., "2022-2023")',
+        description: 'Academic year (e.g., "2024-2025")',
         required: false
       }
     ]
