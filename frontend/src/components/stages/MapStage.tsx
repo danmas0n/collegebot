@@ -451,7 +451,7 @@ export const MapStage = (): JSX.Element => {
                 <Paper variant="outlined" sx={{ p: 1, mt: 1, maxHeight: 400, overflow: 'auto' }}>
                   {processingLogs.map((log, index) => {
                     // Parse JSON strings if needed
-                    let parsedLog = log;
+                    let parsedLog: any = log;
                     if (typeof log === 'string' && log.trim().startsWith('{') && log.includes('"type"')) {
                       try {
                         parsedLog = JSON.parse(log);
@@ -462,8 +462,8 @@ export const MapStage = (): JSX.Element => {
                     }
                     
                     // Process based on content type
-                    let content;
-                    let toolData;
+                    let content: string = '';
+                    let toolData: string | undefined;
                     
                     if (typeof parsedLog === 'object' && parsedLog !== null) {
                       // Extract toolData if present
@@ -471,8 +471,10 @@ export const MapStage = (): JSX.Element => {
                         toolData = parsedLog.toolData;
                         try {
                           // Try to format toolData as pretty JSON
-                          const jsonData = JSON.parse(toolData);
-                          toolData = JSON.stringify(jsonData, null, 2);
+                          if (typeof toolData === 'string') {
+                            const jsonData = JSON.parse(toolData);
+                            toolData = JSON.stringify(jsonData, null, 2);
+                          }
                         } catch (e) {
                           // Keep original if can't parse
                         }
@@ -485,13 +487,15 @@ export const MapStage = (): JSX.Element => {
                     }
                     
                     // Check if content contains <analysis> tags
-                    const isAnalysis = content.includes('<analysis>') && content.includes('</analysis>');
+                    const isAnalysis = typeof content === 'string' && content.includes('<analysis>') && content.includes('</analysis>');
                     
                     if (isAnalysis) {
                       // Extract and format analysis content
-                      const analysisMatch = content.match(/<analysis>([\s\S]*?)<\/analysis>/);
+                      // Make sure content is a string before using string methods
+                      const contentStr = typeof content === 'string' ? content : '';
+                      const analysisMatch = contentStr.match(/<analysis>([\s\S]*?)<\/analysis>/);
                       const analysisContent = analysisMatch ? analysisMatch[1].trim() : '';
-                      const regularContent = content.replace(/<analysis>[\s\S]*?<\/analysis>/, '').trim();
+                      const regularContent = contentStr.replace(/<analysis>[\s\S]*?<\/analysis>/, '').trim();
                       
                       return (
                         <Box key={index} sx={{ mb: 2 }}>
@@ -542,7 +546,7 @@ export const MapStage = (): JSX.Element => {
                       );
                     } else {
                       // Check if content looks like HTML (contains HTML tags)
-                      const isHtml = typeof content === 'string' && 
+                      const isHtml = typeof content === 'string' && content !== undefined && 
                         (content.includes('<h') || 
                          content.includes('<p>') || 
                          content.includes('<ul>') || 
@@ -608,8 +612,8 @@ export const MapStage = (): JSX.Element => {
                           sx={{ 
                             whiteSpace: 'pre-wrap',
                             mb: 1,
-                            fontFamily: content.includes('Tool') || content.includes('Using') ? 'monospace' : 'inherit', 
-                            fontSize: content.includes('Tool') || content.includes('Using') ? '0.85rem' : 'inherit' 
+                            fontFamily: typeof content === 'string' && (content.includes('Tool') || content.includes('Using')) ? 'monospace' : 'inherit', 
+                            fontSize: typeof content === 'string' && (content.includes('Tool') || content.includes('Using')) ? '0.85rem' : 'inherit' 
                           }}
                         >
                           {content}
