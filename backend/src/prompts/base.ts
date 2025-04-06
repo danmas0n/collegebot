@@ -82,26 +82,14 @@ const RECOMMENDATION_TOOLS: Tool[] = [
     ]
   },
   {
-    name: 'fetch',
-    description: 'Fetch and extract content from a webpage URL',
+    name: 'fetch_markdown',
+    description: 'Fetch and extract markdown content from a webpage URL',
     parameters: [
       {
         name: 'url',
         type: 'string',
         description: 'URL to fetch content from',
         required: true
-      },
-      {
-        name: 'max_length',
-        type: 'integer',
-        description: 'Maximum number of characters to return (default: 5000)',
-        required: false
-      },
-      {
-        name: 'start_index',
-        type: 'integer',
-        description: 'Start content from this character index (default: 0)',
-        required: false
       }
     ]
   }

@@ -4,7 +4,7 @@ export const toolServerMap: Record<string, string> = {
   get_cds_data: 'college-data',
   
   // Fetch server tools
-  fetch: 'fetch',
+  fetch_markdown: 'fetch',
 
   // Student data server tools (now handled through Firestore)
   geocode: 'student-data',

@@ -26,8 +26,8 @@ export const createMcpClient = async (serverName: string) => {
       break;
     }
     case 'fetch':
-      command = 'uvx';
-      args = ['--with','mcp==1.1.2','mcp-server-fetch'];
+      command = 'npx';
+      args = ['-y', '@tokenizin/mcp-npx-fetch'];
       break;
     case 'student-data':
       // This is now handled directly through Firestore
