@@ -24,6 +24,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.0",
+    "@types/react-beautiful-dnd": "^13.1.8",
     "@types/react-dom": "^18.2.0",
     "@xyflow/react": "^12.3.6",
     "d3": "^7.9.0",
@@ -35,6 +36,7 @@
     "dompurify": "^3.2.4",
     "firebase": "^11.2.0",
     "react": "^18.2.0",
+    "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^18.2.0",
     "react-force-graph-2d": "^1.26.2",
     "typescript": "^5.3.3"
