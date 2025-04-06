@@ -43,7 +43,7 @@ Instructions:
         </parameters>
       </tool>
 
-   b) WAIT for the geocode tool to return real coordinates. Then and only then create the map pin with the geocoded coordinates:
+   b) Create the map pin with the geocoded coordinates:
       <tool>
         <name>create_map_location</name>
         <parameters>
