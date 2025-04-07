@@ -14,6 +14,8 @@ import studentDataRouter from './routes/student-data.js';
 import adminRouter from './routes/admin.js';
 import researchRouter from './routes/research.js';
 import tasksRouter from './routes/tasks.js';
+import calendarRouter from './routes/calendar.js';
+import pinResearchRouter from './routes/pin-research.js';
 
 // Load environment variables
 config();
@@ -126,6 +128,8 @@ app.use('/api/student-data', authMiddleware, studentDataRouter);
 app.use('/api/admin', authMiddleware, adminMiddleware, adminRouter);
 app.use('/api/research', authMiddleware, researchRouter);
 app.use('/api/tasks', authMiddleware, tasksRouter);
+app.use('/api/calendar', authMiddleware, calendarRouter);
+app.use('/api/pin-research', authMiddleware, pinResearchRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

@@ -19,7 +19,7 @@ import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
 import { MapLocation } from '../../types/wizard';
 import { useResearch } from '../../contexts/ResearchContext';
-import { TourPlanningDialog } from './TourPlanningDialog';
+import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
 import { MapDebugControls } from '../map/MapDebugControls';
@@ -334,6 +334,9 @@ export const MapStage = (): JSX.Element => {
             console.log('Auto-processing unprocessed chats');
             handleProcessAllChats();
           }
+        } else {
+          // Hide debug controls if there are no unprocessed chats
+          setShowDebugControls(false);
         }
       } catch (err) {
         console.error('Error loading data:', err);

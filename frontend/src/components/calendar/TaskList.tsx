@@ -1,553 +1,500 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
+  Paper,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
   Checkbox,
   IconButton,
-  Paper,
+  Chip,
+  Divider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   TextField,
   Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
-  Divider,
+  CircularProgress,
+  Alert,
+  Tooltip
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
+import { SelectChangeEvent } from '@mui/material/Select';
 import DeleteIcon from '@mui/icons-material/Delete';
-import SchoolIcon from '@mui/icons-material/School';
-import PaidIcon from '@mui/icons-material/Paid';
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import EditIcon from '@mui/icons-material/Edit';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import SortIcon from '@mui/icons-material/Sort';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import { useNotification } from '../../contexts/NotificationContext';
-import { api } from '../../utils/api';
+import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { useCalendar } from '../../contexts/CalendarContext';
+import { useWizard } from '../../contexts/WizardContext';
 
-// Define a Task interface
-interface Task {
-  id: string;
+interface TaskFormData {
   title: string;
-  description?: string;
-  dueDate?: string;
-  completed: boolean;
-  category: 'application' | 'scholarship' | 'financial' | 'other';
-  relatedEntities: {
-    collegeIds: string[];
-    scholarshipIds: string[];
-  };
-  studentId: string;
-  createdAt: string;
-  updatedAt: string;
+  description: string;
+  dueDate: Date | null;
+  category: string;
+  priority: 'high' | 'medium' | 'low';
+  tags: string[];
 }
 
-interface TaskListProps {
-  findings: any[];
-  studentId: string;
-}
-
-export const TaskList: React.FC<TaskListProps> = ({ findings, studentId }) => {
-  const { showNotification } = useNotification();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [newTask, setNewTask] = useState<Partial<Task>>({
+const TaskList: React.FC = () => {
+  const { currentStudent } = useWizard();
+  const { tasks, isLoading, error, createTask, updateTask, deleteTask } = useCalendar();
+  
+  // State for filtering and sorting
+  const [filter, setFilter] = useState<'all' | 'completed' | 'incomplete'>('all');
+  const [sortBy, setSortBy] = useState<'dueDate' | 'priority' | 'category'>('dueDate');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  
+  // State for task form
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<TaskFormData>({
     title: '',
     description: '',
-    dueDate: '',
-    completed: false,
+    dueDate: null,
     category: 'application',
-    relatedEntities: {
-      collegeIds: [],
-      scholarshipIds: []
-    }
+    priority: 'medium',
+    tags: []
   });
-
-  // Load tasks when component mounts
-  React.useEffect(() => {
-    if (studentId) {
-      loadTasks();
-    }
-  }, [studentId]);
-
-  const loadTasks = async () => {
+  const [formError, setFormError] = useState<string | null>(null);
+  
+  // Handle filter change
+  const handleFilterChange = (event: SelectChangeEvent<'all' | 'completed' | 'incomplete'>) => {
+    setFilter(event.target.value as 'all' | 'completed' | 'incomplete');
+  };
+  
+  // Handle sort change
+  const handleSortChange = (event: SelectChangeEvent<'dueDate' | 'priority' | 'category'>) => {
+    setSortBy(event.target.value as 'dueDate' | 'priority' | 'category');
+  };
+  
+  // Handle search change
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  };
+  
+  // Handle task completion toggle
+  const handleToggleComplete = async (taskId: string, completed: boolean) => {
     try {
-      // This is a placeholder - we'll need to implement the actual API endpoint
-      const response = await api.get(`/api/tasks/${studentId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setTasks(data.tasks);
-      } else {
-        // For now, just use mock data
-        setTasks([
-          {
-            id: '1',
-            title: 'Complete Stanford application',
-            description: 'Fill out all sections of the application',
-            dueDate: '2025-12-01',
-            completed: false,
-            category: 'application',
-            relatedEntities: {
-              collegeIds: ['stanford'],
-              scholarshipIds: []
-            },
-            studentId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: '2',
-            title: 'Submit FAFSA',
-            description: 'Complete and submit FAFSA application',
-            dueDate: '2025-01-15',
-            completed: false,
-            category: 'financial',
-            relatedEntities: {
-              collegeIds: [],
-              scholarshipIds: []
-            },
-            studentId,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        ] as Task[]);
-      }
-    } catch (error) {
-      console.error('Error loading tasks:', error);
-      showNotification('Failed to load tasks', 'error');
+      await updateTask(taskId, { completed: !completed });
+    } catch (err) {
+      console.error('Error toggling task completion:', err);
     }
   };
-
-  const handleAddTask = async () => {
-    try {
-      // This is a placeholder - we'll need to implement the actual API endpoint
-      const task: Task = {
-        ...newTask as Task,
-        id: `task-${Date.now()}`,
-        studentId,
-        completed: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      // In a real implementation, we would save to the backend
-      // const response = await api.post('/api/tasks', { task });
-      // if (response.ok) {
-      //   const savedTask = await response.json();
-      //   setTasks(prev => [...prev, savedTask]);
-      // }
-
-      // For now, just update the local state
-      setTasks(prev => [...prev, task]);
-      setIsAddDialogOpen(false);
-      setNewTask({
-        title: '',
-        description: '',
-        dueDate: '',
-        completed: false,
-        category: 'application',
-        relatedEntities: {
-          collegeIds: [],
-          scholarshipIds: []
-        }
-      });
-      showNotification('Task added successfully', 'success');
-    } catch (error) {
-      console.error('Error adding task:', error);
-      showNotification('Failed to add task', 'error');
-    }
-  };
-
-  const handleEditTask = async () => {
-    if (!currentTask) return;
-
-    try {
-      // This is a placeholder - we'll need to implement the actual API endpoint
-      // const response = await api.put(`/api/tasks/${currentTask.id}`, { task: currentTask });
-      // if (response.ok) {
-      //   const updatedTask = await response.json();
-      //   setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
-      // }
-
-      // For now, just update the local state
-      setTasks(prev => prev.map(task => task.id === currentTask.id ? {
-        ...currentTask,
-        updatedAt: new Date().toISOString()
-      } : task));
-      setIsEditDialogOpen(false);
-      setCurrentTask(null);
-      showNotification('Task updated successfully', 'success');
-    } catch (error) {
-      console.error('Error updating task:', error);
-      showNotification('Failed to update task', 'error');
-    }
-  };
-
-  const handleDeleteTask = async () => {
-    if (!currentTask) return;
-
-    try {
-      // This is a placeholder - we'll need to implement the actual API endpoint
-      // const response = await api.delete(`/api/tasks/${currentTask.id}`);
-      // if (response.ok) {
-      //   setTasks(prev => prev.filter(task => task.id !== currentTask.id));
-      // }
-
-      // For now, just update the local state
-      setTasks(prev => prev.filter(task => task.id !== currentTask.id));
-      setIsDeleteDialogOpen(false);
-      setCurrentTask(null);
-      showNotification('Task deleted successfully', 'success');
-    } catch (error) {
-      console.error('Error deleting task:', error);
-      showNotification('Failed to delete task', 'error');
-    }
-  };
-
-  const handleToggleComplete = async (taskId: string) => {
-    try {
-      const taskToUpdate = tasks.find(task => task.id === taskId);
-      if (!taskToUpdate) return;
-
-      const updatedTask = {
-        ...taskToUpdate,
-        completed: !taskToUpdate.completed,
-        updatedAt: new Date().toISOString()
-      };
-
-      // This is a placeholder - we'll need to implement the actual API endpoint
-      // const response = await api.put(`/api/tasks/${taskId}`, { 
-      //   task: { completed: !taskToUpdate.completed } 
-      // });
-      // if (response.ok) {
-      //   const updatedTask = await response.json();
-      //   setTasks(prev => prev.map(task => task.id === updatedTask.id ? updatedTask : task));
-      // }
-
-      // For now, just update the local state
-      setTasks(prev => prev.map(task => task.id === taskId ? updatedTask : task));
-      showNotification(`Task marked as ${updatedTask.completed ? 'completed' : 'incomplete'}`, 'success');
-    } catch (error) {
-      console.error('Error updating task:', error);
-      showNotification('Failed to update task', 'error');
-    }
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'application':
-        return <AssignmentIcon />;
-      case 'scholarship':
-        return <PaidIcon />;
-      case 'financial':
-        return <AttachMoneyIcon />;
-      default:
-        return <AssignmentIcon />;
-    }
-  };
-
-  // Create tasks from findings
-  const handleCreateTasksFromFindings = () => {
-    const newTasks: Task[] = findings
-      .filter(finding => finding.category === 'deadline')
-      .map(finding => ({
-        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        title: finding.detail,
-        description: `Auto-generated from research finding for ${finding.entityName}`,
-        dueDate: extractDate(finding.detail),
-        completed: false,
-        category: finding.entityType === 'college' ? 'application' : 'scholarship',
-        relatedEntities: {
-          collegeIds: finding.entityType === 'college' ? [finding.entityId] : [],
-          scholarshipIds: finding.entityType === 'scholarship' ? [finding.entityId] : []
-        },
-        studentId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }));
-
-    if (newTasks.length > 0) {
-      setTasks(prev => [...prev, ...newTasks]);
-      showNotification(`Created ${newTasks.length} tasks from findings`, 'success');
-    } else {
-      showNotification('No deadline findings to create tasks from', 'info');
-    }
-  };
-
-  // Helper function to extract date from a string
-  const extractDate = (text: string): string => {
-    const dateRegex = /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b/gi;
-    const match = text.match(dateRegex);
-    if (match) {
+  
+  // Handle task deletion
+  const handleDeleteTask = async (taskId: string) => {
+    if (window.confirm('Are you sure you want to delete this task?')) {
       try {
-        const date = new Date(match[0]);
-        if (!isNaN(date.getTime())) {
-          return date.toISOString().split('T')[0];
-        }
-      } catch (e) {
-        console.error('Error parsing date:', e);
+        await deleteTask(taskId);
+      } catch (err) {
+        console.error('Error deleting task:', err);
       }
     }
-    return '';
   };
-
+  
+  // Handle opening the form for creating a new task
+  const handleOpenNewTaskForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      dueDate: null,
+      category: 'application',
+      priority: 'medium',
+      tags: []
+    });
+    setIsEditMode(false);
+    setEditingTaskId(null);
+    setFormError(null);
+    setIsFormOpen(true);
+  };
+  
+  // Handle opening the form for editing a task
+  const handleOpenEditTaskForm = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    setFormData({
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate ? new Date(task.dueDate) : null,
+      category: task.category,
+      priority: task.priority,
+      tags: task.tags
+    });
+    setIsEditMode(true);
+    setEditingTaskId(taskId);
+    setFormError(null);
+    setIsFormOpen(true);
+  };
+  
+  // Handle form submission
+  const handleSubmitForm = async () => {
+    try {
+      setFormError(null);
+      
+      // Validate form
+      if (!formData.title.trim()) {
+        setFormError('Title is required');
+        return;
+      }
+      
+      if (isEditMode && editingTaskId) {
+        // Update existing task
+        await updateTask(editingTaskId, {
+          title: formData.title,
+          description: formData.description,
+          dueDate: formData.dueDate ? formData.dueDate.toISOString().split('T')[0] : null,
+          category: formData.category,
+          priority: formData.priority,
+          tags: formData.tags
+        });
+      } else {
+        // Create new task
+        if (!currentStudent?.id) {
+          setFormError('No student selected');
+          return;
+        }
+        
+        await createTask({
+          studentId: currentStudent.id,
+          title: formData.title,
+          description: formData.description,
+          dueDate: formData.dueDate ? formData.dueDate.toISOString().split('T')[0] : null,
+          completed: false,
+          category: formData.category,
+          sourcePins: [],
+          priority: formData.priority,
+          tags: formData.tags,
+          reminderDates: []
+        });
+      }
+      
+      // Close form on success
+      setIsFormOpen(false);
+    } catch (err) {
+      console.error('Error submitting task form:', err);
+      setFormError('Failed to save task: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+  
+  // Filter and sort tasks
+  const filteredAndSortedTasks = tasks
+    .filter(task => {
+      // Apply completion filter
+      if (filter === 'completed') return task.completed;
+      if (filter === 'incomplete') return !task.completed;
+      return true;
+    })
+    .filter(task => {
+      // Apply search filter
+      if (!searchTerm) return true;
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        task.title.toLowerCase().includes(searchLower) ||
+        task.description.toLowerCase().includes(searchLower) ||
+        task.category.toLowerCase().includes(searchLower) ||
+        task.tags.some(tag => tag.toLowerCase().includes(searchLower))
+      );
+    })
+    .sort((a, b) => {
+      // Apply sorting
+      if (sortBy === 'dueDate') {
+        // Sort by due date (null dates at the end)
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      } else if (sortBy === 'priority') {
+        // Sort by priority (high > medium > low)
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        return priorityOrder[a.priority] - priorityOrder[b.priority];
+      } else {
+        // Sort by category
+        return a.category.localeCompare(b.category);
+      }
+    });
+  
+  // Get priority color
+  const getPriorityColor = (priority: string): 'error' | 'warning' | 'success' => {
+    switch (priority) {
+      case 'high': return 'error';
+      case 'medium': return 'warning';
+      case 'low': return 'success';
+      default: return 'warning';
+    }
+  };
+  
+  // Get task icon
+  const getTaskIcon = (task: { completed: boolean; dueDate: string | null }) => {
+    if (task.completed) {
+      return <AssignmentTurnedInIcon color="success" />;
+    }
+    
+    if (task.dueDate && new Date(task.dueDate) < new Date()) {
+      return <AssignmentLateIcon color="error" />;
+    }
+    
+    return <AssignmentIcon color="primary" />;
+  };
+  
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Tasks & Deadlines</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => setIsAddDialogOpen(true)}
-          >
-            Add Task
-          </Button>
-          {findings.length > 0 && (
-            <Button
-              variant="outlined"
-              onClick={handleCreateTasksFromFindings}
-            >
-              Create from Findings
-            </Button>
-          )}
-        </Box>
+        <Typography variant="h6">Tasks</Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleOpenNewTaskForm}
+          disabled={!currentStudent}
+        >
+          Add Task
+        </Button>
       </Box>
-
-      {tasks.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography color="text.secondary">
-            No tasks yet. Add a task or create them from research findings.
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mb: 2 }}>
+          <TextField
+            label="Search"
+            variant="outlined"
+            size="small"
+            fullWidth
+            value={searchTerm}
+            onChange={handleSearchChange}
+          />
+          
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel id="filter-label">Filter</InputLabel>
+            <Select
+              labelId="filter-label"
+              value={filter}
+              label="Filter"
+              onChange={handleFilterChange}
+              startAdornment={<FilterListIcon fontSize="small" sx={{ mr: 1 }} />}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+              <MenuItem value="incomplete">Incomplete</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel id="sort-label">Sort By</InputLabel>
+            <Select
+              labelId="sort-label"
+              value={sortBy}
+              label="Sort By"
+              onChange={handleSortChange}
+              startAdornment={<SortIcon fontSize="small" sx={{ mr: 1 }} />}
+            >
+              <MenuItem value="dueDate">Due Date</MenuItem>
+              <MenuItem value="priority">Priority</MenuItem>
+              <MenuItem value="category">Category</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        
+        <Divider sx={{ mb: 2 }} />
+        
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+            <CircularProgress />
+          </Box>
+        ) : filteredAndSortedTasks.length === 0 ? (
+          <Typography variant="body2" sx={{ textAlign: 'center', p: 2 }}>
+            {searchTerm ? 'No tasks match your search' : 'No tasks available'}
           </Typography>
-        </Paper>
-      ) : (
-        <List>
-          {tasks.map((task) => (
-            <Paper key={task.id} sx={{ mb: 2 }}>
+        ) : (
+          <List>
+            {filteredAndSortedTasks.map((task) => (
               <ListItem
-                secondaryAction={
-                  <Box>
-                    <IconButton
-                      edge="end"
-                      aria-label="edit"
-                      onClick={() => {
-                        setCurrentTask(task);
-                        setIsEditDialogOpen(true);
-                      }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      onClick={() => {
-                        setCurrentTask(task);
-                        setIsDeleteDialogOpen(true);
-                      }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Box>
-                }
+                key={task.id}
+                dense
+                divider
+                sx={{
+                  bgcolor: task.completed ? 'action.hover' : 'inherit',
+                  textDecoration: task.completed ? 'line-through' : 'none',
+                }}
               >
                 <ListItemIcon>
                   <Checkbox
                     edge="start"
                     checked={task.completed}
-                    onChange={() => handleToggleComplete(task.id)}
+                    onChange={() => handleToggleComplete(task.id, task.completed)}
+                    tabIndex={-1}
+                    disableRipple
                   />
                 </ListItemIcon>
+                <ListItemIcon>
+                  {getTaskIcon(task)}
+                </ListItemIcon>
                 <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography
-                        variant="body1"
-                        sx={{
-                          textDecoration: task.completed ? 'line-through' : 'none',
-                          color: task.completed ? 'text.secondary' : 'text.primary'
-                        }}
-                      >
-                        {task.title}
-                      </Typography>
-                      <Chip
-                        size="small"
-                        label={task.category}
-                        icon={getCategoryIcon(task.category)}
-                      />
-                    </Box>
-                  }
+                  primary={task.title}
                   secondary={
-                    <Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                       {task.description && (
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" component="span">
                           {task.description}
                         </Typography>
                       )}
-                      {task.dueDate && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                          <CalendarTodayIcon fontSize="small" />
-                          <Typography variant="body2" color="text.secondary">
-                            Due: {new Date(task.dueDate).toLocaleDateString()}
-                          </Typography>
-                        </Box>
-                      )}
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        {task.dueDate && (
+                          <Chip
+                            label={`Due: ${new Date(task.dueDate).toLocaleDateString()}`}
+                            size="small"
+                            color={new Date(task.dueDate) < new Date() && !task.completed ? 'error' : 'default'}
+                            variant="outlined"
+                          />
+                        )}
+                        <Chip
+                          label={task.priority}
+                          size="small"
+                          color={getPriorityColor(task.priority)}
+                          variant="outlined"
+                        />
+                        <Chip
+                          label={task.category}
+                          size="small"
+                          variant="outlined"
+                        />
+                        {task.tags.map((tag, index) => (
+                          <Chip
+                            key={index}
+                            label={tag}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
                     </Box>
                   }
                 />
+                <ListItemSecondaryAction>
+                  <Tooltip title="Edit">
+                    <IconButton
+                      edge="end"
+                      onClick={() => handleOpenEditTaskForm(task.id)}
+                      size="small"
+                      sx={{ mr: 1 }}
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete">
+                    <IconButton
+                      edge="end"
+                      onClick={() => handleDeleteTask(task.id)}
+                      size="small"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemSecondaryAction>
               </ListItem>
-            </Paper>
-          ))}
-        </List>
-      )}
-
-      {/* Add Task Dialog */}
-      <Dialog open={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add New Task</DialogTitle>
+            ))}
+          </List>
+        )}
+      </Paper>
+      
+      {/* Task Form Dialog */}
+      <Dialog open={isFormOpen} onClose={() => setIsFormOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{isEditMode ? 'Edit Task' : 'New Task'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-            <TextField
-              label="Title"
-              fullWidth
-              value={newTask.title}
-              onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-              required
-            />
-            <TextField
-              label="Description"
-              fullWidth
-              multiline
-              rows={3}
-              value={newTask.description}
-              onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-            />
-            <TextField
-              label="Due Date"
-              type="date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={newTask.dueDate}
-              onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-            />
-            <FormControl fullWidth>
-              <InputLabel>Category</InputLabel>
-              <Select
-                value={newTask.category}
-                label="Category"
-                onChange={(e) => setNewTask({ ...newTask, category: e.target.value as any })}
-              >
-                <MenuItem value="application">Application</MenuItem>
-                <MenuItem value="scholarship">Scholarship</MenuItem>
-                <MenuItem value="financial">Financial</MenuItem>
-                <MenuItem value="other">Other</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleAddTask}
-            variant="contained"
-            disabled={!newTask.title}
-          >
-            Add Task
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Edit Task Dialog */}
-      <Dialog open={isEditDialogOpen} onClose={() => setIsEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Task</DialogTitle>
-        <DialogContent>
-          {currentTask && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-              <TextField
-                label="Title"
-                fullWidth
-                value={currentTask.title}
-                onChange={(e) => setCurrentTask({ ...currentTask, title: e.target.value })}
-                required
-              />
-              <TextField
-                label="Description"
-                fullWidth
-                multiline
-                rows={3}
-                value={currentTask.description}
-                onChange={(e) => setCurrentTask({ ...currentTask, description: e.target.value })}
-              />
-              <TextField
-                label="Due Date"
-                type="date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={currentTask.dueDate}
-                onChange={(e) => setCurrentTask({ ...currentTask, dueDate: e.target.value })}
-              />
-              <FormControl fullWidth>
-                <InputLabel>Category</InputLabel>
-                <Select
-                  value={currentTask.category}
-                  label="Category"
-                  onChange={(e) => setCurrentTask({ ...currentTask, category: e.target.value as any })}
-                >
-                  <MenuItem value="application">Application</MenuItem>
-                  <MenuItem value="scholarship">Scholarship</MenuItem>
-                  <MenuItem value="financial">Financial</MenuItem>
-                  <MenuItem value="other">Other</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={currentTask.completed ? 'completed' : 'pending'}
-                  label="Status"
-                  onChange={(e) => setCurrentTask({ 
-                    ...currentTask, 
-                    completed: e.target.value === 'completed' 
-                  })}
-                >
-                  <MenuItem value="pending">Pending</MenuItem>
-                  <MenuItem value="completed">Completed</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
+          {formError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {formError}
+            </Alert>
           )}
+          
+          <TextField
+            label="Title"
+            fullWidth
+            margin="normal"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            required
+          />
+          
+          <TextField
+            label="Description"
+            fullWidth
+            margin="normal"
+            multiline
+            rows={3}
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          />
+          
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
+            <DatePicker
+              label="Due Date"
+              value={formData.dueDate}
+              onChange={(date: Date | null) => setFormData({ ...formData, dueDate: date })}
+              sx={{ mt: 2, width: '100%' }}
+            />
+          </LocalizationProvider>
+          
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Category</InputLabel>
+            <Select
+              value={formData.category}
+              label="Category"
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            >
+              <MenuItem value="application">Application</MenuItem>
+              <MenuItem value="financial">Financial Aid</MenuItem>
+              <MenuItem value="visit">Campus Visit</MenuItem>
+              <MenuItem value="test">Test Prep</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Priority</InputLabel>
+            <Select
+              value={formData.priority}
+              label="Priority"
+              onChange={(e) => setFormData({ ...formData, priority: e.target.value as 'high' | 'medium' | 'low' })}
+            >
+              <MenuItem value="high">High</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <TextField
+            label="Tags (comma separated)"
+            fullWidth
+            margin="normal"
+            value={formData.tags.join(', ')}
+            onChange={(e) => setFormData({ ...formData, tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean) })}
+            helperText="Enter tags separated by commas"
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleEditTask}
-            variant="contained"
-            disabled={!currentTask?.title}
-          >
-            Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)}>
-        <DialogTitle>Delete Task</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to delete this task?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteTask} color="error">
-            Delete
+          <Button onClick={() => setIsFormOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmitForm} variant="contained" color="primary">
+            {isEditMode ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -555,5 +502,4 @@ export const TaskList: React.FC<TaskListProps> = ({ findings, studentId }) => {
   );
 };
 
-// Missing icon definition
-const AttachMoneyIcon = () => <PaidIcon />;
+export default TaskList;

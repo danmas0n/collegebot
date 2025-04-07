@@ -7,6 +7,8 @@ Instructions:
    - Schools and scholarships that are good fits
    - Schools and scholarships the student asked about, even if they aren't good fits
    - Options mentioned in recommendations discussions, even if not highlighted as top choices
+   - IMPORTANT: Create SEPARATE map pins for scholarships, even if they are associated with a specific college
+   - Track which chat(s) mentioned each location to maintain traceability
 
 2. Check the current map state to avoid duplicating existing pins.
 
@@ -55,6 +57,7 @@ Instructions:
               "name": "Location name",
               "latitude": number,
               "longitude": number,
+              "sourceChats": ["chatId1", "chatId2"], // IDs of chats that mentioned this location
               "metadata": {
                 "website": "URL", // Will open in new tab (_blank)
                 "description": "Brief description including any fit issues",

@@ -259,6 +259,12 @@ export const RecommendationsStage: React.FC = () => {
       let hasToolCalls = false;
       let messageContent = '';
 
+      // Set a timeout for the entire streaming operation
+      const streamTimeoutId = setTimeout(() => {
+        console.log('Stream timeout reached, aborting reader');
+        reader.cancel('Timeout reached');
+      }, 120000); // 2 minute timeout for the entire stream
+      
       try {
         while (true) {
           const { done, value } = await reader.read();

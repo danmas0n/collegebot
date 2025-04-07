@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -8,23 +8,33 @@ import {
   IconButton, 
   LinearProgress,
   CircularProgress,
-  Alert
+  Alert,
+  Divider,
+  Tabs,
+  Tab
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import { CalendarView } from '../calendar/CalendarView';
+import CalendarView from '../calendar/CalendarView';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
+import { useCalendar } from '../../contexts/CalendarContext';
 import { api } from '../../utils/api';
+import PinSelector from '../calendar/PinSelector';
+import ResearchStatusPanel from '../calendar/ResearchStatusPanel';
+import { MapLocation } from '../../types/wizard';
 
 interface CalendarStageProps {
   studentId?: string;
 }
 
 export const CalendarStage: React.FC<CalendarStageProps> = ({ studentId }) => {
-  const { currentStudent } = useWizard();
+  const { currentStudent, data } = useWizard();
   const { chats, loadChats } = useChat();
+  const { startPinResearch } = useCalendar();
+  
+  // State for debug controls
   const [showDebugControls, setShowDebugControls] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
@@ -34,8 +44,42 @@ export const CalendarStage: React.FC<CalendarStageProps> = ({ studentId }) => {
   const [showProcessingLogs, setShowProcessingLogs] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
+  // State for pin research
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [locations, setLocations] = useState<MapLocation[]>([]);
+  const [activeResearchId, setActiveResearchId] = useState<string | null>(null);
+  
   // Use the studentId from props if provided, otherwise use the currentStudent's id
   const effectiveStudentId = studentId || currentStudent?.id;
+  
+  // Load map locations when the component mounts
+  useEffect(() => {
+    if (data.map?.locations) {
+      setLocations(data.map.locations);
+    } else {
+      setLocations([]);
+    }
+  }, [data.map?.locations]);
+  
+  // Handle tab change
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+  
+  // Handle starting research on selected pins
+  const handleStartResearch = async (pinIds: string[]) => {
+    if (!effectiveStudentId || pinIds.length === 0) return;
+    
+    try {
+      const request = await startPinResearch(pinIds);
+      setActiveResearchId(request.id);
+      // Switch to the research tab
+      setActiveTab(1);
+    } catch (err) {
+      console.error('Error starting pin research:', err);
+      setError('Failed to start pin research: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
   
   // Function to process all chats
   const handleProcessAllChats = async () => {
@@ -190,7 +234,42 @@ export const CalendarStage: React.FC<CalendarStageProps> = ({ studentId }) => {
       </Collapse>
       
       {effectiveStudentId ? (
-        <CalendarView studentId={effectiveStudentId} />
+        <Box sx={{ width: '100%' }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs 
+              value={activeTab} 
+              onChange={handleTabChange}
+              aria-label="calendar tabs"
+            >
+              <Tab label="Calendar & Tasks" />
+              <Tab label="Research" />
+            </Tabs>
+          </Box>
+          
+          {/* Calendar & Tasks Tab */}
+          <Box role="tabpanel" hidden={activeTab !== 0}>
+            {activeTab === 0 && (
+              <CalendarView studentId={effectiveStudentId} />
+            )}
+          </Box>
+          
+          {/* Research Tab */}
+          <Box role="tabpanel" hidden={activeTab !== 1}>
+            {activeTab === 1 && (
+              <Box>
+                <ResearchStatusPanel 
+                  activeResearchId={activeResearchId}
+                  locations={locations}
+                />
+                <PinSelector 
+                  onStartResearch={handleStartResearch}
+                />
+              </Box>
+            )}
+          </Box>
+          
+          {/* Tour Planning Tab has been removed */}
+        </Box>
       ) : (
         <Typography variant="body1" sx={{ mt: 2 }}>
           Please select a student to view the calendar.

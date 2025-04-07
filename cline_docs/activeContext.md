@@ -18,14 +18,31 @@
   - Created task management system for college applications and scholarships
   - Implemented calendar view for deadlines and important dates
   - Added ability to create tasks from research findings
+  - Added college tour planning feature
+  - Implemented automatic processing of unprocessed chats when Map tab becomes visible
 - Map functionality enhanced:
   - Fixed map initialization and display issues
   - Separated Map and Calendar into distinct stages
   - Added detailed location information display
   - Implemented interactive location list with sorting
   - Added visual indicators for locations with reference links
+  - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- Added college tour planning feature:
+  - Created TourPlanningDialog component for planning college tours
+  - Integrated with Google Maps for route planning
+  - Added ability to select colleges from the map for tour planning
+  - Implemented transportation mode selection
+  - Added option to open route directly in Google Maps
+- Enhanced Map functionality:
+  - Added automatic processing of unprocessed chats when Map tab becomes visible
+  - Implemented debug panel display during processing
+  - Added visual feedback with progress indicators
+- Added new backend routes:
+  - Created calendar.ts route for managing calendar items
+  - Created tasks.ts route for managing tasks
+  - Created pin-research.ts route for researching college deadlines and requirements
 - Added XLSX to PDF conversion in the college-data-server:
   - Implemented conversion using ExcelJS and PDFKit
   - Fixed compatibility issues with Gemini API for Excel files
@@ -55,6 +72,21 @@
 - Updated documentation in cline_docs
 
 ## Next Steps
+- Test the college tour planning feature:
+  - Verify that the tour planning dialog works correctly
+  - Test route planning with different colleges
+  - Ensure Google Maps integration works properly
+  - Test different transportation modes
+  - Verify that the route can be opened in Google Maps
+- Test the automatic chat processing feature:
+  - Verify that unprocessed chats are processed when the Map tab becomes visible
+  - Ensure the debug panel is displayed during processing
+  - Test with different chat histories
+  - Verify that progress indicators work correctly
+- Test the new backend routes:
+  - Verify that the calendar route works correctly
+  - Test the tasks route with different task types
+  - Ensure the pin-research route correctly researches colleges
 - Test the XLSX to PDF conversion:
   - Verify conversion works for various Excel file formats
   - Test with different CDS data spreadsheets

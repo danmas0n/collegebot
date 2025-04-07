@@ -13,10 +13,22 @@ export default defineConfig({
   logLevel: 'info',
   server: {
     port: 3000,
+    hmr: {
+      timeout: 10000, // Increase timeout to 10 seconds (default is 1000ms)
+      protocol: 'ws',
+      host: 'localhost',
+    },
+    watch: {
+      usePolling: false, // Set to true if you're having issues with file changes not being detected
+      interval: 100,
+      ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
+    },
     proxy: {
       '/api': {
         target: BACKEND_URL,
         changeOrigin: true,
+        timeout: 120000, // 2 minutes timeout for API requests
+        proxyTimeout: 120000,
       },
       '/__/auth': {
         target: `http://localhost:${FIREBASE_AUTH_PORT}`,

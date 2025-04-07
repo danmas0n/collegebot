@@ -62,6 +62,7 @@ export interface MapLocation {
   name: string;
   latitude: number;
   longitude: number;
+  sourceChats?: string[]; // IDs of chats that mentioned this location
   metadata: {
     website?: string;
     description?: string;

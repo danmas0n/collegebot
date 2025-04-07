@@ -37,7 +37,7 @@ interface TourPlanningDialogProps {
 
 type TourOption = 'google-maps' | 'in-app';
 
-export const TourPlanningDialog = ({ open, onClose, locations }: TourPlanningDialogProps): JSX.Element => {
+export default function TourPlanningDialog({ open, onClose, locations }: TourPlanningDialogProps): JSX.Element {
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [tourOption, setTourOption] = useState<TourOption>('google-maps');
   const [tourOrder, setTourOrder] = useState<MapLocation[]>([]);

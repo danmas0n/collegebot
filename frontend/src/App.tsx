@@ -13,6 +13,7 @@ import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ResearchProvider } from './contexts/ResearchContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { CalendarProvider } from './contexts/CalendarContext';
 import { Login } from './components/Login';
 import { WizardStepper } from './components/WizardStepper';
 import { StudentSelectionStage } from './components/stages/StudentSelectionStage';
@@ -107,7 +108,9 @@ const App: React.FC = () => {
         <WizardProvider>
           <ChatProvider>
             <ResearchProvider>
-              <AppContent />
+              <CalendarProvider>
+                <AppContent />
+              </CalendarProvider>
             </ResearchProvider>
           </ChatProvider>
         </WizardProvider>

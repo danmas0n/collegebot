@@ -28,6 +28,25 @@ But you cannot:
 
 ## Recent Updates
 
+### College Tour Planning
+- Added a new feature to plan college tours based on map locations
+- Integrated with Google Maps for route planning and navigation
+- Implemented college selection from map pins
+- Added transportation mode selection (driving, walking, transit, bicycling)
+- Provided option to open routes directly in Google Maps
+
+### Automatic Chat Processing
+- Enhanced Map functionality to automatically process unprocessed chats when the Map tab becomes visible
+- Implemented debug panel display during processing
+- Added visual feedback with progress indicators
+- Improved user experience by showing processing status in real-time
+
+### New Backend Routes
+- Added calendar.ts route for managing calendar items
+- Created tasks.ts route for managing tasks
+- Implemented pin-research.ts route for researching college deadlines and requirements
+- Enhanced backend API to support new calendar and task management features
+
 ### XLSX to PDF Conversion
 - Added support for converting Excel (.xlsx) files to PDF format in the college-data-server
 - Implemented solution addresses compatibility issues with the Gemini API
@@ -218,11 +237,24 @@ The Map stage provides an interactive visualization of colleges and scholarships
 
 ### Calendar & Tasks
 
-The Calendar stage helps students manage college application deadlines:
+The Calendar stage helps students manage college application deadlines and plan college tours:
 
 - **Calendar View**: Visual representation of important dates and deadlines
 - **Task Management**: Create and track tasks for college applications and scholarships
 - **Integration**: Tasks can be created from research findings
+- **College Tour Planning**: Plan routes to visit multiple colleges on the map
+  - Select colleges from map pins
+  - Choose transportation mode (driving, walking, transit, bicycling)
+  - View optimized routes between selected colleges
+  - Open routes directly in Google Maps for navigation
+- **Pin Research**: Research college deadlines and requirements
+  - Automatically extract application deadlines
+  - Identify scholarship opportunities
+  - Create tasks and calendar items from research findings
+- **Automatic Processing**: Process unprocessed chats when the Map tab becomes visible
+  - Show debug panel during processing
+  - Display progress indicators
+  - Provide real-time feedback on processing status
 
 ### AI Service Configuration
 

@@ -23,6 +23,12 @@
   - Created task management system for college applications and scholarships
   - Implemented calendar view for deadlines and important dates
   - Added ability to create tasks from research findings
+  - Added college tour planning feature that integrates with Google Maps
+  - Implemented automatic processing of unprocessed chats when Map tab becomes visible
+- Backend API enhancements:
+  - Created calendar.ts route for managing calendar items
+  - Created tasks.ts route for managing tasks
+  - Created pin-research.ts route for researching college deadlines and requirements
 
 ## Working
 - Basic functionality is operational in production
