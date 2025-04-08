@@ -384,16 +384,16 @@ The application supports both Claude and Gemini AI services. AI settings are man
 
 ### Local Development
 
-1. Start the Firebase emulators:
+1. Start the Firebase emulators (and import/export saved data):
    ```bash
-   firebase emulators:start
+  firebase emulators:start --import backend/.firebase-export/ --export-on-exit backend/.firebase-export/
    ```
 
 2. Start the backend:
    ```bash
    cd backend
    npm install  # Only needed first time or when dependencies change
-   npm run dev
+   NODE_ENV=development npm run dev
    ```
 
 3. Start the frontend:

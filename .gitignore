@@ -45,3 +45,4 @@ Thumbs.db
 mcp/college-data-server/storage/*
 mcp/college-data-server/cache
 backend/service-account.json
+backend/.firebase-export

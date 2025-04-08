@@ -193,6 +193,7 @@ export const generateToolInstructions = (mode: string): string => {
      - When you make a tool call, the system will automatically execute it and return the results to you
      - You only need to provide one complete tool call - the system will detect it and execute it
      - Make sure your tool calls have well-formed XML and JSON
+     - When using the fetch_markdown tool, do not fetch PDF files. Only fetch HTML content.
    - Answers:
      - When you're ready, respond to the user's question with <answer></answer> tags
      - Format your answer in HTML, not Markdown (use <ul>, <li>, <p>, <strong>, <em>, etc.)

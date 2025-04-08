@@ -1,6 +1,11 @@
 # Progress Status
 
 ## Completed
+- Deployment automation:
+  - Created deployment scripts to simplify the deployment process
+  - `scripts/deploy-backend.sh` for building and deploying the backend/DB
+  - `scripts/deploy-frontend.sh` for building and deploying the frontend
+  - Scripts automate the entire deployment process with clear status messages
 - Initial project setup and development
 - Frontend development with React and TypeScript
 - Backend development with Express and Firebase

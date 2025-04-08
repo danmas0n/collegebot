@@ -29,6 +29,11 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- Created deployment scripts to simplify the deployment process:
+  - Created `scripts/deploy-backend.sh` for building and deploying the backend/DB
+  - Created `scripts/deploy-frontend.sh` for building and deploying the frontend
+  - Made both scripts executable with proper permissions
+  - Scripts automate the entire deployment process with clear status messages
 - Added college tour planning feature:
   - Created TourPlanningDialog component for planning college tours
   - Integrated with Google Maps for route planning
@@ -72,6 +77,11 @@
 - Updated documentation in cline_docs
 
 ## Next Steps
+- Test the new deployment scripts:
+  - Verify that the backend deployment script works correctly
+  - Test the frontend deployment script
+  - Ensure all environment variables are properly set
+  - Confirm that the deployment process is fully automated
 - Test the college tour planning feature:
   - Verify that the tour planning dialog works correctly
   - Test route planning with different colleges
