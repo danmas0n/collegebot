@@ -3,7 +3,6 @@ import { AIServiceFactory } from '../services/ai-service-factory.js';
 import { setupSSEResponse } from '../utils/helpers.js';
 import { getBasePrompt } from '../prompts/base.js';
 import { getChats, getStudent, saveChat, deleteChat } from '../services/firestore.js';
-import { processChat } from '../services/research.js';
 import { Chat, ChatDTO, DTOChatMessage, FirestoreChatMessage } from '../types/firestore.js';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -78,26 +77,7 @@ router.post('/chat', async (req: Request, res: Response) => {
     console.log('Backend - Chat saved successfully');
 
     // DISABLED: Automatic chat processing - now using explicit processing via UI buttons
-    // Process chat for research tasks if it's not marked as processed
-    // if (!chat.processed) {
-    //   try {
-    //     // Convert DTO timestamps to Firestore timestamps
-    //     const firestoreChat: Chat = {
-    //       ...chat,
-    //       messages: chat.messages.map((msg: DTOChatMessage): FirestoreChatMessage => ({
-    //         ...msg,
-    //         timestamp: Timestamp.fromDate(new Date(msg.timestamp))
-    //       })),
-    //       processedAt: chat.processedAt ? Timestamp.fromDate(new Date(chat.processedAt)) : null,
-    //       createdAt: Timestamp.fromDate(new Date(chat.createdAt)),
-    //       updatedAt: Timestamp.fromDate(new Date(chat.updatedAt))
-    //     };
-    //     await processChat(firestoreChat, studentId, req.user.uid);
-    //   } catch (error) {
-    //     console.error('Error processing chat for research:', error);
-    //     // Don't fail the save operation if research processing fails
-    //   }
-    // }
+    // Research task processing has been removed
 
     res.json({ message: 'Chat saved successfully' });
   } catch (error) {
@@ -211,24 +191,7 @@ router.post('/process-all', async (req: Request, res: Response) => {
       });
     });
 
-    // Process chat for research tasks
-    try {
-      // Convert DTO timestamps to Firestore timestamps
-      const firestoreChat: Chat = {
-        ...chat,
-        messages: chat.messages.map((msg: DTOChatMessage): FirestoreChatMessage => ({
-          ...msg,
-          timestamp: Timestamp.fromDate(new Date(msg.timestamp))
-        })),
-        processedAt: chat.processedAt ? Timestamp.fromDate(new Date(chat.processedAt)) : null,
-        createdAt: Timestamp.fromDate(new Date(chat.createdAt)),
-        updatedAt: Timestamp.fromDate(new Date(chat.updatedAt))
-      };
-      await processChat(firestoreChat, studentId, req.user.uid);
-    } catch (error) {
-      console.error('Error processing chat for research:', error);
-      // Don't fail the analysis if research processing fails
-    }
+    // Research task processing has been removed
 
     await saveChat({
       ...chat,

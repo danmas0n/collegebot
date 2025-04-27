@@ -18,12 +18,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useWizard } from '../../contexts/WizardContext';
-import { useResearch } from '../../contexts/ResearchContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
-import { ResearchStatusPanel } from '../ResearchStatusPanel';
-import { ResearchFindingsDialog } from '../ResearchFindingsDialog';
 import { StageContainer, StageHeader, StageContent, StageFooter } from './StageContainer';
 import { api } from '../../utils/api';
 
@@ -33,19 +30,6 @@ interface Message extends AiChatMessage {
 }
 
 import { AiChat } from '../../types/college';
-
-interface AIResearchFinding {
-  detail: string;
-  category: 'deadline' | 'requirement' | 'contact' | 'financial' | 'other';
-  confidence?: 'high' | 'medium' | 'low';
-  source?: string;
-}
-
-interface AIResearchTask {
-  type: 'college' | 'scholarship';
-  name: string;
-  findings: AIResearchFinding[];
-}
 
 interface Chat extends AiChat {
   toolData?: string;
@@ -405,36 +389,6 @@ export const RecommendationsStage: React.FC = () => {
                   };
                   setCurrentChat(updatedChatWithAnswer);
                   activeChat = updatedChatWithAnswer;
-
-                  // Process research tasks from the response
-                  if (data.researchTasks) {
-                    for (const task of data.researchTasks as AIResearchTask[]) {
-                      try {
-                        await addTask({
-                          studentId: currentStudent.id,
-                          userId: currentStudent.userId,
-                          entityType: task.type,
-                          entityName: task.name,
-                          entityId: `${task.type}-${Date.now()}`,
-                          status: 'queued',
-                          progress: 0,
-                          currentOperation: 'Initializing research',
-                          findings: task.findings.map(f => ({
-                            detail: f.detail,
-                            category: f.category,
-                            confidence: f.confidence || 'medium',
-                            source: f.source,
-                            timestamp: new Date().toISOString()
-                          }))
-                        });
-                      } catch (error) {
-                        console.error('Error creating research task:', error);
-                        showNotification('Failed to create research task', 'error', {
-                          persist: true
-                        });
-                      }
-                    }
-                  }
                   break;
 
                 case 'complete':
@@ -492,12 +446,8 @@ export const RecommendationsStage: React.FC = () => {
     }
   }, [currentChat?.messages]);
 
-  // Research state
-  const { tasks, addTask, updateTask, addFinding } = useResearch();
   const { showNotification } = useNotification();
   const [showExamples, setShowExamples] = useState(true);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const selectedTask = selectedTaskId ? (tasks.find(t => t.id === selectedTaskId) || null) : null;
   
   // Auto-collapse examples after 5 seconds
   useEffect(() => {
@@ -516,13 +466,6 @@ export const RecommendationsStage: React.FC = () => {
         <Typography variant="h5" gutterBottom>
           AI Recommendations
         </Typography>
-        
-        {tasks.length > 0 && (
-          <ResearchStatusPanel 
-            tasks={tasks}
-            onShowDetails={(taskId) => setSelectedTaskId(taskId)}
-          />
-        )}
 
         <Collapse in={showExamples}>
           <Box sx={{ mb: 2 }}>
@@ -578,10 +521,6 @@ export const RecommendationsStage: React.FC = () => {
               </Button>
             </Box>
 
-      <ResearchFindingsDialog
-        task={selectedTask}
-        onClose={() => setSelectedTaskId(null)}
-      />
             <List>
               {chats.map((chat) => (
                 <ListItem
@@ -644,11 +583,6 @@ export const RecommendationsStage: React.FC = () => {
           </Grid>
         </Grid>
       </Box>
-
-      <ResearchFindingsDialog
-        task={selectedTask}
-        onClose={() => setSelectedTaskId(null)}
-      />
     </StageContainer>
   );
 };

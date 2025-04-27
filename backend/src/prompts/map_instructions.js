@@ -35,7 +35,7 @@ Instructions:
       - Note how it matches student preferences (region, state, setting)
       - For scholarships, highlight amount and application details in the description
 
-4. IMPORTANT: You MUST use the actual tools by calling them in the exact format below. DO NOT fabricate tool responses or pretend to call tools. Use the following tools in sequence for each location:
+4. CRITICAL: You MUST use the actual tools by calling them in the exact format below. DO NOT fabricate tool responses or pretend to call tools. Use the following tools in sequence for each location:
 
    a) First, geocode the address:
       <tool>
@@ -44,6 +44,8 @@ Instructions:
           {"address": "College or organization address", "name": "Location name"}
         </parameters>
       </tool>
+
+      The geocode tool will return the latitude and longitude of the given address.
 
    b) Create the map pin with the geocoded coordinates:
       <tool>
@@ -95,8 +97,10 @@ Instructions:
         </parameters>
       </tool>
 
-5. CRITICAL: Ensure that you actually call all the necessary functions -- first geocode, then create_map_location -- and that you wait 
-for the geocode results before creating the map location. Do not skip or fabricate these steps, or the map pins will not actually be created.
+5. CRITICAL: Ensure that you actually call all the necessary functions and that you wait 
+for the geocode results before creating the map location. Do not skip or fabricate these steps, 
+or the map pins will not actually be created.  If you notice that you are repeating the same calls
+over and over, stop and think about these instructions and follow them as best you can.
 
 6. Throughout your analysis, wrap your thought process in <analysis> tags to show your reasoning - keep these concise and focused.
 
@@ -105,7 +109,6 @@ for the geocode results before creating the map location. Do not skip or fabrica
 Special Cases:
 - Multiple campuses: Create separate pins for each campus
 - Online scholarships: Use organization address if available, otherwise skip
-- Verify addresses before geocoding to ensure accuracy
 - Use consistent naming conventions
 - Schools with fit issues: Still add them, but clearly mark fit problems
 

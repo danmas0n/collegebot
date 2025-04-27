@@ -18,7 +18,7 @@ import { GoogleMap, useLoadScript, MarkerF, InfoWindowF } from '@react-google-ma
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
 import { MapLocation } from '../../types/wizard';
-import { useResearch } from '../../contexts/ResearchContext';
+import { AiChat } from '../../types/college';
 import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
@@ -39,7 +39,6 @@ const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [];
 export const MapStage = (): JSX.Element => {
   const { currentStudent } = useWizard();
   const { chats, loadChats } = useChat();
-  const { tasks } = useResearch();
   const stageRef = React.useRef<HTMLDivElement>(null);
   
   // State definitions
@@ -291,6 +290,9 @@ export const MapStage = (): JSX.Element => {
     }
   }, [currentStudent?.id, selectedLocation]);
 
+  // Use a ref to track if we've processed chats for this session
+  const processedRef = useRef(false);
+  
   // Handle stage transitions and data loading
   const { currentStage } = useWizard();
   useEffect(() => {
@@ -300,6 +302,7 @@ export const MapStage = (): JSX.Element => {
       setProcessingStatus('');
       setProcessingLogs([]);
       setError(null);
+      processedRef.current = false; // Reset the processed flag
       return;
     }
 
@@ -315,23 +318,25 @@ export const MapStage = (): JSX.Element => {
         console.log('Loading locations...');
         await loadLocations(false); // Don't set loading state since we're managing it here
 
-        // Then load chats
+        // Then load chats and use the returned value directly
+        let loadedChats: AiChat[] = [];
         if (currentStudent?.id) {
           console.log('Loading chats...');
-          await loadChats(currentStudent.id);
+          loadedChats = await loadChats(currentStudent.id);
         }
 
-        // Check for unprocessed chats
-        const hasUnprocessedChats = chats?.some(chat => !chat.processed);
+        // Check for unprocessed chats using the loaded chats directly
+        const hasUnprocessedChats = loadedChats.some(chat => !chat.processed);
         
         // Show debug controls if there are unprocessed chats
         if (hasUnprocessedChats) {
           console.log('Found unprocessed chats, showing debug controls');
           setShowDebugControls(true);
           
-          // Auto-process chats when Map tab becomes visible
-          if (!isProcessing && hasUnprocessedChats) {
+          // Auto-process chats when Map tab becomes visible, but only if we haven't processed them yet
+          if (!isProcessing && hasUnprocessedChats && !processedRef.current) {
             console.log('Auto-processing unprocessed chats');
+            processedRef.current = true; // Mark as processed for this session
             handleProcessAllChats();
           }
         } else {
@@ -347,7 +352,7 @@ export const MapStage = (): JSX.Element => {
     };
 
     loadData();
-  // Removed chats from dependency array to prevent infinite loading
+  // Keep minimal dependencies to prevent flickering
   }, [currentStudent?.id, currentStage, isProcessing]);
 
 

@@ -11,7 +11,6 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ResearchProvider } from './contexts/ResearchContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { CalendarProvider } from './contexts/CalendarContext';
 import { Login } from './components/Login';
@@ -107,11 +106,9 @@ const App: React.FC = () => {
       <AuthProvider>
         <WizardProvider>
           <ChatProvider>
-            <ResearchProvider>
-              <CalendarProvider>
-                <AppContent />
-              </CalendarProvider>
-            </ResearchProvider>
+            <CalendarProvider>
+              <AppContent />
+            </CalendarProvider>
           </ChatProvider>
         </WizardProvider>
       </AuthProvider>
