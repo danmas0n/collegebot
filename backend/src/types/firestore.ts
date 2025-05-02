@@ -202,12 +202,14 @@ export interface PinResearchRequest {
 
 export interface AISettings {
   id: string;
-  serviceType: 'claude' | 'gemini';
+  serviceType: 'claude' | 'gemini' | 'openai';
   model: string;
   claudeModel?: string;
   geminiModel?: string;
+  openaiModel?: string;
   claudeApiKey?: string;
   geminiApiKey?: string;
+  openaiApiKey?: string;
   updatedAt: Timestamp;
   updatedBy: string;
 }

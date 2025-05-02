@@ -30,7 +30,7 @@ export class SettingsService {
       // Return default settings if none exist
       this.cachedSettings = {
         id: 'current',
-        serviceType: (process.env.AI_SERVICE_TYPE || 'claude') as 'claude' | 'gemini',
+        serviceType: (process.env.AI_SERVICE_TYPE || 'claude') as 'claude' | 'gemini' | 'openai',
         model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
         updatedAt: Timestamp.now(),
         updatedBy: 'system'
@@ -48,7 +48,7 @@ export class SettingsService {
     return settings.model;
   }
 
-  async getCurrentServiceType(): Promise<'claude' | 'gemini'> {
+  async getCurrentServiceType(): Promise<'claude' | 'gemini' | 'openai'> {
     const settings = await this.getAISettings();
     return settings.serviceType;
   }
@@ -59,8 +59,10 @@ export class SettingsService {
 
     if (settings.serviceType === 'claude') {
       apiKey = settings.claudeApiKey || process.env.CLAUDE_API_KEY;
-    } else {
+    } else if (settings.serviceType === 'gemini') {
       apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+    } else if (settings.serviceType === 'openai') {
+      apiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
     }
 
     if (!apiKey) {
@@ -76,8 +78,10 @@ export class SettingsService {
 
     if (settings.serviceType === 'claude') {
       apiKey = settings.claudeApiKey || process.env.CLAUDE_API_KEY;
-    } else {
+    } else if (settings.serviceType === 'gemini') {
       apiKey = settings.geminiApiKey || process.env.GEMINI_API_KEY;
+    } else if (settings.serviceType === 'openai') {
+      apiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
     }
 
     if (!apiKey) {
@@ -97,6 +101,20 @@ export class SettingsService {
 
     if (!apiKey) {
       throw new Error('Gemini API key not found');
+    }
+
+    return {
+      model,
+      apiKey
+    };
+  }
+  async getOpenAIConfig(): Promise<{ model: string; apiKey: string }> {
+    const settings = await this.getAISettings();
+    const apiKey = settings.openaiApiKey || process.env.OPENAI_API_KEY;
+    const model = settings.openaiModel || process.env.OPENAI_MODEL || 'gpt-4o';
+
+    if (!apiKey) {
+      throw new Error('OpenAI API key not found');
     }
 
     return {

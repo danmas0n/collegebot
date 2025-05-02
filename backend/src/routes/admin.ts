@@ -110,12 +110,14 @@ router.get('/ai-settings', async (req: Request, res: Response) => {
       // Return default settings if none exist
       const defaultSettings: AISettings = {
         id: 'current',
-        serviceType: (process.env.AI_SERVICE_TYPE || 'claude') as 'claude' | 'gemini',
+        serviceType: (process.env.AI_SERVICE_TYPE || 'claude') as 'claude' | 'gemini' | 'openai',
         model: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-20250219',
         claudeModel: process.env.CLAUDE_MODEL || 'claude-3-7-sonnet-20250219',
         geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+        openaiModel: process.env.OPENAI_MODEL || 'gpt-4o',
         claudeApiKey: process.env.CLAUDE_API_KEY || '',
         geminiApiKey: process.env.GEMINI_API_KEY || '',
+        openaiApiKey: process.env.OPENAI_API_KEY || '',
         updatedAt: Timestamp.now(),
         updatedBy: ''
       };
@@ -144,8 +146,10 @@ router.post('/ai-settings', async (req: Request, res: Response) => {
     // Store the current model in the appropriate model field
     if (updatedSettings.serviceType === 'claude') {
       updatedSettings.claudeModel = updatedSettings.model;
-    } else {
+    } else if (updatedSettings.serviceType === 'gemini') {
       updatedSettings.geminiModel = updatedSettings.model;
+    } else if (updatedSettings.serviceType === 'openai') {
+      updatedSettings.openaiModel = updatedSettings.model;
     }
 
     await settingsRef.set(updatedSettings);
@@ -157,10 +161,15 @@ router.post('/ai-settings', async (req: Request, res: Response) => {
       if (updatedSettings.claudeApiKey) {
         process.env.CLAUDE_API_KEY = updatedSettings.claudeApiKey;
       }
-    } else {
+    } else if (updatedSettings.serviceType === 'gemini') {
       process.env.GEMINI_MODEL = updatedSettings.model;
       if (updatedSettings.geminiApiKey) {
         process.env.GEMINI_API_KEY = updatedSettings.geminiApiKey;
+      }
+    } else if (updatedSettings.serviceType === 'openai') {
+      process.env.OPENAI_MODEL = updatedSettings.model;
+      if (updatedSettings.openaiApiKey) {
+        process.env.OPENAI_API_KEY = updatedSettings.openaiApiKey;
       }
     }
 

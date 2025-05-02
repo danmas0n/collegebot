@@ -17,12 +17,14 @@ import { api } from '../../utils/api';
 
 interface AISettings {
   id: string;
-  serviceType: 'claude' | 'gemini';
+  serviceType: 'claude' | 'gemini' | 'openai';
   model: string;
   claudeModel?: string;
   geminiModel?: string;
+  openaiModel?: string;
   claudeApiKey?: string;
   geminiApiKey?: string;
+  openaiApiKey?: string;
   updatedAt: string;
   updatedBy: string;
 }
@@ -33,8 +35,10 @@ const defaultSettings: AISettings = {
   model: 'claude-3-7-sonnet-20250219',
   claudeModel: 'claude-3-7-sonnet-20250219',
   geminiModel: 'gemini-2.0-flash',
+  openaiModel: 'gpt-4o',
   claudeApiKey: '',
   geminiApiKey: '',
+  openaiApiKey: '',
   updatedAt: new Date().toISOString(),
   updatedBy: ''
 };
@@ -44,7 +48,8 @@ export const AISettingsManager = () => {
   const [settings, setSettings] = useState<AISettings>({
     ...defaultSettings,
     claudeModel: 'claude-3-7-sonnet-20250219',
-    geminiModel: 'gemini-2.0-flash'
+    geminiModel: 'gemini-2.0-flash',
+    openaiModel: 'gpt-4o'
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -130,16 +135,27 @@ export const AISettingsManager = () => {
             value={settings.serviceType}
             label="Service Type"
             onChange={(e) => {
-              const newType = e.target.value as 'claude' | 'gemini';
+              const newType = e.target.value as 'claude' | 'gemini' | 'openai';
+              let newModel = settings.model;
+              
+              if (newType === 'claude') {
+                newModel = settings.claudeModel || settings.model;
+              } else if (newType === 'gemini') {
+                newModel = settings.geminiModel || settings.model;
+              } else if (newType === 'openai') {
+                newModel = settings.openaiModel || settings.model;
+              }
+              
               setSettings({
                 ...settings,
                 serviceType: newType,
-                model: newType === 'claude' ? settings.claudeModel || settings.model : settings.geminiModel || settings.model
+                model: newModel
               });
             }}
           >
             <MenuItem value="claude">Claude</MenuItem>
             <MenuItem value="gemini">Gemini</MenuItem>
+            <MenuItem value="openai">OpenAI</MenuItem>
           </Select>
         </FormControl>
 
@@ -149,18 +165,28 @@ export const AISettingsManager = () => {
           value={settings.model}
           onChange={(e) => {
             const newModel = e.target.value;
+            let modelUpdate = {};
+            
+            if (settings.serviceType === 'claude') {
+              modelUpdate = { claudeModel: newModel };
+            } else if (settings.serviceType === 'gemini') {
+              modelUpdate = { geminiModel: newModel };
+            } else if (settings.serviceType === 'openai') {
+              modelUpdate = { openaiModel: newModel };
+            }
+            
             setSettings({
               ...settings,
               model: newModel,
-              ...(settings.serviceType === 'claude' 
-                ? { claudeModel: newModel }
-                : { geminiModel: newModel })
+              ...modelUpdate
             });
           }}
           helperText={
             settings.serviceType === 'claude' 
               ? 'e.g., claude-3-7-sonnet-20250219' 
-              : 'e.g., gemini-2.0-flash'
+              : settings.serviceType === 'gemini'
+                ? 'e.g., gemini-2.0-flash'
+                : 'e.g., gpt-4o'
           }
         />
 
@@ -186,6 +212,18 @@ export const AISettingsManager = () => {
             geminiApiKey: e.target.value
           })}
           disabled={settings.serviceType !== 'gemini'}
+        />
+
+        <TextField
+          fullWidth
+          type="password"
+          label="OpenAI API Key"
+          value={settings.openaiApiKey || ''}
+          onChange={(e) => setSettings({
+            ...settings,
+            openaiApiKey: e.target.value
+          })}
+          disabled={settings.serviceType !== 'openai'}
         />
 
         {settings.updatedBy && (
