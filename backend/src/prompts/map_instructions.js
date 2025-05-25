@@ -1,129 +1,73 @@
 // Instructions for Claude on adding locations to the map
 
 export const mapInstructions = `
-Instructions:
+Process:
 
-1. Analyze the conversation history to identify ALL colleges and scholarships that should be added to the student's map, even if they aren't preferred choices. Include:
-   - Schools and scholarships that are good fits
-   - Schools and scholarships the student asked about, even if they aren't good fits
-   - Options mentioned in recommendations discussions, even if not highlighted as top choices
-   - IMPORTANT: Create SEPARATE map pins for scholarships, even if they are associated with a specific college
-   - Track which chat(s) mentioned each location to maintain traceability
+1. Identify Locations:
+   • Extract ALL colleges and scholarships from conversation
+   • Include good fits, poor fits, and mentioned options
+   • Create separate pins for scholarships (even if college-associated)
+   • Track source chat IDs for traceability
 
-2. Check the current map state to avoid duplicating existing pins.
+2. Check Current Map:
+   • Review existing pins to avoid duplicates
 
-3. For each location that needs to be added, follow this process:
+3. For Each Location:
+   a) Extract: Name, address, type, website, reference links, fit assessment
+   b) Geocode: Get coordinates using geocode tool
+   c) Create Pin: Use create_map_location tool with full metadata
 
-   a) Extract Essential Information
-      - College or scholarship name
-      - Physical address
-      - Type (college or scholarship)
-      - Website URL
-      - Any reference links from the conversation
-      - Note any fit issues (financial, academic, location, etc.)
-      - For scholarships, capture amount and deadline information
+4. Required Tool Sequence:
+   Step 1: <tool><name>geocode</name><parameters>{"address": "Full address", "name": "Location name"}</parameters></tool>
+   Step 2: <tool><name>create_map_location</name><parameters>{"studentId": "ID", "location": {...}}</parameters></tool>
 
-   b) Organize Reference Links
-      - Look for links collected during recommendations
-      - Categorize by purpose (admissions, financial, academic, etc.)
-      - Note whether sources are official or unofficial
+5. Location Data Structure:
+   {
+     "id": "[type]-[name-slug]-[timestamp]",
+     "type": "college" | "scholarship",
+     "name": "Location name",
+     "latitude": number,
+     "longitude": number,
+     "sourceChats": ["chatId1"],
+     "metadata": {
+       "website": "URL",
+       "description": "Brief description + fit issues",
+       "address": "Full address",
+       "matchesPreferences": {
+         "region": boolean,
+         "state": boolean,
+         "distance": boolean,
+         "setting": boolean
+       },
+       "fitIssues": {
+         "financial": boolean,
+         "academic": boolean,
+         "location": boolean,
+         "other": "description"
+       },
+       "referenceLinks": [
+         {
+           "url": "URL",
+           "title": "Link title",
+           "category": "admissions|financial|academic|application",
+           "source": "official|unofficial",
+           "target": "_blank"
+         }
+       ],
+       // For scholarships only:
+       "amount": number,
+       "deadline": "YYYY-MM-DD",
+       "applicationUrl": "URL"
+     }
+   }
 
-   c) Prepare Location Data
-      - Format the address properly for geocoding
-      - Prepare a brief description of why this location is relevant
-      - If it's not a good fit, clearly note the specific problems (e.g., "Not a financial fit: tuition exceeds budget by $10k/year")
-      - Note how it matches student preferences (region, state, setting)
-      - For scholarships, highlight amount and application details in the description
+Guidelines:
+- Process one location at a time
+- Wait for geocode results before creating pin
+- Include fit issues clearly in descriptions
+- Mark ALL links to open in new tabs
+- Use official addresses when possible
+- Don't fabricate tool responses
 
-4. CRITICAL: You MUST use the actual tools by calling them in the exact format below. DO NOT fabricate tool responses or pretend to call tools. Use the following tools in sequence for each location:
-
-   a) First, geocode the address:
-      <tool>
-        <name>geocode</name>
-        <parameters>
-          {"address": "College or organization address", "name": "Location name"}
-        </parameters>
-      </tool>
-
-      The geocode tool will return the latitude and longitude of the given address.
-
-   b) Create the map pin with the geocoded coordinates:
-      <tool>
-        <name>create_map_location</name>
-        <parameters>
-          {
-            "studentId": "[Current student ID]",
-            "location": {
-              "id": "[type]-[name-slug]-[timestamp]",
-              "type": "college" | "scholarship",
-              "name": "Location name",
-              "latitude": number,
-              "longitude": number,
-              "sourceChats": ["chatId1", "chatId2"], // IDs of chats that mentioned this location
-              "metadata": {
-                "website": "URL", // Will open in new tab (_blank)
-                "description": "Brief description including any fit issues",
-                "address": "Full address",
-                "matchesPreferences": {
-                  "region": boolean,
-                  "state": boolean,
-                  "distance": boolean,
-                  "setting": boolean
-                },
-                "fitIssues": {
-                  "financial": boolean,
-                  "academic": boolean,
-                  "location": boolean,
-                  "other": string
-                },
-                "referenceLinks": [
-                  {
-                    "url": "URL",
-                    "title": "Link title",
-                    "category": "admissions" | "financial" | "academic" | "campus" | "career" | "research" | "application" | "student-life" | "social",
-                    "source": "official" | "semi-official" | "unofficial",
-                    "target": "_blank"
-                  }
-                ],
-                // For colleges
-                "reason": "Brief reason for inclusion",
-                // For scholarships
-                "amount": number,
-                "deadline": "YYYY-MM-DD",
-                "applicationUrl": "URL" // Will open in new tab (_blank)
-              }
-            }
-          }
-        </parameters>
-      </tool>
-
-5. CRITICAL: Ensure that you actually call all the necessary functions and that you wait 
-for the geocode results before creating the map location. Do not skip or fabricate these steps, 
-or the map pins will not actually be created.  If you notice that you are repeating the same calls
-over and over, stop and think about these instructions and follow them as best you can.
-
-6. Throughout your analysis, wrap your thought process in <analysis> tags to show your reasoning - keep these concise and focused.
-
-7. When you're ready to provide a summary of the locations you've added, use <answer> tags - format this in HTML.
-
-Special Cases:
-- Multiple campuses: Create separate pins for each campus
-- Online scholarships: Use organization address if available, otherwise skip
-- Use consistent naming conventions
-- Schools with fit issues: Still add them, but clearly mark fit problems
-
-Remember:
-- Add ALL schools and scholarships discussed, not just preferred options
-- Clearly note any fit issues in the description field
-- For schools with fit problems, explain the specific issues (financial, academic, etc.)
-- For scholarships, prominently note amount and deadlines
-- Ensure ALL links open in new tabs by setting target="_blank"
-- NEVER output fake tool responses like "Tool X returned: {...}" - always use the proper tool format
-- Avoid duplicating existing pins
-- Use official addresses whenever possible
-- Include preference matching data for pin styling
-- Let the recommendations system handle detailed analysis
-- Make only one tool call at a time and wait for results before proceeding
-
-Your final output should consist only of a summary of the locations added in <answer> tags and should not duplicate or rehash any of the work you did in the analysis sections.
+Output summary in <answer> tags using HTML format.
 `;

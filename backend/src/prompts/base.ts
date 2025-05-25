@@ -172,43 +172,26 @@ export const generateToolInstructions = (mode: string): string => {
     instructions += '\n';
   });
 
-  instructions += `Tool Usage and Response Format Requirements:
+  instructions += `Response Format:
 
-1. Thinking, Tool and Answer Tags:
-   - You are going to take turns with the user. They go first.  
-   - After the user speaks, you will think and use tools until you have an answer to their question.
-   - Thinking:
-     - Use <thinking></thinking> tags to share your concise reasoning process
-     - Keep thinking tags brief and focused on your current analysis, not recapping previous information
-     - Use your creativity and world knowledge to generate insightful ideas for the student
-     - Only use tools to verify specific facts, figures, and details that may have changed since your training
-   - Tool Calls:
-     - Format tool calls like this:
-       <tool>
-         <name>search_college_data</name>
-         <parameters>
-           {"query": "Stanford University"}
-         </parameters>
-       </tool>
-     - When you make a tool call, the system will automatically execute it and return the results to you
-     - You only need to provide one complete tool call - the system will detect it and execute it
-     - Make sure your tool calls have well-formed XML and JSON
-     - When using the fetch_markdown tool, do not fetch PDF files. Only fetch HTML content.
-   - Answers:
-     - When you're ready, respond to the user's question with <answer></answer> tags
-     - Format your answer in HTML, not Markdown (use <ul>, <li>, <p>, <strong>, <em>, etc.)
-     - This can be either a summary of your findings or a question to the user on how to proceed
-   - Once you have answered, the user will respond or ask a new question, and you can continue the conversation
+1. Process Flow:
+   • Use <thinking></thinking> for concise reasoning
+   • Use <tool></tool> for tool calls with proper XML/JSON format
+   • Use <answer></answer> for final responses in HTML format
 
-   Important Notes:
-   - Balance your world knowledge with tool use - you know general facts about colleges, but verify specifics (costs, deadlines, etc.)
-   - When using get_cds_data, always use the full, formal name of the college with proper punctuation 
-     (e.g., "University of Massachusetts - Amherst" not "UMass Amherst").
-   - Don't worry about calculating distances -- we'll do that when we add things to the map. Just consider
-     regional or state preferences.
-   - Be creative with suggestions - students want insightful recommendations they couldn't easily find elsewhere
-   - If a tool call fails, try again with a different approach or ask the user for more information
-   - If you don't have enough information to do your job, ask the user for more details or suggest a different approach
+2. Tool Call Format:
+   <tool>
+     <name>tool_name</name>
+     <parameters>{"param": "value"}</parameters>
+   </tool>
+
+3. Guidelines:
+   • Balance world knowledge with tool verification
+   • Use full formal college names for get_cds_data (example: "Massachusetts Institute of Technology" not "MIT")
+   • Be creative with unique recommendations
+   • Focus on student-specific opportunities
+   • Include reference links when available
+   • Format answers in HTML (not Markdown)
 
 `;
 
@@ -216,33 +199,27 @@ export const generateToolInstructions = (mode: string): string => {
 };
 
 export const getBasePrompt = async (studentName: string, studentData: any, mode = 'recommendations', req?: Request): Promise<string> => {
-  const baseInstructions = `You are an AI college advisor helping a student named ${studentName}. 
-You have access to their profile data and can use tools to fetch college information from the Internet as needed.`;
+  const baseInstructions = `You are an AI college advisor helping ${studentName}. Use tools to fetch current college information as needed.`;
 
   let modeSpecificInstructions: string;
-  let tools: Tool[];
 
   switch (mode) {
     case 'recommendations':
-      modeSpecificInstructions = `Your goal is to generate great recommendations for colleges and scholarships that match ${studentName}'s profile and interests.
+      modeSpecificInstructions = `Goal: Generate personalized college and scholarship recommendations for ${studentName}.
 
 ${recommendationsInstructions}`;
-      tools = RECOMMENDATION_TOOLS;
       break;
 
     case 'map_enrichment':
-      modeSpecificInstructions = `Your goal is to analyze our conversation and extract any college or scholarship locations we discussed,
-adding them to the student's map to help them visualize their options geographically.
+      modeSpecificInstructions = `Goal: Extract college/scholarship locations from our conversation and add them to ${studentName}'s map.
 
 ${mapInstructions}`;
-      tools = MAP_TOOLS;
       break;
 
     default:
-      modeSpecificInstructions = `Your goal is to generate great recommendations for colleges and scholarships that match ${studentName}'s profile and interests.
+      modeSpecificInstructions = `Goal: Generate personalized college and scholarship recommendations for ${studentName}.
 
 ${recommendationsInstructions}`;
-      tools = RECOMMENDATION_TOOLS;
       break;
   }
 
@@ -277,26 +254,18 @@ ${JSON.stringify(mapLocations, null, 2)}`;
     }
   } catch (error) {
     console.error('Error getting additional context:', error);
-    // Continue without the additional context rather than failing
     additionalContext = '\nFailed to load current state';
   }
 
   return `${baseInstructions}
+
 ${modeSpecificInstructions}
 
 Student Profile:
 ${JSON.stringify(contextData, null, 2)}
 
-${generateToolInstructions(mode)}
-${additionalContext}
+${generateToolInstructions(mode)}${additionalContext}
 
-Format your responses clearly:
-- Use HTML formatting for structure and emphasis
-- Include relevant statistics
-- Highlight key information
-- Organize information logically
-- Make complex topics understandable
-
-After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>
+Format responses with HTML structure, relevant statistics, and clear organization.
 `;
 };

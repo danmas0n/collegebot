@@ -8,10 +8,27 @@ interface Message {
   content: string;
 }
 
+interface CacheControl {
+  type: 'ephemeral';
+}
+
+interface ContentBlock {
+  type: 'text';
+  text: string;
+  cache_control?: CacheControl;
+}
+
 type AnthropicMessage = {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | ContentBlock[];
 };
+
+interface CacheUsage {
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  input_tokens: number;
+  output_tokens: number;
+}
 
 interface ResearchTask {
   type: 'college' | 'scholarship';
@@ -73,6 +90,122 @@ export class ClaudeService {
     );
   }
 
+  /**
+   * Convert a system prompt to cache-enabled format with cache breakpoints
+   */
+  private createCachedSystemMessage(systemPrompt: string): ContentBlock[] {
+    // For now, we'll cache the entire system prompt as one block
+    // In the future, we can split this into multiple cache breakpoints
+    return [
+      {
+        type: 'text',
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' }
+      }
+    ];
+  }
+
+  /**
+   * Apply incremental caching to messages by marking ONLY the last user message with cache control
+   * This enables Claude to cache conversation history for multi-turn conversations
+   */
+  private applyIncrementalCaching(messages: AnthropicMessage[]): AnthropicMessage[] {
+    if (messages.length === 0) return messages;
+
+    // First, remove cache control from all messages
+    messages.forEach(message => {
+      if (typeof message.content !== 'string') {
+        const contentBlocks = message.content as ContentBlock[];
+        contentBlocks.forEach(block => {
+          delete block.cache_control;
+        });
+      }
+    });
+
+    // Find the last user message and mark it for caching
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        // Convert string content to ContentBlock array if needed
+        if (typeof messages[i].content === 'string') {
+          messages[i].content = [
+            {
+              type: 'text',
+              text: messages[i].content as string,
+              cache_control: { type: 'ephemeral' }
+            }
+          ];
+        } else {
+          // If already ContentBlock array, mark the last block for caching
+          const contentBlocks = messages[i].content as ContentBlock[];
+          if (contentBlocks.length > 0) {
+            contentBlocks[contentBlocks.length - 1].cache_control = { type: 'ephemeral' };
+          }
+        }
+        break;
+      }
+    }
+
+    return messages;
+  }
+
+  /**
+   * Log cache performance metrics
+   */
+  private logCachePerformance(usage: any) {
+    if (usage) {
+      const cacheCreated = usage.cache_creation_input_tokens || 0;
+      const cacheRead = usage.cache_read_input_tokens || 0;
+      const regularInput = usage.input_tokens || 0;
+      const output = usage.output_tokens || 0;
+
+      console.info('Cache Performance', {
+        cache_creation_tokens: cacheCreated,
+        cache_read_tokens: cacheRead,
+        regular_input_tokens: regularInput,
+        output_tokens: output,
+        cache_hit_rate: cacheRead > 0 ? (cacheRead / (cacheRead + regularInput)) * 100 : 0,
+        estimated_savings: cacheRead > 0 ? `${(cacheRead * 0.9).toFixed(0)} tokens saved` : 'No cache hits'
+      });
+    }
+  }
+
+  /**
+   * Test caching functionality with a simple prompt
+   */
+  async testCaching(): Promise<void> {
+    console.info('Testing Claude prompt caching...');
+    
+    const testPrompt = `You are a helpful AI assistant. This is a test prompt to verify that caching is working correctly. 
+    
+Please respond with a simple message confirming that you received this prompt. Keep your response brief.`;
+    
+    const testMessage: Message = {
+      role: 'user',
+      content: 'Hello, please confirm you received the test prompt.'
+    };
+
+    try {
+      // First call - should create cache
+      console.info('First call (should create cache):');
+      await this.processSingleStream([testMessage], testPrompt, (data) => {
+        console.info('SSE:', data.type, data.content?.substring(0, 100));
+      });
+
+      // Wait a moment
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Second call - should hit cache
+      console.info('Second call (should hit cache):');
+      await this.processSingleStream([testMessage], testPrompt, (data) => {
+        console.info('SSE:', data.type, data.content?.substring(0, 100));
+      });
+
+      console.info('Cache test completed successfully!');
+    } catch (error) {
+      console.error('Cache test failed:', error);
+    }
+  }
+
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
     let messages = [...initialMessages];
     let continueProcessing = true;
@@ -104,10 +237,13 @@ export class ClaudeService {
 
     try {
       // Map our roles to Claude's roles before sending
-      const claudeMessages: AnthropicMessage[] = messages.map(msg => ({
+      let claudeMessages: AnthropicMessage[] = messages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content
       }));
+
+      // Apply incremental caching to conversation history
+      claudeMessages = this.applyIncrementalCaching(claudeMessages);
 
       // If this is the first answer, append a request for a title
       if (isFirstAnswer) {
@@ -120,11 +256,15 @@ export class ClaudeService {
       });
 
       const model = await settingsService.getCurrentModel();
+      
+      // Use cached system message for better performance
+      const cachedSystemMessage = this.createCachedSystemMessage(systemPrompt);
+      
       const stream = await this.client.messages.stream({
         model,
         max_tokens: 4096,
         messages: claudeMessages,
-        system: systemPrompt,
+        system: cachedSystemMessage as any, // Anthropic SDK types may not be up to date with caching
         temperature: 0
       });
 
@@ -134,6 +274,11 @@ export class ClaudeService {
           toolBuffer = '';
           messageContent = '';
           rawMessage = ''; // Reset raw message buffer
+          
+          // Log cache performance if available
+          if (streamEvent.message?.usage) {
+            this.logCachePerformance(streamEvent.message.usage);
+          }
         }
         else if (streamEvent.type === 'content_block_start') {
           console.info('Content block start');
