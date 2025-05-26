@@ -2,11 +2,7 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { findCompleteTagContent } from '../utils/helpers.js';
 import { detectToolCall, executeToolCall } from '../utils/tool-executor.js';
 import { settingsService } from './settings.js';
-
-interface Message {
-  role: 'user' | 'assistant' | 'answer' | 'question';
-  content: string;
-}
+import { Message } from '../types/messages.js';
 
 interface CacheControl {
   type: 'ephemeral';
@@ -206,6 +202,84 @@ Please respond with a simple message confirming that you received this prompt. K
     }
   }
 
+  /**
+   * Consolidate thinking, answer, and question messages into structured assistant messages
+   */
+  private consolidateMessages(messages: Message[]): Message[] {
+    const consolidated: Message[] = [];
+    let pendingThinking = '';
+    let pendingAnswer = '';
+    let pendingQuestion = '';
+
+    for (const message of messages) {
+      if (message.role === 'user') {
+        // Before adding user message, consolidate any pending assistant content
+        if (pendingThinking || pendingAnswer || pendingQuestion) {
+          const structuredContent = this.buildStructuredContent(pendingThinking, pendingAnswer, pendingQuestion);
+          consolidated.push({
+            role: 'assistant',
+            content: structuredContent
+          });
+          pendingThinking = '';
+          pendingAnswer = '';
+          pendingQuestion = '';
+        }
+        consolidated.push(message);
+      } else if (message.role === 'thinking') {
+        pendingThinking = message.content;
+      } else if (message.role === 'answer') {
+        pendingAnswer = message.content;
+      } else if (message.role === 'question') {
+        pendingQuestion = message.content;
+      } else if (message.role === 'assistant') {
+        // Direct assistant message, add as-is after consolidating pending
+        if (pendingThinking || pendingAnswer || pendingQuestion) {
+          const structuredContent = this.buildStructuredContent(pendingThinking, pendingAnswer, pendingQuestion);
+          consolidated.push({
+            role: 'assistant',
+            content: structuredContent
+          });
+          pendingThinking = '';
+          pendingAnswer = '';
+          pendingQuestion = '';
+        }
+        consolidated.push(message);
+      }
+    }
+
+    // Handle any remaining pending content
+    if (pendingThinking || pendingAnswer || pendingQuestion) {
+      const structuredContent = this.buildStructuredContent(pendingThinking, pendingAnswer, pendingQuestion);
+      consolidated.push({
+        role: 'assistant',
+        content: structuredContent
+      });
+    }
+
+    return consolidated;
+  }
+
+  /**
+   * Build structured content with thinking, answer, and question tags
+   */
+  private buildStructuredContent(thinking: string, answer: string, question: string): string {
+    let content = '';
+    
+    if (thinking) {
+      content += `<thinking>${thinking}</thinking>`;
+    }
+    
+    if (answer) {
+      content += `<answer>${answer}</answer>`;
+    }
+    
+    if (question) {
+      content += `<question>${question}</question>`;
+    }
+    
+    return content;
+  }
+
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
     let messages = [...initialMessages];
     let continueProcessing = true;
@@ -232,23 +306,20 @@ Please respond with a simple message confirming that you received this prompt. K
     let savedAnswer: string | null = null;
     let continueProcessing = true;
     let rawMessage = ''; // Track complete raw message
-    let isFirstAnswer = messages.filter(msg => msg.role === 'assistant').length === 0;
     let researchTasks: ResearchTask[] = [];
 
     try {
+      // Consolidate messages into proper conversation structure
+      const consolidatedMessages = this.consolidateMessages(messages);
+      
       // Map our roles to Claude's roles before sending
-      let claudeMessages: AnthropicMessage[] = messages.map(msg => ({
+      let claudeMessages: AnthropicMessage[] = consolidatedMessages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content
       }));
 
       // Apply incremental caching to conversation history
       claudeMessages = this.applyIncrementalCaching(claudeMessages);
-
-      // If this is the first answer, append a request for a title
-      if (isFirstAnswer) {
-        systemPrompt += '\n\nAfter providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>';
-      }
 
       console.info('System prompt', {
         preview: systemPrompt.slice(0, 200),
@@ -315,23 +386,19 @@ Please respond with a simple message confirming that you received this prompt. K
                 });
                 // Extract research tasks from the answer
                 researchTasks = this.extractResearchTasks(result.content);
-                // Only send the SSE if we haven't seen a title tag yet
-                if (!isFirstAnswer) {
-                  sendSSE({ 
-                    type: 'response', 
-                    content: result.content,
-                    researchTasks
-                  });
-                }
-              } else if (tagName === 'title' && isFirstAnswer) {
-                // When we get the title, send both the saved answer and title together
+                sendSSE({ 
+                  type: 'response', 
+                  content: result.content,
+                  researchTasks
+                });
+              } else if (tagName === 'title') {
+                // Send title with the saved answer
                 sendSSE({
                   type: 'response',
                   content: savedAnswer,
                   suggestedTitle: result.content.trim(),
                   researchTasks
                 });
-                isFirstAnswer = false; // Mark that we've handled the first answer
               } else if (tagName === 'thinking') {
                 sendSSE({ 
                   type: 'thinking', 
@@ -454,29 +521,18 @@ Please respond with a simple message confirming that you received this prompt. K
 
   async analyzeChatHistory(chat: any, systemPrompt: string, sendSSE: (data: any) => void) {
     try {
-      // Instead of continuing the conversation, we'll start a fresh conversation
-      // and include the chat history as reference data in the initial prompt
-      
-      // Extract and format chat messages for readability
-      const chatContent = chat.messages
+      // Convert chat history to proper message format and continue the conversation
+      const chatMessages: Message[] = chat.messages
         .filter((msg: any) => msg.content && msg.content.trim())
-        .map((msg: any) => `${msg.role.toUpperCase()}: ${msg.content.trim()}`)
-        .join('\n\n');
+        .map((msg: any) => ({
+          role: msg.role as Message['role'],
+          content: msg.content.trim()
+        }));
       
-      // Create a new message array with just a single user message
-      const messages: Message[] = [
-        {
-          role: 'user' as const,
-          content: `Please analyze the following chat history and extract relevant information according to the instructions. 
-          
-Chat Title: ${chat.title || 'Untitled Chat'}
-Chat ID: ${chat.id}
-Created At: ${chat.createdAt}
-
-CHAT HISTORY:
-${chatContent}
-
-Based on this chat history, identify all colleges and scholarships mentioned that should be added to the student's map. For each one, you'll need to:
+      // Add the analysis request as a new user message
+      chatMessages.push({
+        role: 'user',
+        content: `Based on our conversation above, please extract all colleges and scholarships mentioned that should be added to the student's map. For each one, you'll need to:
 1. Use the geocode tool to get coordinates
 2. Then use the create_map_location tool to add it to the map
 3. Move on to the next location
@@ -484,13 +540,12 @@ Based on this chat history, identify all colleges and scholarships mentioned tha
 DO NOT try to geocode the same location multiple times. After you've added a location to the map, move on to the next location.
 
 Now, please process this information and extract all relevant data according to the system instructions.`
-        }
-      ];
+      });
 
-      console.info('Starting fresh conversation with chat history as reference data');
+      console.info('Continuing conversation with proper chat history');
       
       // Important: Use the returned messages from processStream to keep state
-      const updatedMessages = await this.processStream(messages, systemPrompt, sendSSE);
+      const updatedMessages = await this.processStream(chatMessages, systemPrompt, sendSSE);
       console.info('Finished processing chat history:', { 
         messageCount: updatedMessages.length,
         lastMessageRole: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].role : 'none'

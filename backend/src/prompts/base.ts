@@ -209,7 +209,9 @@ IMPORTANT AWARENESS: Colleges use sophisticated algorithms to track student digi
     case 'recommendations':
       modeSpecificInstructions = `Goal: Generate personalized college and scholarship recommendations for ${studentName}.
 
-${recommendationsInstructions}`;
+${recommendationsInstructions}
+
+After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>`;
       break;
 
     case 'map_enrichment':
@@ -221,7 +223,9 @@ ${mapInstructions}`;
     default:
       modeSpecificInstructions = `Goal: Generate personalized college and scholarship recommendations for ${studentName}.
 
-${recommendationsInstructions}`;
+${recommendationsInstructions}
+
+After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>`;
       break;
   }
 

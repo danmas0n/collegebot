@@ -1,13 +1,9 @@
 import { findCompleteTagContent } from './helpers.js';
 import { executeMcpTool } from '../services/mcp.js';
 import { toolServerMap } from '../config/mcp-tools.js';
+import { Message } from '../types/messages.js';
 
 type ToolName = keyof typeof toolServerMap;
-
-interface Message {
-  role: 'user' | 'assistant' | 'answer' | 'question';
-  content: string;
-}
 
 /**
  * Processes a tool call and executes the tool

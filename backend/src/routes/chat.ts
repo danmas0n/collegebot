@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AIServiceFactory } from '../services/ai-service-factory.js';
-import { setupSSEResponse } from '../utils/helpers.js';
+import { setupSSEResponse, filterChatMessages } from '../utils/helpers.js';
 import { getBasePrompt } from '../prompts/base.js';
 import { getChats, getStudent, saveChat, deleteChat } from '../services/firestore.js';
 import { Chat, ChatDTO, DTOChatMessage, FirestoreChatMessage } from '../types/firestore.js';
@@ -72,9 +72,15 @@ router.post('/chat', async (req: Request, res: Response) => {
       chat.processedAt = null;
     }
     
-    // Save the chat
-    await saveChat(chat);
-    console.log('Backend - Chat saved successfully');
+    // Filter large tool responses before saving
+    const filteredChat = {
+      ...chat,
+      messages: filterChatMessages(chat.messages)
+    };
+    
+    // Save the filtered chat
+    await saveChat(filteredChat);
+    console.log('Backend - Chat saved successfully (with message filtering applied)');
 
     // DISABLED: Automatic chat processing - now using explicit processing via UI buttons
     // Research task processing has been removed
