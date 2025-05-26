@@ -29,6 +29,12 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Enhanced get_cds_data function performance** by adding fuzzy search capability:
+  - Added new `search_cds_data` function to the college-data-server MCP
+  - Implemented sophisticated fuzzy matching algorithm with Levenshtein distance
+  - Added the function to backend tool configurations and prompts
+  - AI models can now search for colleges with partial names (e.g., "Harvard", "MIT") before calling get_cds_data
+  - This should dramatically improve success rate when models guess college names
 - Created deployment scripts to simplify the deployment process:
   - Created `scripts/deploy-backend.sh` for building and deploying the backend/DB
   - Created `scripts/deploy-frontend.sh` for building and deploying the frontend

@@ -129,6 +129,23 @@ class CollegeDataServer {
                 required: ['query']
               }
             },
+            search_cds_data: {
+              description: 'Search for available Common Data Set files with fuzzy matching',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'College name or partial name to search for'
+                  },
+                  limit: {
+                    type: 'number',
+                    description: 'Maximum number of results to return (default: 10)'
+                  }
+                },
+                required: ['query']
+              }
+            },
             get_cds_data: {
               description: 'Get Common Data Set information for a specific college and year',
               inputSchema: {
@@ -209,6 +226,24 @@ class CollegeDataServer {
           },
         },
         {
+          name: 'search_cds_data',
+          description: 'Search for available Common Data Set files with fuzzy matching',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'College name or partial name to search for',
+              },
+              limit: {
+                type: 'number',
+                description: 'Maximum number of results to return (default: 10)',
+              }
+            },
+            required: ['query'],
+          },
+        },
+        {
           name: 'get_cds_data',
           description: 'Get Common Data Set information for a specific college and year',
           inputSchema: {
@@ -235,6 +270,8 @@ class CollegeDataServer {
         switch (request.params.name) {
           case 'search_college_data':
             return await this.handleSearchCollegeData(request.params.arguments);
+          case 'search_cds_data':
+            return await this.handleSearchCdsData(request.params.arguments);
           case 'get_cds_data':
             return await this.handleGetCdsData(request.params.arguments);
           default:
@@ -306,6 +343,113 @@ class CollegeDataServer {
         ]
       };
     }
+  }
+
+  private async handleSearchCdsData(args: any) {
+    if (!args.query || typeof args.query !== 'string') {
+      throw new McpError(ErrorCode.InvalidParams, 'Invalid query parameter');
+    }
+
+    const query = args.query.toLowerCase();
+    const limit = args.limit || 10;
+    
+    // Simple fuzzy matching algorithm
+    const calculateSimilarity = (str1: string, str2: string): number => {
+      const s1 = str1.toLowerCase();
+      const s2 = str2.toLowerCase();
+      
+      // Exact match gets highest score
+      if (s1 === s2) return 1.0;
+      
+      // Check if one string contains the other
+      if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+      
+      // Check for word matches
+      const words1 = s1.split(/\s+/);
+      const words2 = s2.split(/\s+/);
+      let matchingWords = 0;
+      
+      for (const word1 of words1) {
+        for (const word2 of words2) {
+          if (word1 === word2 || word1.includes(word2) || word2.includes(word1)) {
+            matchingWords++;
+            break;
+          }
+        }
+      }
+      
+      const wordScore = matchingWords / Math.max(words1.length, words2.length);
+      
+      // Levenshtein distance for character-level similarity
+      const levenshtein = (a: string, b: string): number => {
+        const matrix = Array(b.length + 1).fill(null).map(() => Array(a.length + 1).fill(null));
+        
+        for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
+        for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
+        
+        for (let j = 1; j <= b.length; j++) {
+          for (let i = 1; i <= a.length; i++) {
+            const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+            matrix[j][i] = Math.min(
+              matrix[j][i - 1] + 1,
+              matrix[j - 1][i] + 1,
+              matrix[j - 1][i - 1] + indicator
+            );
+          }
+        }
+        
+        return matrix[b.length][a.length];
+      };
+      
+      const distance = levenshtein(s1, s2);
+      const maxLength = Math.max(s1.length, s2.length);
+      const charScore = 1 - (distance / maxLength);
+      
+      // Combine word and character scores
+      return Math.max(wordScore, charScore);
+    };
+
+    // Search through all colleges
+    const results: Array<{
+      name: string;
+      score: number;
+      availableYears: string[];
+      totalFiles: number;
+    }> = [];
+
+    for (const [collegeName, collegeData] of this.collegeMap.entries()) {
+      const similarity = calculateSimilarity(query, collegeName);
+      
+      // Include results with similarity > 0.3 or exact substring matches
+      if (similarity > 0.3 || collegeName.toLowerCase().includes(query)) {
+        results.push({
+          name: collegeName,
+          score: similarity,
+          availableYears: Object.keys(collegeData.years).sort(),
+          totalFiles: Object.keys(collegeData.years).length
+        });
+      }
+    }
+
+    // Sort by similarity score (descending) and limit results
+    results.sort((a, b) => b.score - a.score);
+    const limitedResults = results.slice(0, limit);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            query: args.query,
+            totalMatches: results.length,
+            results: limitedResults,
+            suggestion: limitedResults.length > 0 
+              ? `Use get_cds_data with collegeName: "${limitedResults[0].name}" to get the actual data.`
+              : 'No matching colleges found. Try a different search term.'
+          }, null, 2)
+        }
+      ]
+    };
   }
 
   private async handleGetCdsData(args: any) {

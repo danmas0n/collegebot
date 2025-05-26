@@ -64,6 +64,24 @@ const RECOMMENDATION_TOOLS: Tool[] = [
     ]
   },
   {
+    name: 'search_cds_data',
+    description: 'Search for available Common Data Set files with fuzzy matching - use this to find colleges when you\'re not sure of the exact name',
+    parameters: [
+      {
+        name: 'query',
+        type: 'string',
+        description: 'College name or partial name to search for (e.g., "Harvard", "MIT", "University of California")',
+        required: true
+      },
+      {
+        name: 'limit',
+        type: 'number',
+        description: 'Maximum number of results to return (default: 10)',
+        required: false
+      }
+    ]
+  },
+  {
     name: 'get_cds_data',
     description: 'Get Common Data Set information and full content for a specific college',
     parameters: [

@@ -264,7 +264,9 @@ Please respond with a simple message confirming that you received this prompt. K
           }
         }
         else if (streamEvent.type === 'message_stop') {
-          console.info('Message complete');
+          console.info('Message complete', { 
+            hasContent: !!(toolBuffer.trim() || messageContent.trim())
+          });
           
           // Log complete raw message before processing
           console.info('Complete raw message', { message: rawMessage });
@@ -327,7 +329,34 @@ Please respond with a simple message confirming that you received this prompt. K
             return { hasToolCalls, messages, continueProcessing };
           }
 
-          // Handle any remaining content using the processor
+          // CRITICAL FIX: Handle untagged content
+          // If we have content without answer tags and no tool calls,
+          // treat the content as the final answer instead of continuing to process
+          const remainingContent = toolBuffer.trim();
+          if (remainingContent && !this.responseProcessor.getSavedAnswer()) {
+            console.info('Claude completed with untagged content, treating as answer', {
+              contentLength: remainingContent.length,
+              contentPreview: remainingContent.substring(0, 100)
+            });
+            
+            // Treat the remaining content as the answer
+            messages.push({
+              role: 'answer',
+              content: remainingContent
+            });
+            
+            sendSSE({ 
+              type: 'response', 
+              content: remainingContent
+            });
+            
+            // Terminate processing
+            continueProcessing = false;
+            hasToolCalls = false;
+            return { hasToolCalls, messages, continueProcessing };
+          }
+
+          // Handle any remaining content using the processor (fallback for other cases)
           const remainingResult = this.responseProcessor.handleRemainingContent(toolBuffer, messages, sendSSE);
           messages = remainingResult.messages;
 

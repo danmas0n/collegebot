@@ -2,6 +2,7 @@ export const toolServerMap: Record<string, string> = {
   // College data server tools
   search_college_data: 'college-data',
   get_cds_data: 'college-data',
+  search_cds_data: 'college-data',
   
   // Fetch server tools
   fetch_markdown: 'fetch',

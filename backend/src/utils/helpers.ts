@@ -50,6 +50,7 @@ export const setupSSEResponse = (res: Response) => {
 const LARGE_TOOL_RESPONSES = [
   'fetch_markdown',
   'get_cds_data',
+  'search_cds_data',
   'search_college_data'
 ];
 
