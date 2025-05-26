@@ -13,15 +13,19 @@ import {
   IconButton,
   Collapse,
   Paper,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import { useWizard } from '../../contexts/WizardContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
 import { StageContainer, StageHeader, StageContent, StageFooter } from './StageContainer';
+import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
 import { api } from '../../utils/api';
 
 interface Message extends AiChatMessage {
@@ -44,6 +48,9 @@ export const RecommendationsStage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [assistantMessageBuffer, setAssistantMessageBuffer] = useState('');
   const paperRef = React.useRef<HTMLDivElement>(null);
+
+  // State for tabs
+  const [activeTab, setActiveTab] = useState<number>(0);
 
   // Load chats when component mounts or student changes
   useEffect(() => {
@@ -460,128 +467,167 @@ export const RecommendationsStage: React.FC = () => {
     }
   }, [showExamples]);
 
+  // Handle tab change
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+
   return (
-      <StageContainer elevation={0} sx={{ position: 'relative' }}>
+    <StageContainer elevation={0} sx={{ position: 'relative' }}>
       <StageHeader>
         <Typography variant="h5" gutterBottom>
           AI Recommendations
         </Typography>
 
-        <Collapse in={showExamples}>
-          <Box sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Typography color="text.secondary">
-                Example questions you can ask:
-              </Typography>
-              <IconButton size="small" onClick={() => setShowExamples(false)}>
-                <ExpandLessIcon />
-              </IconButton>
-            </Box>
-            <Typography component="div">
-              <ul>
-                <li>"What colleges would be a good fit for me based on my GPA and test scores?"</li>
-                <li>"Which colleges offer strong programs in my areas of interest?"</li>
-                <li>"What are my chances of getting merit scholarships at these colleges?"</li>
-                <li>"Compare the financial aid packages at these schools."</li>
-              </ul>
-            </Typography>
-          </Box>
-        </Collapse>
-
-        {!showExamples && (
-          <Button
-            startIcon={<ExpandMoreIcon />}
-            onClick={() => setShowExamples(true)}
-            sx={{ mb: 2 }}
+        {/* Tab Navigation */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tabs 
+            value={activeTab} 
+            onChange={handleTabChange}
+            aria-label="recommendations tabs"
           >
-            Show Example Questions
-          </Button>
-        )}
+            <Tab label="Chat & Recommendations" />
+            <Tab 
+              label="Tips & Advice" 
+              icon={<TipsAndUpdatesIcon />} 
+              iconPosition="start"
+            />
+          </Tabs>
+        </Box>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
+        {/* Chat Tab Content */}
+        {activeTab === 0 && (
+          <>
+            <Collapse in={showExamples}>
+              <Box sx={{ mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography color="text.secondary">
+                    Example questions you can ask:
+                  </Typography>
+                  <IconButton size="small" onClick={() => setShowExamples(false)}>
+                    <ExpandLessIcon />
+                  </IconButton>
+                </Box>
+                <Typography component="div">
+                  <ul>
+                    <li>"What colleges would be a good fit for me based on my GPA and test scores?"</li>
+                    <li>"Which colleges offer strong programs in my areas of interest?"</li>
+                    <li>"What are my chances of getting merit scholarships at these colleges?"</li>
+                    <li>"Compare the financial aid packages at these schools."</li>
+                  </ul>
+                </Typography>
+              </Box>
+            </Collapse>
+
+            {!showExamples && (
+              <Button
+                startIcon={<ExpandMoreIcon />}
+                onClick={() => setShowExamples(true)}
+                sx={{ mb: 2 }}
+              >
+                Show Example Questions
+              </Button>
+            )}
+
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+          </>
         )}
       </StageHeader>
 
+      {/* Tab Panel Content */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
-        <Grid container spacing={2} sx={{ height: '100%' }}>
-          {/* Chat List */}
-          <Grid item xs={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ p: 2, height: '100%', overflowY: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
-            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="h6">Chats</Typography>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={createNewChat}
-              >
-                New Chat
-              </Button>
-            </Box>
+        {/* Chat Tab */}
+        <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: '100%' }}>
+          {activeTab === 0 && (
+            <Grid container spacing={2} sx={{ height: '100%' }}>
+              {/* Chat List */}
+              <Grid item xs={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ p: 2, height: '100%', overflowY: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Chats</Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={createNewChat}
+                  >
+                    New Chat
+                  </Button>
+                </Box>
 
-            <List>
-              {chats.map((chat) => (
-                <ListItem
-                  key={chat.id}
-                  sx={{ cursor: 'pointer' }}
-                  selected={currentChat?.id === chat.id}
-                  onClick={() => {
-                    console.log('Selecting chat:', chat.id);
-                    setCurrentChat(chat);
-                  }}
-                  secondaryAction={
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      onClick={() => deleteChat(chat.id)}
+                <List>
+                  {chats.map((chat) => (
+                    <ListItem
+                      key={chat.id}
+                      sx={{ cursor: 'pointer' }}
+                      selected={currentChat?.id === chat.id}
+                      onClick={() => {
+                        console.log('Selecting chat:', chat.id);
+                        setCurrentChat(chat);
+                      }}
+                      secondaryAction={
+                        <IconButton
+                          edge="end"
+                          aria-label="delete"
+                          onClick={() => deleteChat(chat.id)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      }
                     >
-                      <DeleteIcon />
-                    </IconButton>
-                  }
-                >
-                  <ListItemText
-                    primary={chat.title}
-                    secondary={new Date(chat.updatedAt).toLocaleDateString()}
-                  />
-                </ListItem>
-              ))}
-            </List>
-            </Box>
-          </Grid>
+                      <ListItemText
+                        primary={chat.title}
+                        secondary={new Date(chat.updatedAt).toLocaleDateString()}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+                </Box>
+              </Grid>
 
-          {/* Chat Messages */}
-          <Grid item xs={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Box sx={{ flex: 1, overflowY: 'auto', pr: 2 }}>
-              <List sx={{ width: '100%', flex: 1 }}>
-                {currentChat?.messages.map((msg, index) => renderMessage(msg, index))}
-              </List>
-            </Box>
+              {/* Chat Messages */}
+              <Grid item xs={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ flex: 1, overflowY: 'auto', pr: 2 }}>
+                  <List sx={{ width: '100%', flex: 1 }}>
+                    {currentChat?.messages.map((msg, index) => renderMessage(msg, index))}
+                  </List>
+                </Box>
 
-            <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Ask a question"
-                  multiline
-                  rows={2}
-                  value={currentMessage}
-                  onChange={(e) => setCurrentMessage(e.target.value)}
-                  disabled={isLoading}
-                />
-                <Button
-                  variant="contained"
-                  onClick={() => handleSendMessage(currentMessage)}
-                  disabled={!currentMessage.trim() || isLoading}
-                  sx={{ minWidth: '100px' }}
-                >
-                  {isLoading ? <CircularProgress size={24} /> : 'Send'}
-                </Button>
-              </Box>
-            </Box>
-          </Grid>
-        </Grid>
+                <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                      fullWidth
+                      label="Ask a question"
+                      multiline
+                      rows={2}
+                      value={currentMessage}
+                      onChange={(e) => setCurrentMessage(e.target.value)}
+                      disabled={isLoading}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={() => handleSendMessage(currentMessage)}
+                      disabled={!currentMessage.trim() || isLoading}
+                      sx={{ minWidth: '100px' }}
+                    >
+                      {isLoading ? <CircularProgress size={24} /> : 'Send'}
+                    </Button>
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+          )}
+        </Box>
+
+        {/* Tips & Advice Tab */}
+        <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: '100%', overflowY: 'auto' }}>
+          {activeTab === 1 && (
+            <TipsAdvicePanel />
+          )}
+        </Box>
       </Box>
     </StageContainer>
   );

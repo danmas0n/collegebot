@@ -172,16 +172,48 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
     
     return (
       <Box>
-        {/* Main content with HTML */}
-        <div
+        {/* Main content with HTML and tighter spacing */}
+        <Box
           dangerouslySetInnerHTML={{
             __html: DOMPurify.sanitize(processedContent.mainContent)
           }}
-          style={{
+          sx={{
             whiteSpace: 'pre-wrap',
-            fontFamily: 'inherit'
+            fontFamily: 'inherit',
+            // Tighten spacing for HTML content
+            '& h1, & h2, & h3, & h4, & h5, & h6': {
+              margin: '0.5em 0 0.3em 0',
+              lineHeight: 1.2,
+            },
+            '& p': {
+              margin: '0.5em 0',
+              lineHeight: 1.4,
+            },
+            '& ul, & ol': {
+              margin: '0.5em 0',
+              paddingLeft: '1.5em',
+            },
+            '& li': {
+              margin: '0.2em 0',
+              lineHeight: 1.3,
+            },
+            '& div': {
+              margin: '0.3em 0',
+            },
+            '& br': {
+              lineHeight: 1.2,
+            },
+            // Remove excessive spacing from nested elements
+            '& * + *': {
+              marginTop: '0.5em',
+            },
+            '& *:first-child': {
+              marginTop: 0,
+            },
+            '& *:last-child': {
+              marginBottom: 0,
+            },
           }}
-          className="ai-message-html"
         />
         
         {/* Analysis content if present */}

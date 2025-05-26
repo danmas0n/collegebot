@@ -199,7 +199,9 @@ export const generateToolInstructions = (mode: string): string => {
 };
 
 export const getBasePrompt = async (studentName: string, studentData: any, mode = 'recommendations', req?: Request): Promise<string> => {
-  const baseInstructions = `You are an AI college advisor helping ${studentName}. Use tools to fetch current college information as needed.`;
+  const baseInstructions = `You are an AI college advisor helping ${studentName}. Use tools to fetch current college information as needed.
+
+IMPORTANT AWARENESS: Colleges use sophisticated algorithms to track student digital behavior and optimize pricing. Always focus on net price (what families actually pay) rather than sticker price, and be aware that merit scholarships often go to affluent families rather than those with the greatest need.`;
 
   let modeSpecificInstructions: string;
 

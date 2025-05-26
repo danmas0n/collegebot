@@ -17,6 +17,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CalendarView from '../calendar/CalendarView';
+import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
 import { useCalendar } from '../../contexts/CalendarContext';
@@ -243,6 +244,7 @@ export const CalendarStage: React.FC<CalendarStageProps> = ({ studentId }) => {
             >
               <Tab label="Calendar & Tasks" />
               <Tab label="Research" />
+              <Tab label="Tips & Advice" />
             </Tabs>
           </Box>
           
@@ -268,7 +270,12 @@ export const CalendarStage: React.FC<CalendarStageProps> = ({ studentId }) => {
             )}
           </Box>
           
-          {/* Tour Planning Tab has been removed */}
+          {/* Tips & Advice Tab */}
+          <Box role="tabpanel" hidden={activeTab !== 2}>
+            {activeTab === 2 && (
+              <TipsAdvicePanel />
+            )}
+          </Box>
         </Box>
       ) : (
         <Typography variant="body1" sx={{ mt: 2 }}>
