@@ -3,6 +3,7 @@ import { detectToolCall, executeToolCall } from '../utils/tool-executor.js';
 import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
+import { claudeLogger } from '../utils/logger.js';
 
 interface CacheControl {
   type: 'ephemeral';
@@ -108,7 +109,7 @@ export class ClaudeService {
       const regularInput = usage.input_tokens || 0;
       const output = usage.output_tokens || 0;
 
-      console.info('Cache Performance', {
+      claudeLogger.info('Cache Performance', {
         cache_creation_tokens: cacheCreated,
         cache_read_tokens: cacheRead,
         regular_input_tokens: regularInput,
@@ -178,7 +179,7 @@ Please respond with a simple message confirming that you received this prompt. K
   }
 
   async processSingleStream(messages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
-    console.info('Starting Claude stream');
+    claudeLogger.info('Starting Claude stream');
     let toolBuffer = '';
     let messageContent = '';
     let hasToolCalls = false;
@@ -347,7 +348,7 @@ Please respond with a simple message confirming that you received this prompt. K
 
       return { hasToolCalls, messages, continueProcessing };
     } catch (error: any) {
-      console.error('Error in stream processing', { error: error.message, stack: error.stack });
+      claudeLogger.error('Error in stream processing', { error: error.message, stack: error.stack });
       sendSSE({ type: 'error', content: error.message });
       throw error;
     }

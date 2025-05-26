@@ -120,7 +120,9 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
         studentData,
         studentName: currentStudent?.name || 'Student',
         history: messages,
-        currentChat
+        chatId: currentChat?.id || `chat-${Date.now()}`,
+        studentId: currentStudent?.id,
+        title: currentChat?.title
       }, {
         signal: controller.signal
       });
@@ -215,12 +217,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                           createdAt: currentChat?.createdAt || new Date().toISOString(),
                           updatedAt: new Date().toISOString()
                         };
-                        api.post('/api/chat/chat', { 
-                          studentId: currentStudent.id, 
-                          chat: chatToSave 
-                        }).catch(err => {
-                          console.error('Error saving chat:', err);
-                        });
+                        // Chat is now saved automatically by /api/chat/message endpoint
                         setCurrentChat(chatToSave);
                       }
 
@@ -285,12 +282,7 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                         messages,
                         updatedAt: new Date().toISOString()
                       };
-                      api.post('/api/chat/chat', { 
-                        studentId: currentStudent.id, 
-                        chat: chatToSave 
-                      }).catch(err => {
-                        console.error('Error saving chat:', err);
-                      });
+                      // Chat is now saved automatically by /api/chat/message endpoint
                       setCurrentChat(chatToSave);
                     }
                   });

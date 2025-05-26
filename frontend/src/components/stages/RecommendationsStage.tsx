@@ -128,14 +128,22 @@ export const RecommendationsStage: React.FC = () => {
     }
   };
 
-  const saveChat = async (chat: Chat) => {
+  // Save complete frontend chat structure
+  const saveFrontendChat = async (chat: Chat) => {
     try {
-      console.log('Frontend - Saving chat:', { chatId: chat.id, title: chat.title, studentId: chat.studentId });
-      await api.post('/api/chat/chat', {
+      console.log('Frontend - Saving complete chat structure:', { 
+        chatId: chat.id, 
+        title: chat.title, 
+        messageCount: chat.messages?.length || 0,
+        messageRoles: chat.messages?.map(m => m.role) || []
+      });
+      
+      await api.post('/api/chat/save-frontend-chat', {
         studentId: currentStudent?.id,
         chat
       });
-      console.log('Frontend - Chat saved successfully');
+      
+      console.log('Frontend - Complete chat structure saved successfully');
       
       // Refresh the chat list to show updated titles
       const loadedChats = await loadChats();
@@ -145,7 +153,7 @@ export const RecommendationsStage: React.FC = () => {
         setCurrentChat(refreshedCurrentChat);
       }
     } catch (error) {
-      console.error('Frontend - Error saving chat:', error);
+      console.error('Frontend - Error saving complete chat structure:', error);
       setError(error instanceof Error ? error.message : 'Failed to save chat');
     }
   };
@@ -178,7 +186,7 @@ export const RecommendationsStage: React.FC = () => {
         timestamp: new Date().toISOString()
       };
 
-      // Save initial user message
+      // Update chat with user message
       const updatedChat: Chat = {
         ...activeChat,
         messages: [...activeChat.messages, userMessage],
@@ -187,7 +195,6 @@ export const RecommendationsStage: React.FC = () => {
       };
       setCurrentChat(updatedChat);
       activeChat = updatedChat; // Update activeChat reference
-      await saveChat(updatedChat);
 
       // Clear input field after message is saved
       const messageToSend = message;
@@ -225,6 +232,7 @@ export const RecommendationsStage: React.FC = () => {
           content: msg.content
         }));
 
+      // Send correct parameters to backend for streaming
       const response = await api.post('/api/chat/message', {
           message: messageToSend,
           studentData: {
@@ -233,7 +241,9 @@ export const RecommendationsStage: React.FC = () => {
           },
           studentName: currentStudent.name || 'Student',
           history: filteredMessages,
-          currentChat: updatedChat
+          chatId: updatedChat.id,
+          studentId: currentStudent.id,
+          title: updatedChat.title
       });
 
       if (!response.ok) {
@@ -249,6 +259,7 @@ export const RecommendationsStage: React.FC = () => {
       let currentThinkingMessage = '';
       let hasToolCalls = false;
       let messageContent = '';
+      let extractedTitle: string | null = null;
 
       // Set a timeout for the entire streaming operation
       const streamTimeoutId = setTimeout(() => {
@@ -368,7 +379,6 @@ export const RecommendationsStage: React.FC = () => {
                     setCurrentChat(updatedChatWithQuestion);
                     activeChat = updatedChatWithQuestion;
                   }
-                  await saveChat(activeChat);
                   setIsLoading(false);
                   break;
 
@@ -379,6 +389,12 @@ export const RecommendationsStage: React.FC = () => {
                     content: data.content,
                     timestamp: new Date().toISOString()
                   };
+                  
+                  // Capture the extracted title
+                  if (data.suggestedTitle) {
+                    extractedTitle = data.suggestedTitle;
+                    console.log('Frontend - Captured title from response:', extractedTitle);
+                  }
                   
                   // If this is the first answer in the chat and we have a suggested title
                   if (data.suggestedTitle && activeChat.messages.filter(m => m.role === 'answer').length === 0) {
@@ -401,7 +417,21 @@ export const RecommendationsStage: React.FC = () => {
                 case 'complete':
                   console.log('Frontend - Received complete event');
                   setIsLoading(false);
-                  await saveChat(activeChat);
+                  
+                  // Update local state with extracted title if available
+                  let finalChat = activeChat;
+                  if (extractedTitle || data.suggestedTitle) {
+                    const titleToUse = extractedTitle || data.suggestedTitle;
+                    finalChat = {
+                      ...activeChat,
+                      title: titleToUse,
+                      updatedAt: new Date().toISOString()
+                    };
+                    setCurrentChat(finalChat);
+                  }
+                  
+                  // Save the complete frontend chat structure with all message roles preserved
+                  await saveFrontendChat(finalChat);
                   break;
 
                 case 'error':

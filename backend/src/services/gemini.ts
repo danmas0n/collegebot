@@ -3,6 +3,7 @@ import { detectToolCall, executeToolCall } from '../utils/tool-executor.js';
 import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
+import { logger } from '../utils/logger.js';
 
 export class GeminiService {
   private client: GoogleGenerativeAI;
@@ -23,7 +24,7 @@ export class GeminiService {
     this.responseProcessor.reset();
 
     while (continueProcessing) {
-      console.info('Processing message with current state', {
+      logger.info('Gemini: Processing message with current state', {
         messageCount: messages.length,
         continueProcessing
       });
@@ -37,7 +38,7 @@ export class GeminiService {
   }
 
   async processSingleStream(messages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
-    console.info('Starting Gemini stream');
+    logger.info('Starting Gemini stream');
     let toolBuffer = '';
     let messageContent = '';
     let hasToolCalls = false;
@@ -51,7 +52,7 @@ export class GeminiService {
         parts: [{ text: msg.content }]
       }));
 
-      console.info('System prompt', {
+      logger.debug('Gemini: System prompt', {
         preview: systemPrompt.slice(0, 200),
         totalLength: systemPrompt.length
       });
@@ -78,7 +79,7 @@ export class GeminiService {
         // Check for complete tool call first - if found, terminate the stream
         const { found, toolResult } = detectToolCall(toolBuffer);
         if (found && toolResult) {
-          console.info('Found complete tool call, terminating stream', { toolCall: toolResult.fullMatch });
+          logger.info('Gemini: Found complete tool call, terminating stream', { toolCall: toolResult.fullMatch });
           
           // Cancel the stream - Gemini doesn't have a direct abort method, but we can break out of the loop
           streamController.abort();
@@ -124,7 +125,7 @@ export class GeminiService {
           hasToolCalls = true;
           
           for (const [toolCall, toolContent] of toolCallMatches) {
-            console.info('Processing tool call', { toolCall });
+            logger.info('Gemini: Processing tool call', { toolCallPreview: toolCall.substring(0, 100) });
             
             // Process the tool call using the shared utility
             const result = await executeToolCall(toolContent, messages, sendSSE, this.userId);
@@ -159,7 +160,7 @@ export class GeminiService {
       hasToolCalls = false;
       return { hasToolCalls, messages, continueProcessing };
     } catch (error: any) {
-      console.error('Error in stream processing', error);
+      logger.error('Gemini: Error in stream processing', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
       sendSSE({ type: 'error', content: error.message });
       throw error;
     }
@@ -188,18 +189,18 @@ DO NOT try to geocode the same location multiple times. After you've added a loc
 Now, please process this information and extract all relevant data according to the system instructions.`
       });
 
-      console.info('Continuing conversation with proper chat history');
+      logger.info('Gemini: Continuing conversation with proper chat history');
       
       // Important: Use the returned messages from processStream to keep state
       const updatedMessages = await this.processStream(chatMessages, systemPrompt, sendSSE);
-      console.info('Finished processing chat history:', { 
+      logger.info('Gemini: Finished processing chat history', { 
         messageCount: updatedMessages.length,
         lastMessageRole: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].role : 'none'
       });
       
       return updatedMessages;
     } catch (error) {
-      console.error('Error in analyzeChatHistory:', error);
+      logger.error('Gemini: Error in analyzeChatHistory', { error: error instanceof Error ? error.message : String(error) });
       sendSSE({ type: 'error', content: error instanceof Error ? error.message : 'Unknown error' });
       throw error;
     }

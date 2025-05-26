@@ -5,6 +5,7 @@ import { getBasePrompt } from '../prompts/base.js';
 import { getChats, getStudent, saveChat, deleteChat } from '../services/firestore.js';
 import { Chat, ChatDTO, DTOChatMessage, FirestoreChatMessage } from '../types/firestore.js';
 import { Timestamp } from 'firebase-admin/firestore';
+import { logger } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -12,18 +13,41 @@ const router = express.Router();
 router.post('/message', async (req: Request, res: Response) => {
   // Set up SSE response first so we can send errors through it
   const sendSSE = setupSSEResponse(res);
+  let extractedTitle: string | null = null;
+  
+  // Wrap sendSSE to capture the title when it's sent
+  const wrappedSendSSE = (data: any) => {
+    logger.info('Backend - SSE event intercepted', { 
+      type: data.type, 
+      hasSuggestedTitle: !!data.suggestedTitle,
+      suggestedTitle: data.suggestedTitle,
+      hasContent: !!data.content,
+      contentPreview: data.content ? data.content.substring(0, 100) : null
+    });
+    if (data.type === 'response' && data.suggestedTitle) {
+      logger.info('Backend - Capturing title from SSE', { title: data.suggestedTitle });
+      extractedTitle = data.suggestedTitle;
+    }
+    sendSSE(data);
+  };
   
   try {
-    const { message, studentData, studentName, history } = req.body;
+    const { message, studentData, studentName, history, chatId, studentId, title } = req.body;
     
     // Generate base prompt
     const systemPrompt = await getBasePrompt(studentName, studentData);
 
     // Process message with service
     const aiService = await AIServiceFactory.createService(req.user.uid);
-    await aiService.processStream(history, systemPrompt, sendSSE);
-    // Send complete event
-    sendSSE({ type: 'complete' });
+    const updatedMessages = await aiService.processStream(history, systemPrompt, wrappedSendSSE);
+    
+    // Don't save here anymore - let frontend handle saving with complete structure
+    
+    // Send complete event with extracted title
+    sendSSE({ 
+      type: 'complete',
+      suggestedTitle: extractedTitle 
+    });
   } catch (error) {
     console.error('Error processing message:', error);
     // Send error through SSE before closing
@@ -44,6 +68,54 @@ router.post('/chats', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error getting chats:', error);
     res.status(500).json({ error: 'Failed to get chats' });
+  }
+});
+
+// Save complete frontend chat structure (preserves all message roles)
+router.post('/save-frontend-chat', async (req: Request, res: Response) => {
+  try {
+    const { studentId, chat } = req.body;
+    console.log('Backend - Saving frontend chat:', { 
+      chatId: chat.id, 
+      title: chat.title, 
+      studentId: chat.studentId,
+      messageCount: chat.messages?.length || 0,
+      messageRoles: chat.messages?.map((m: any) => m.role) || []
+    });
+    
+    if (!chat.studentId) {
+      chat.studentId = studentId;
+    }
+
+    // Get existing chat to compare
+    const existingChats = await getChats(studentId);
+    const existingChat = existingChats.find(c => c.id === chat.id);
+
+    // Mark as unprocessed if:
+    // 1. It's a new chat (!existingChat)
+    // 2. The number of messages has changed
+    // 3. The chat was never processed
+    if (!existingChat || 
+        !chat.processed || 
+        (existingChat && existingChat.messages.length !== chat.messages.length)) {
+      chat.processed = false;
+      chat.processedAt = null;
+    }
+    
+    // Filter large tool responses before saving but preserve message roles
+    const filteredChat = {
+      ...chat,
+      messages: filterChatMessages(chat.messages)
+    };
+    
+    // Save the filtered chat
+    await saveChat(filteredChat);
+    console.log('Backend - Frontend chat saved successfully (with message filtering applied)');
+
+    res.json({ message: 'Chat saved successfully' });
+  } catch (error) {
+    console.error('Backend - Error saving frontend chat:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save chat' });
   }
 });
 

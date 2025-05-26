@@ -79,7 +79,12 @@ export class ResponseProcessor {
         suggestedTitle: titleResult.content.trim(),
         researchTasks: this.researchTasks
       });
-      console.info('Found complete title tag', { content: titleResult.content });
+      console.info('Found complete title tag', { 
+        content: titleResult.content,
+        trimmedContent: titleResult.content.trim(),
+        savedAnswer: this.savedAnswer ? 'exists' : 'null',
+        fullMatch: titleResult.fullMatch
+      });
       workingBuffer = workingBuffer.replace(titleResult.fullMatch, '');
       hasContent = true;
     }

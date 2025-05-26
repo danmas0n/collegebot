@@ -4,6 +4,10 @@ import { LoggingWinston } from '@google-cloud/logging-winston';
 
 // Create logs directory if it doesn't exist
 const logsDir = path.join(process.cwd(), 'logs');
+const fs = require('fs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Initialize Cloud Logging transport
 const cloudLogging = new LoggingWinston({
@@ -25,8 +29,8 @@ transports.push(
   })
 );
 
-// Add file transports in development
-if (process.env.NODE_ENV === 'development') {
+// Add file transports in development (default when NODE_ENV not set)
+if (process.env.NODE_ENV !== 'production') {
   transports.push(
     new winston.transports.File({ 
       filename: path.join(logsDir, 'combined.log'),

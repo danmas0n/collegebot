@@ -1,10 +1,10 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
 import morgan from 'morgan';
 import { config } from 'dotenv';
 import { auth } from './config/firebase.js';
 import { isAdmin } from './services/firestore.js';
+import { logger } from './utils/logger.js';
 
 // Import route handlers
 import chatRouter from './routes/chat.js';
@@ -42,9 +42,10 @@ const corsOptions = {
 app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
 app.use(cors(corsOptions));
 
-app.use(bodyParser.json());
+// Set up body parsing with increased limits
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: false, limit: '5mb' }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '50mb' }));
 
 // Add type declaration for Express Request
 declare global {
@@ -57,21 +58,22 @@ declare global {
 
 // Authentication middleware
 const authMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  console.log('Authentication middleware called');
-  console.log('URL:', req.originalUrl);
-  console.log('Headers:', req.headers);
-  console.log('Origin:', req.headers.origin);
+  logger.debug('Authentication middleware called', {
+    url: req.originalUrl,
+    origin: req.headers.origin,
+    userAgent: req.headers['user-agent']
+  });
   
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      console.log('No authorization header');
+      logger.warn('Authentication failed: No authorization header', { url: req.originalUrl });
       res.status(401).json({ error: 'No authorization header' });
       return;
     }
 
     const token = authHeader.split(' ')[1];
-    console.log('Token found, attempting to verify');
+    logger.debug('Token found, attempting to verify');
     const decodedToken = await auth.verifyIdToken(token);
     
     // Add user to request object
@@ -81,10 +83,17 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction): 
       isAdmin: decodedToken.admin || false
     };
     
-    console.log('Authentication successful for user:', decodedToken.email);
+    logger.info('Authentication successful', { 
+      email: decodedToken.email,
+      uid: decodedToken.uid,
+      url: req.originalUrl
+    });
     next();
   } catch (error) {
-    console.error('Authentication error:', error);
+    logger.error('Authentication error', { 
+      error: error instanceof Error ? error.message : String(error),
+      url: req.originalUrl
+    });
     res.status(401).json({ error: 'Invalid token' });
     return;
   }
@@ -94,21 +103,28 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction): 
 const adminMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!req.user) {
-      console.log('Not authenticated');
+      logger.warn('Admin middleware: User not authenticated', { url: req.originalUrl });
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
     const userIsAdmin = await isAdmin(req.user.email);
     if (!userIsAdmin) {
-      console.log('Not authorized');
+      logger.warn('Admin middleware: User not authorized', { 
+        email: req.user.email,
+        url: req.originalUrl
+      });
       res.status(403).json({ error: 'Not authorized' });
       return;
     }
 
     next();
   } catch (error) {
-    console.error('Server error:', error);
+    logger.error('Admin middleware error', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      url: req.originalUrl
+    });
     res.status(500).json({ error: 'Server error' });
     return;
   }
@@ -131,11 +147,19 @@ app.use('/api/pin-research', authMiddleware, pinResearchRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error(err.stack);
+  logger.error('Unhandled error', {
+    error: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method
+  });
   res.status(500).json({ error: 'Something broke!' });
 });
 
 // Start server
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  logger.info('Server started', { 
+    port,
+    environment: process.env.NODE_ENV || 'development'
+  });
 });

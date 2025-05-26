@@ -211,7 +211,13 @@ IMPORTANT AWARENESS: Colleges use sophisticated algorithms to track student digi
 
 ${recommendationsInstructions}
 
-After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>`;
+CRITICAL REQUIREMENT: You MUST ALWAYS provide a title after your answer. This is required for every response in recommendations mode. 
+
+After providing your answer, generate a brief, descriptive title for this chat based on the current discussion. The title should reflect what was discussed and can evolve as the conversation progresses. 
+
+REQUIRED FORMAT: <title>Your suggested title</title>
+
+This title is mandatory and must appear at the end of every response.`;
       break;
 
     case 'map_enrichment':
@@ -225,7 +231,13 @@ ${mapInstructions}`;
 
 ${recommendationsInstructions}
 
-After providing your answer, suggest a brief, descriptive title for this chat based on the discussion. Format it as: <title>Your suggested title</title>`;
+CRITICAL REQUIREMENT: You MUST ALWAYS provide a title after your answer. This is required for every response in recommendations mode. 
+
+After providing your answer, generate a brief, descriptive title for this chat based on the current discussion. The title should reflect what was discussed and can evolve as the conversation progresses. 
+
+REQUIRED FORMAT: <title>Your suggested title</title>
+
+This title is mandatory and must appear at the end of every response.`;
       break;
   }
 
