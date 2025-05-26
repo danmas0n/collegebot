@@ -1,6 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
-import { findCompleteTagContent } from '../utils/helpers.js';
 import { detectToolCall, executeToolCall } from '../utils/tool-executor.js';
+import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
 
@@ -26,20 +26,10 @@ interface CacheUsage {
   output_tokens: number;
 }
 
-interface ResearchTask {
-  type: 'college' | 'scholarship';
-  name: string;
-  findings: Array<{
-    detail: string;
-    category: 'deadline' | 'requirement' | 'contact' | 'financial' | 'other';
-    confidence: 'high' | 'medium' | 'low';
-    source?: string;
-  }>;
-}
-
 export class ClaudeService {
   private client: Anthropic;
   private userId?: string;
+  private responseProcessor: ResponseProcessor;
 
   constructor(apiKey: string, userId?: string) {
     this.client = new Anthropic({
@@ -47,43 +37,7 @@ export class ClaudeService {
       baseURL: 'https://api.anthropic.com'
     });
     this.userId = userId;
-  }
-
-  private extractResearchTasks(content: string): ResearchTask[] {
-    const tasks: ResearchTask[] = [];
-    const taskRegex = /\[RESEARCH_TASK\]\s*({[\s\S]*?})\s*\[\/RESEARCH_TASK\]/g;
-    let match;
-
-    while ((match = taskRegex.exec(content)) !== null) {
-      try {
-        const taskJson = match[1];
-        const task = JSON.parse(taskJson);
-        if (this.isValidResearchTask(task)) {
-          tasks.push(task);
-        }
-      } catch (error) {
-        console.error('Error parsing research task:', error);
-      }
-    }
-
-    return tasks;
-  }
-
-  private isValidResearchTask(task: any): task is ResearchTask {
-    return (
-      task &&
-      typeof task === 'object' &&
-      (task.type === 'college' || task.type === 'scholarship') &&
-      typeof task.name === 'string' &&
-      Array.isArray(task.findings) &&
-      task.findings.every((finding: any) =>
-        finding &&
-        typeof finding.detail === 'string' &&
-        ['deadline', 'requirement', 'contact', 'financial', 'other'].includes(finding.category) &&
-        ['high', 'medium', 'low'].includes(finding.confidence) &&
-        (finding.source === undefined || typeof finding.source === 'string')
-      )
-    );
+    this.responseProcessor = new ResponseProcessor();
   }
 
   /**
@@ -202,87 +156,12 @@ Please respond with a simple message confirming that you received this prompt. K
     }
   }
 
-  /**
-   * Consolidate thinking, answer, and question messages into structured assistant messages
-   */
-  private consolidateMessages(messages: Message[]): Message[] {
-    const consolidated: Message[] = [];
-    let pendingThinking = '';
-    let pendingAnswer = '';
-    let pendingQuestion = '';
-
-    for (const message of messages) {
-      if (message.role === 'user') {
-        // Before adding user message, consolidate any pending assistant content
-        if (pendingThinking || pendingAnswer || pendingQuestion) {
-          const structuredContent = this.buildStructuredContent(pendingThinking, pendingAnswer, pendingQuestion);
-          consolidated.push({
-            role: 'assistant',
-            content: structuredContent
-          });
-          pendingThinking = '';
-          pendingAnswer = '';
-          pendingQuestion = '';
-        }
-        consolidated.push(message);
-      } else if (message.role === 'thinking') {
-        pendingThinking = message.content;
-      } else if (message.role === 'answer') {
-        pendingAnswer = message.content;
-      } else if (message.role === 'question') {
-        pendingQuestion = message.content;
-      } else if (message.role === 'assistant') {
-        // Direct assistant message, add as-is after consolidating pending
-        if (pendingThinking || pendingAnswer || pendingQuestion) {
-          const structuredContent = this.buildStructuredContent(pendingThinking, pendingAnswer, pendingQuestion);
-          consolidated.push({
-            role: 'assistant',
-            content: structuredContent
-          });
-          pendingThinking = '';
-          pendingAnswer = '';
-          pendingQuestion = '';
-        }
-        consolidated.push(message);
-      }
-    }
-
-    // Handle any remaining pending content
-    if (pendingThinking || pendingAnswer || pendingQuestion) {
-      const structuredContent = this.buildStructuredContent(pendingThinking, pendingAnswer, pendingQuestion);
-      consolidated.push({
-        role: 'assistant',
-        content: structuredContent
-      });
-    }
-
-    return consolidated;
-  }
-
-  /**
-   * Build structured content with thinking, answer, and question tags
-   */
-  private buildStructuredContent(thinking: string, answer: string, question: string): string {
-    let content = '';
-    
-    if (thinking) {
-      content += `<thinking>${thinking}</thinking>`;
-    }
-    
-    if (answer) {
-      content += `<answer>${answer}</answer>`;
-    }
-    
-    if (question) {
-      content += `<question>${question}</question>`;
-    }
-    
-    return content;
-  }
-
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
     let messages = [...initialMessages];
     let continueProcessing = true;
+
+    // Reset processor for new conversation
+    this.responseProcessor.reset();
 
     while (continueProcessing) {
       console.info('Processing message with current state', {
@@ -303,14 +182,12 @@ Please respond with a simple message confirming that you received this prompt. K
     let toolBuffer = '';
     let messageContent = '';
     let hasToolCalls = false;
-    let savedAnswer: string | null = null;
     let continueProcessing = true;
     let rawMessage = ''; // Track complete raw message
-    let researchTasks: ResearchTask[] = [];
 
     try {
       // Consolidate messages into proper conversation structure
-      const consolidatedMessages = this.consolidateMessages(messages);
+      const consolidatedMessages = this.responseProcessor.consolidateMessages(messages);
       
       // Map our roles to Claude's roles before sending
       let claudeMessages: AnthropicMessage[] = consolidatedMessages.map(msg => ({
@@ -374,45 +251,10 @@ Please respond with a simple message confirming that you received this prompt. K
             return result;
           }
 
-          // Process other tags in the buffer
-          const processTag = (tagName: string, type: string) => {
-            let result;
-            while ((result = findCompleteTagContent(tagName, toolBuffer))) {
-              if (tagName === 'answer') {
-                savedAnswer = result.content;
-                messages.push({
-                  role: 'answer',
-                  content: result.content
-                });
-                // Extract research tasks from the answer
-                researchTasks = this.extractResearchTasks(result.content);
-                sendSSE({ 
-                  type: 'response', 
-                  content: result.content,
-                  researchTasks
-                });
-              } else if (tagName === 'title') {
-                // Send title with the saved answer
-                sendSSE({
-                  type: 'response',
-                  content: savedAnswer,
-                  suggestedTitle: result.content.trim(),
-                  researchTasks
-                });
-              } else if (tagName === 'thinking') {
-                sendSSE({ 
-                  type: 'thinking', 
-                  content: result.content
-                });
-              }
-              console.info(`Found complete ${tagName} tag`, { content: result.content });
-              toolBuffer = toolBuffer.replace(result.fullMatch, '');
-            }
-          };
-
-          processTag('thinking', 'thinking');
-          processTag('answer', 'response');
-          processTag('title', 'response');
+          // Process XML tags using the shared processor
+          const processingResult = this.responseProcessor.processXmlTags(toolBuffer, messages, sendSSE);
+          toolBuffer = processingResult.updatedBuffer;
+          messages = processingResult.messages;
 
           // If we have non-tag content, accumulate it
           if (!toolBuffer.includes('<')) {
@@ -440,9 +282,11 @@ Please respond with a simple message confirming that you received this prompt. K
           // Check for complete tool calls
           const toolCallMatches: [string, string][] = [];
           let toolResult;
-          while ((toolResult = findCompleteTagContent('tool', toolBuffer))) {
-            toolCallMatches.push([toolResult.fullMatch, toolResult.content]);
-            toolBuffer = toolBuffer.replace(toolResult.fullMatch, '');
+          while ((toolResult = detectToolCall(toolBuffer))) {
+            if (toolResult.toolResult) {
+              toolCallMatches.push([toolResult.toolResult.fullMatch, toolResult.toolResult.content]);
+              toolBuffer = toolBuffer.replace(toolResult.toolResult.fullMatch, '');
+            }
           }
           console.info('Found tool calls', { count: toolCallMatches.length });
 
@@ -475,31 +319,21 @@ Please respond with a simple message confirming that you received this prompt. K
             console.info('Message analysis', {
               remainingToolCalls: remainingToolCalls?.length || 0,
               toolCallMatches: toolCallMatches.length,
-              hasCompleteAnswer: !!savedAnswer
+              hasCompleteAnswer: !!this.responseProcessor.getSavedAnswer()
             });
             continueProcessing = true;
             hasToolCalls = !!remainingToolCalls;
             return { hasToolCalls, messages, continueProcessing };
           }
 
-          // No tool calls, check for remaining content
-          const remainingContent = toolBuffer.trim();
-          if (!savedAnswer && remainingContent) {
-            console.info('Converting remaining content to question', { content: remainingContent });
-            messages.push({
-              role: 'question',
-              content: remainingContent
-            });
-            sendSSE({ 
-              type: 'response', 
-              content: remainingContent
-            });
-          }
+          // Handle any remaining content using the processor
+          const remainingResult = this.responseProcessor.handleRemainingContent(toolBuffer, messages, sendSSE);
+          messages = remainingResult.messages;
 
           // No more processing needed
           console.info('Message analysis', {
             remainingToolCalls: 0,
-            hasCompleteAnswer: !!savedAnswer,
+            hasCompleteAnswer: !!this.responseProcessor.getSavedAnswer(),
             continueProcessing: false,
             hasToolCalls: false
           });

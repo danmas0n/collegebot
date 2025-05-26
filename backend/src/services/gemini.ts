@@ -1,69 +1,26 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { findCompleteTagContent } from '../utils/helpers.js';
 import { detectToolCall, executeToolCall } from '../utils/tool-executor.js';
+import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
-
-interface ResearchTask {
-  type: 'college' | 'scholarship';
-  name: string;
-  findings: Array<{
-    detail: string;
-    category: 'deadline' | 'requirement' | 'contact' | 'financial' | 'other';
-    confidence: 'high' | 'medium' | 'low';
-    source?: string;
-  }>;
-}
 
 export class GeminiService {
   private client: GoogleGenerativeAI;
   private userId?: string;
+  private responseProcessor: ResponseProcessor;
 
   constructor(apiKey: string, userId?: string) {
     this.client = new GoogleGenerativeAI(apiKey);
     this.userId = userId;
-  }
-
-  private extractResearchTasks(content: string): ResearchTask[] {
-    const tasks: ResearchTask[] = [];
-    const taskRegex = /\[RESEARCH_TASK\]\s*({[\s\S]*?})\s*\[\/RESEARCH_TASK\]/g;
-    let match;
-
-    while ((match = taskRegex.exec(content)) !== null) {
-      try {
-        const taskJson = match[1];
-        const task = JSON.parse(taskJson);
-        if (this.isValidResearchTask(task)) {
-          tasks.push(task);
-        }
-      } catch (error) {
-        console.error('Error parsing research task:', error);
-      }
-    }
-
-    return tasks;
-  }
-
-  private isValidResearchTask(task: any): task is ResearchTask {
-    return (
-      task &&
-      typeof task === 'object' &&
-      (task.type === 'college' || task.type === 'scholarship') &&
-      typeof task.name === 'string' &&
-      Array.isArray(task.findings) &&
-      task.findings.every((finding: any) =>
-        finding &&
-        typeof finding.detail === 'string' &&
-        ['deadline', 'requirement', 'contact', 'financial', 'other'].includes(finding.category) &&
-        ['high', 'medium', 'low'].includes(finding.confidence) &&
-        (finding.source === undefined || typeof finding.source === 'string')
-      )
-    );
+    this.responseProcessor = new ResponseProcessor();
   }
 
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
     let messages = [...initialMessages];
     let continueProcessing = true;
+
+    // Reset processor for new conversation
+    this.responseProcessor.reset();
 
     while (continueProcessing) {
       console.info('Processing message with current state', {
@@ -84,10 +41,8 @@ export class GeminiService {
     let toolBuffer = '';
     let messageContent = '';
     let hasToolCalls = false;
-    let savedAnswer: string | null = null;
     let continueProcessing = true;
     let rawMessage = ''; // Track complete raw message
-    let researchTasks: ResearchTask[] = [];
 
     try {
       // Map our roles to Gemini's roles
@@ -113,12 +68,10 @@ export class GeminiService {
       });
 
       const result = await chat.sendMessageStream(systemPrompt);
-      let responseText = '';
       let streamController = new AbortController();
 
       for await (const chunk of result.stream) {
         const text = chunk.text();
-        responseText += text;
         toolBuffer += text;
         rawMessage += text;
 
@@ -137,45 +90,10 @@ export class GeminiService {
           return result;
         }
 
-        // Process other tags in the buffer
-        const processTag = (tagName: string, type: string) => {
-          let result;
-          while ((result = findCompleteTagContent(tagName, toolBuffer))) {
-            if (tagName === 'answer') {
-              savedAnswer = result.content;
-              messages.push({
-                role: 'answer',
-                content: result.content
-              });
-              // Extract research tasks from the answer
-              researchTasks = this.extractResearchTasks(result.content);
-              sendSSE({ 
-                type: 'response', 
-                content: result.content,
-                researchTasks
-              });
-            } else if (tagName === 'title') {
-              // Send title with the saved answer
-              sendSSE({
-                type: 'response',
-                content: savedAnswer,
-                suggestedTitle: result.content.trim(),
-                researchTasks
-              });
-            } else if (tagName === 'thinking') {
-              sendSSE({ 
-                type: 'thinking', 
-                content: result.content
-              });
-            }
-            console.info(`Found complete ${tagName} tag`, { content: result.content });
-            toolBuffer = toolBuffer.replace(result.fullMatch, '');
-          }
-        };
-
-        processTag('thinking', 'thinking');
-        processTag('answer', 'response');
-        processTag('title', 'response');
+        // Process XML tags using the shared processor
+        const processingResult = this.responseProcessor.processXmlTags(toolBuffer, messages, sendSSE);
+        toolBuffer = processingResult.updatedBuffer;
+        messages = processingResult.messages;
 
         // If we have non-tag content, accumulate it
         if (!toolBuffer.includes('<')) {
@@ -194,9 +112,11 @@ export class GeminiService {
         // Check for complete tool calls
         const toolCallMatches: [string, string][] = [];
         let toolResult;
-        while ((toolResult = findCompleteTagContent('tool', toolBuffer))) {
-          toolCallMatches.push([toolResult.fullMatch, toolResult.content]);
-          toolBuffer = toolBuffer.replace(toolResult.fullMatch, '');
+        while ((toolResult = detectToolCall(toolBuffer))) {
+          if (toolResult.toolResult) {
+            toolCallMatches.push([toolResult.toolResult.fullMatch, toolResult.toolResult.content]);
+            toolBuffer = toolBuffer.replace(toolResult.toolResult.fullMatch, '');
+          }
         }
 
         // Process any complete tool calls
@@ -229,18 +149,9 @@ export class GeminiService {
           return { hasToolCalls, messages, continueProcessing };
         }
 
-        // No tool calls, check for remaining content
-        const remainingContent = toolBuffer.trim();
-        if (!savedAnswer && remainingContent) {
-          messages.push({
-            role: 'question',
-            content: remainingContent
-          });
-          sendSSE({ 
-            type: 'response', 
-            content: remainingContent
-          });
-        }
+        // Handle any remaining content using the processor
+        const remainingResult = this.responseProcessor.handleRemainingContent(toolBuffer, messages, sendSSE);
+        messages = remainingResult.messages;
       }
 
       // No more processing needed
