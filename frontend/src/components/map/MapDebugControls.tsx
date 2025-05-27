@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -11,6 +11,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import DOMPurify from 'dompurify';
+import { StreamingChatInterface } from '../shared/StreamingChatInterface';
 
 interface MapDebugControlsProps {
   isProcessing: boolean;
@@ -26,6 +27,11 @@ interface MapDebugControlsProps {
   isLoading: boolean;
   currentStudent: any;
   locationsLength: number;
+  // New props for auto-processing
+  hasUnprocessedChats: boolean;
+  onProcessingComplete: () => void;
+  onProcessingError: (error: string) => void;
+  onLoadLocations: () => Promise<void>;
 }
 
 export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
@@ -42,18 +48,89 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
   isLoading,
   currentStudent,
   locationsLength,
+  hasUnprocessedChats,
+  onProcessingComplete,
+  onProcessingError,
+  onLoadLocations,
 }) => {
+  const [isAutoProcessing, setIsAutoProcessing] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [streamingComplete, setStreamingComplete] = useState(false);
+
+  // Auto-start processing when there are unprocessed chats
+  useEffect(() => {
+    if (hasUnprocessedChats && !isAutoProcessing && !isProcessing) {
+      setIsAutoProcessing(true);
+      setStreamingComplete(false);
+    }
+  }, [hasUnprocessedChats, isAutoProcessing, isProcessing]);
+
+  // Handle processing completion with countdown
+  const handleStreamingProcessingComplete = async () => {
+    console.log('StreamingChatInterface processing complete');
+    setStreamingComplete(true);
+    setCountdown(10); // Start 10-second countdown
+    // Reload locations after processing
+    await onLoadLocations();
+  };
+
+  // Countdown effect
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (countdown === 0 && streamingComplete) {
+      // Auto-collapse after countdown reaches 0
+      console.log('Countdown finished, calling onProcessingComplete');
+      setIsAutoProcessing(false);
+      setStreamingComplete(false);
+      onProcessingComplete();
+    }
+  }, [countdown, streamingComplete, onProcessingComplete]);
+
   return (
     <Paper sx={{ p: 2, mb: 2 }}>
       <Typography variant="h6" gutterBottom>
-        Debug Controls
+        Processing...
       </Typography>
+      
+      {/* Auto-processing StreamingChatInterface */}
+      {isAutoProcessing && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" gutterBottom>
+            Processing Chats for Map Locations
+          </Typography>
+          <StreamingChatInterface
+            mode="processing"
+            autoStart={true}
+            processingEndpoint="/api/chat/process-all"
+            onProcessingComplete={handleStreamingProcessingComplete}
+            onProcessingError={onProcessingError}
+            title=""
+            description=""
+            operationType="map"
+            llmOperationType="map-processing"
+            operationDescription="Processing chats to extract map locations"
+            viewMode="collapsed"
+          />
+          {countdown > 0 && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+              <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                Processing complete! Auto-collapsing processing panel in {countdown} seconds...
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      )}
+
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <Button
           variant="contained"
           color="primary"
           onClick={handleProcessAllChats}
-          disabled={isProcessing || !currentStudent}
+          disabled={isProcessing || !currentStudent || isAutoProcessing}
         >
           Process All Chats
         </Button>
@@ -61,7 +138,7 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
           variant="outlined"
           color="secondary"
           onClick={handleMarkChatsUnprocessed}
-          disabled={isProcessing || !currentStudent}
+          disabled={isProcessing || !currentStudent || isAutoProcessing}
         >
           Mark All Chats Unprocessed
         </Button>
@@ -69,14 +146,14 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
           variant="outlined"
           color="error"
           onClick={handleClearAllLocations}
-          disabled={isLoading || isProcessing || !currentStudent || locationsLength === 0}
+          disabled={isLoading || isProcessing || !currentStudent || locationsLength === 0 || isAutoProcessing}
         >
           Clear All Locations
         </Button>
       </Box>
       
-      {/* Processing status and logs */}
-      {isProcessing && (
+      {/* Processing status and logs (legacy - only show when not using StreamingChatInterface) */}
+      {isProcessing && !isAutoProcessing && (
         <Box sx={{ mt: 2 }}>
           <Typography variant="body2">{typeof processingStatus === 'object' ? JSON.stringify(processingStatus) : processingStatus}</Typography>
           <LinearProgress 

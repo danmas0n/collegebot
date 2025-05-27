@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
   Paper,
   Button,
-  LinearProgress,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { StreamingChatInterface } from '../shared/StreamingChatInterface';
@@ -17,47 +16,33 @@ interface MapProcessingViewProps {
 export const MapProcessingView: React.FC<MapProcessingViewProps> = ({ onComplete, onError }) => {
   const [isComplete, setIsComplete] = useState<boolean>(false);
   const [finalSummary, setFinalSummary] = useState<string>('');
-  const [processingStatus, setProcessingStatus] = useState<string>('');
-  const [processingProgress, setProcessingProgress] = useState<number>(0);
-  const [processingTotal, setProcessingTotal] = useState<number>(0);
+  const [countdown, setCountdown] = useState<number>(0);
 
   const handleProcessingComplete = () => {
     setIsComplete(true);
     setFinalSummary('Processing complete! Successfully analyzed your chats and added new locations to your map.');
+    setCountdown(10); // Start 10-second countdown
   };
 
   const handleViewMap = () => {
     onComplete();
   };
 
+  // Auto-refresh countdown effect
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (countdown === 0 && isComplete) {
+      // Auto-refresh after countdown reaches 0
+      onComplete();
+    }
+  }, [countdown, isComplete, onComplete]);
+
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Progress Section */}
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="h6">
-            {isComplete ? 'Processing Complete!' : 'Processing Status'}
-          </Typography>
-          {isComplete && <CheckCircleIcon color="success" />}
-        </Box>
-        
-        <Typography variant="body2" sx={{ mb: 2 }}>
-          {processingStatus || 'Initializing...'}
-        </Typography>
-        
-        <LinearProgress 
-          variant={processingTotal > 0 ? "determinate" : "indeterminate"} 
-          value={processingTotal > 0 ? (processingProgress / processingTotal) * 100 : 0}
-          sx={{ mb: 1 }}
-        />
-        
-        {processingTotal > 0 && (
-          <Typography variant="caption" color="text.secondary">
-            {processingProgress} of {processingTotal} chats processed
-          </Typography>
-        )}
-      </Paper>
-
       {/* Streaming Chat Interface */}
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <StreamingChatInterface
@@ -83,6 +68,11 @@ export const MapProcessingView: React.FC<MapProcessingViewProps> = ({ onComplete
           <Typography variant="body1" sx={{ mb: 2 }}>
             {finalSummary}
           </Typography>
+          {countdown > 0 && (
+            <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }}>
+              Automatically returning to map in {countdown} seconds...
+            </Typography>
+          )}
           <Button
             variant="contained"
             color="primary"

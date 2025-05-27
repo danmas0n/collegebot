@@ -23,6 +23,7 @@ import BalanceIcon from '@mui/icons-material/Balance';
 import WarningIcon from '@mui/icons-material/Warning';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import SportsIcon from '@mui/icons-material/Sports';
 
 const TipsAdvicePanel: React.FC = () => {
   const [expanded, setExpanded] = useState<string | false>('privacy');
@@ -363,6 +364,141 @@ const TipsAdvicePanel: React.FC = () => {
                 <ListItemText 
                   primary="Vague answers about aid policies"
                   secondary="Transparency indicates genuine commitment to access"
+                />
+              </ListItem>
+            </List>
+          </Box>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* Athletics & Recruitment */}
+      <Accordion expanded={expanded === 'athletics'} onChange={handleChange('athletics')}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <SportsIcon sx={{ mr: 2, color: 'primary.main' }} />
+          <Typography variant="h6">Athletics & Recruitment</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Box>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <strong>Hidden Advantage:</strong> Even if you're not a traditionally recruited high-level athlete, 
+              athletics can be a significant tiebreaker, especially at non-Division 1 schools.
+            </Alert>
+
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+              🏆 Athletics as a Tiebreaker
+            </Typography>
+            <List dense>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Non-Division 1 schools often value athletic participation"
+                  secondary="Division II, III, and NAIA schools appreciate well-rounded students"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Coach relationships can open doors"
+                  secondary="Coaches often have influence in admissions decisions"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Athletic participation demonstrates commitment"
+                  secondary="Shows time management, teamwork, and dedication"
+                />
+              </ListItem>
+            </List>
+
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mt: 3 }}>
+              💰 Financial Benefits
+            </Typography>
+            <List dense>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Early acceptance opportunities"
+                  secondary="Coaches may advocate for early admission decisions"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Preferential treatment on merit aid"
+                  secondary="Athletic participation can tip merit scholarship decisions"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Walk-on opportunities"
+                  secondary="Even without recruitment, you may earn a spot on the team"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Partial scholarships at smaller schools"
+                  secondary="Division II and NAIA schools often have more flexibility"
+                />
+              </ListItem>
+            </List>
+
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mt: 3 }}>
+              📞 How to Connect with Coaches
+            </Typography>
+            <List dense>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Research coaching staff and program culture"
+                  secondary="Understand their recruiting needs and team philosophy"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Send a professional introduction email"
+                  secondary="Include athletic resume, academic stats, and highlight video"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Attend camps or showcases if possible"
+                  secondary="Face-to-face interaction can make a lasting impression"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemIcon><CheckCircleIcon color="success" /></ListItemIcon>
+                <ListItemText 
+                  primary="Follow up consistently but respectfully"
+                  secondary="Show continued interest without being pushy"
+                />
+              </ListItem>
+            </List>
+
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', mt: 3 }}>
+              🎯 Strategic Considerations
+            </Typography>
+            <List dense>
+              <ListItem>
+                <ListItemText 
+                  primary="Consider the time commitment vs. academic goals"
+                  secondary="Balance athletic participation with academic success"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText 
+                  primary="Look beyond just Division I opportunities"
+                  secondary="Division II, III, and NAIA can offer excellent experiences"
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText 
+                  primary="Athletic participation enhances college experience"
+                  secondary="Built-in community, leadership opportunities, and lifelong friendships"
                 />
               </ListItem>
             </List>

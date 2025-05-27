@@ -34,6 +34,14 @@
   - Created calendar.ts route for managing calendar items
   - Created tasks.ts route for managing tasks
   - Created pin-research.ts route for researching college deadlines and requirements
+- Chat Linking and Collapsed View functionality:
+  - **Chat Links from Map Pins**: Enhanced MapLocationInfoWindow to show "Related Conversations" section with chat titles, dates, and "View Chat" buttons
+  - **Collapsed Chat View**: Implemented auto-detection that switches to collapsed view when answers arrive, with smart grouping of question → thinking → answer cycles
+  - **View Mode Toggle**: Added working toggle buttons to switch between "Full View" and "Collapsed View"
+  - **Fixed Streaming Termination**: Resolved server hanging issue by ensuring all AI services (Claude, Gemini, OpenAI) properly send 'complete' events
+  - **Fixed Chat ID Linking**: Eliminated "current-chat" placeholder by updating all AI services to receive and use actual chat IDs in analysis prompts
+  - **Enhanced MCP Server**: Added `sourceChats` field to MapLocation interface for proper chat linking
+  - **Improved User Experience**: Map pins now contain valuable context linking back to conversations, chat interface automatically presents clean Q&A format
 
 ## Working
 - Basic functionality is operational in production

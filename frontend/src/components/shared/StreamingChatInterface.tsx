@@ -12,8 +12,13 @@ import {
   Grid,
   Paper,
   IconButton,
+  Collapse,
+  Chip,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useWizard } from '../../contexts/WizardContext';
 import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
@@ -38,6 +43,7 @@ interface StreamingChatInterfaceProps {
   onChatUpdate?: (updatedChat: any) => void;
   showInput?: boolean;
   wizardData?: any; // Full wizard data for student context
+  viewMode?: 'full' | 'collapsed'; // New prop for view mode
   
   // Processing mode specific
   autoStart?: boolean;
@@ -64,6 +70,7 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
   onChatUpdate,
   showInput = true,
   wizardData,
+  viewMode = 'full',
   autoStart = false,
   processingEndpoint,
   processingPayload,
@@ -83,6 +90,39 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [operationId, setOperationId] = useState<string | null>(null);
+  const [currentProcessingChat, setCurrentProcessingChat] = useState<string>('');
+  const [processingComplete, setProcessingComplete] = useState(false);
+  
+  // Auto-detect if we should use collapsed view based on message content
+  const shouldUseCollapsedView = () => {
+    return messages.some(msg => msg.role === 'answer');
+  };
+
+  const [currentViewMode, setCurrentViewMode] = useState<'full' | 'collapsed'>(viewMode);
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
+
+  // Set initial view mode based on prop
+  useEffect(() => {
+    setCurrentViewMode(viewMode);
+  }, [viewMode]);
+
+  // Update view mode when messages change - auto-switch to collapsed when answer arrives
+  useEffect(() => {
+    if (shouldUseCollapsedView() && currentViewMode === 'full' && !isLoading) {
+      setCurrentViewMode('collapsed');
+    }
+  }, [messages, currentViewMode, isLoading]);
+
+  // Reset to full view when starting a new message
+  useEffect(() => {
+    if (isLoading && currentViewMode === 'collapsed') {
+      // Only reset if we're starting a new conversation (no answers yet)
+      const hasAnswers = messages.some(msg => msg.role === 'answer');
+      if (!hasAnswers) {
+        setCurrentViewMode('full');
+      }
+    }
+  }, [isLoading, currentViewMode, messages]);
   
   // Ref to prevent duplicate processing
   const hasStartedProcessing = useRef(false);
@@ -140,6 +180,7 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
   useEffect(() => {
     return () => {
       if (operationId) {
+        console.log('StreamingChatInterface unmounting, ending LLM operation:', operationId);
         endLLMOperation(operationId);
       }
     };
@@ -178,6 +219,7 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
       setIsLoading(true);
       setError(null);
       setMessages([]);
+      setProcessingComplete(false);
       
       const response = await api.post(processingEndpoint, {
         studentId: currentStudent.id,
@@ -194,12 +236,15 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
       const errorMessage = 'Processing failed: ' + (err instanceof Error ? err.message : 'Unknown error');
       setError(errorMessage);
       onProcessingError?.(errorMessage);
-    } finally {
-      setIsLoading(false);
+      
+      // End operation on error
       if (currentOperationId) {
+        console.log('Ending LLM operation due to error:', currentOperationId);
         endLLMOperation(currentOperationId);
         setOperationId(null);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -260,12 +305,15 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
     } catch (error) {
       console.error('Chat error:', error);
       setError(error instanceof Error ? error.message : 'Failed to send message');
-    } finally {
-      setIsLoading(false);
+      
+      // End operation on error
       if (currentOperationId) {
+        console.log('Ending LLM operation due to chat error:', currentOperationId);
         endLLMOperation(currentOperationId);
         setOperationId(null);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -403,6 +451,7 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
               case 'complete':
                 console.log('Received complete event');
                 setIsLoading(false);
+                setProcessingComplete(true);
                 
                 // Handle suggested title for chat mode (fallback if not handled in title event)
                 if (mode === 'chat' && data.suggestedTitle && currentChat && !suggestedTitle) {
@@ -426,7 +475,17 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
                   });
                 }
                 
+                // End the LLM operation immediately when processing completes
+                if (currentOperationId) {
+                  console.log('Processing complete, ending LLM operation:', currentOperationId);
+                  endLLMOperation(currentOperationId);
+                  setOperationId(null);
+                }
+                
+                // For processing mode, notify completion
                 if (mode === 'processing') {
+                  console.log('Processing mode complete, notifying parent');
+                  // Call onProcessingComplete to notify MapDebugControls
                   onProcessingComplete?.();
                 }
                 
@@ -440,6 +499,16 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
 
               case 'status':
                 // Handle status updates for processing mode
+                if (data.chatTitle) {
+                  setCurrentProcessingChat(data.chatTitle);
+                  // Add a message showing which chat is being processed
+                  const processingMessage: Message = {
+                    role: 'user',
+                    content: `Processing: ${data.chatTitle}`,
+                    timestamp: new Date().toISOString()
+                  };
+                  setMessages(prev => [...prev, processingMessage]);
+                }
                 break;
             }
           } catch (e) {
@@ -447,10 +516,127 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
           }
         }
       }
+    } catch (error) {
+      console.error('Stream reading error:', error);
+      // End operation on stream error
+      if (currentOperationId) {
+        console.log('Ending LLM operation due to stream error:', currentOperationId);
+        endLLMOperation(currentOperationId);
+        setOperationId(null);
+      }
     } finally {
       reader.releaseLock();
       clearTimeout(streamTimeoutId);
+      console.log('Stream reading completed, reader released');
     }
+  };
+
+  // Group messages for collapsed view
+  const groupMessages = (messages: Message[]) => {
+    const groups: Array<{
+      question: Message;
+      thinking: Message[];
+      answer?: Message;
+    }> = [];
+    
+    let currentGroup: {
+      question: Message;
+      thinking: Message[];
+      answer?: Message;
+    } | null = null;
+    
+    for (const message of messages) {
+      if (message.role === 'user') {
+        // Start a new group
+        if (currentGroup) {
+          groups.push(currentGroup);
+        }
+        currentGroup = {
+          question: message,
+          thinking: [],
+          answer: undefined
+        };
+      } else if (message.role === 'thinking' && currentGroup) {
+        currentGroup.thinking.push(message);
+      } else if (message.role === 'answer' && currentGroup) {
+        currentGroup.answer = message;
+      }
+    }
+    
+    // Add the last group if it exists
+    if (currentGroup) {
+      groups.push(currentGroup);
+    }
+    
+    return groups;
+  };
+
+  const toggleThinkingSection = (groupIndex: number) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(groupIndex)) {
+      newExpanded.delete(groupIndex);
+    } else {
+      newExpanded.add(groupIndex);
+    }
+    setExpandedSections(newExpanded);
+  };
+
+  const renderCollapsedView = () => {
+    const messageGroups = groupMessages(messages);
+    
+    return (
+      <List sx={{ width: '100%', flex: 1 }}>
+        {messageGroups.map((group, groupIndex) => (
+          <Box key={groupIndex} sx={{ mb: 3 }}>
+            {/* User Question */}
+            <ListItem sx={{ px: 0, alignItems: 'flex-start', mb: 1 }}>
+              <CollapsibleMessage 
+                message={group.question}
+                isLatest={false}
+              />
+            </ListItem>
+            
+            {/* Thinking Section (Collapsible) */}
+            {group.thinking.length > 0 && (
+              <Box sx={{ ml: 2, mb: 1 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={expandedSections.has(groupIndex) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  onClick={() => toggleThinkingSection(groupIndex)}
+                  sx={{ mb: 1 }}
+                >
+                  Thinking ({group.thinking.length} steps)
+                </Button>
+                
+                <Collapse in={expandedSections.has(groupIndex)}>
+                  <Box sx={{ ml: 2, pl: 2, borderLeft: 2, borderColor: 'divider' }}>
+                    {group.thinking.map((thinkingMsg, thinkingIndex) => (
+                      <ListItem key={thinkingIndex} sx={{ px: 0, alignItems: 'flex-start', py: 1 }}>
+                        <CollapsibleMessage 
+                          message={thinkingMsg}
+                          isLatest={false}
+                        />
+                      </ListItem>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+            
+            {/* Answer */}
+            {group.answer && (
+              <ListItem sx={{ px: 0, alignItems: 'flex-start' }}>
+                <CollapsibleMessage 
+                  message={group.answer}
+                  isLatest={groupIndex === messageGroups.length - 1 && isLoading}
+                />
+              </ListItem>
+            )}
+          </Box>
+        ))}
+      </List>
+    );
   };
 
   const renderMessage = (msg: Message, index: number) => {
@@ -537,14 +723,25 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
 
           {/* Chat Messages */}
           <Grid item xs={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {/* Chat Title */}
+            {currentChat && messages.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6">{currentChat.title || 'Chat'}</Typography>
+              </Box>
+            )}
+            
             <Box sx={{ flex: 1, overflowY: 'auto', pr: 2 }}>
-              <List sx={{ width: '100%', flex: 1 }}>
-                {messages.map((msg, index) => (
-                  <ListItem key={index} sx={{ px: 0, alignItems: 'flex-start' }}>
-                    {renderMessage(msg, index)}
-                  </ListItem>
-                ))}
-              </List>
+              {currentViewMode === 'collapsed' ? (
+                renderCollapsedView()
+              ) : (
+                <List sx={{ width: '100%', flex: 1 }}>
+                  {messages.map((msg, index) => (
+                    <ListItem key={index} sx={{ px: 0, alignItems: 'flex-start' }}>
+                      {renderMessage(msg, index)}
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </Box>
 
             {showInput && (
@@ -578,13 +775,17 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
       {mode === 'processing' && (
         <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Box sx={{ flex: 1, overflowY: 'auto', p: 2, minHeight: 0 }}>
-            <List sx={{ width: '100%' }}>
-              {messages.map((msg, index) => (
-                <ListItem key={index} sx={{ px: 0, alignItems: 'flex-start' }}>
-                  {renderMessage(msg, index)}
-                </ListItem>
-              ))}
-            </List>
+            {currentViewMode === 'collapsed' && shouldUseCollapsedView() ? (
+              renderCollapsedView()
+            ) : (
+              <List sx={{ width: '100%' }}>
+                {messages.map((msg, index) => (
+                  <ListItem key={index} sx={{ px: 0, alignItems: 'flex-start' }}>
+                    {renderMessage(msg, index)}
+                  </ListItem>
+                ))}
+              </List>
+            )}
           </Box>
         </Paper>
       )}

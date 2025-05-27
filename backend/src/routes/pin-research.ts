@@ -161,8 +161,10 @@ async function startResearch(requestId: string, studentId: string, locations: an
         2. Financial aid deadlines
         3. Scholarship deadlines
         4. Housing application deadlines
-        5. Any other important deadlines
-        6. Application requirements (essays, recommendations, tests, etc.)
+        5. Athletic recruitment opportunities and deadlines
+        6. Any other important deadlines
+        7. Application requirements (essays, recommendations, tests, etc.)
+        8. Athletic program information (if applicable)
         
         Format your response as JSON with the following structure:
         {

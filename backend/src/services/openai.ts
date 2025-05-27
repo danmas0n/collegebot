@@ -27,23 +27,34 @@ export class OpenAIService {
     // Reset processor for new conversation
     this.responseProcessor.reset();
 
-    while (continueProcessing) {
-      logger.info('OpenAI: Processing message with current state', {
-        messageCount: messages.length,
-        continueProcessing
-      });
+    try {
+      while (continueProcessing) {
+        logger.info('OpenAI: Processing message with current state', {
+          messageCount: messages.length,
+          continueProcessing
+        });
 
-      const result = await this.processSingleStream(messages, systemPrompt, sendSSE, conversationId);
-      messages = result.messages;
-      continueProcessing = result.continueProcessing;
-      
-      // Store the response ID for continuing the conversation
-      if (result.responseId) {
-        conversationId = result.responseId;
+        const result = await this.processSingleStream(messages, systemPrompt, sendSSE, conversationId);
+        messages = result.messages;
+        continueProcessing = result.continueProcessing;
+        
+        // Store the response ID for continuing the conversation
+        if (result.responseId) {
+          conversationId = result.responseId;
+        }
       }
-    }
 
-    return messages;
+      // Send complete event when processing is finished
+      logger.info('OpenAI processing complete, sending complete event');
+      sendSSE({ type: 'complete' });
+      
+      return messages;
+    } catch (error) {
+      logger.error('Error in processStream:', error);
+      sendSSE({ type: 'error', content: error instanceof Error ? error.message : 'Unknown error' });
+      sendSSE({ type: 'complete' });
+      throw error;
+    }
   }
 
   async processSingleStream(
@@ -279,9 +290,10 @@ export class OpenAIService {
 2. Then use the create_map_location tool to add it to the map
 3. Move on to the next location
 
-IMPORTANT: DO NOT create duplicate locations. Before adding any location, check if it already exists on the map.
-
-DO NOT try to geocode the same location multiple times. After you've added a location to the map, move on to the next location.
+IMPORTANT: 
+- DO NOT create duplicate locations. Before adding any location, check if it already exists on the map.
+- DO NOT try to geocode the same location multiple times. After you've added a location to the map, move on to the next location.
+- When creating map locations, use the chat ID "${chat.id}" in the sourceChats array to link this location back to this conversation.
 
 Now, please process this information and extract all relevant data according to the system instructions.`;
 

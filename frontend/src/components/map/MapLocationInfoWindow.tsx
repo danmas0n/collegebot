@@ -7,19 +7,25 @@ import {
   ListItem,
   ListItemText,
   Link,
+  Chip,
 } from '@mui/material';
+import ChatIcon from '@mui/icons-material/Chat';
 import { MapLocation } from '../../types/wizard';
 
 interface MapLocationInfoWindowProps {
   location: MapLocation;
   onDelete: (locationId: string) => void;
+  onViewChat?: (chatId: string) => void;
   isLoading: boolean;
+  chats?: Array<{ id: string; title?: string; updatedAt: string }>;
 }
 
 export const MapLocationInfoWindow: React.FC<MapLocationInfoWindowProps> = ({
   location,
   onDelete,
+  onViewChat,
   isLoading,
+  chats,
 }) => {
   return (
     <Box sx={{ width: 320, maxHeight: 400, overflow: 'auto' }}>
@@ -126,6 +132,52 @@ export const MapLocationInfoWindow: React.FC<MapLocationInfoWindowProps> = ({
                 />
               </ListItem>
             ))}
+          </List>
+        </Box>
+      )}
+
+      {/* Related Conversations */}
+      {location.sourceChats && location.sourceChats.length > 0 && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2" fontWeight="bold">
+            Related Conversations
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            This location was mentioned in {location.sourceChats.length} conversation{location.sourceChats.length > 1 ? 's' : ''}
+          </Typography>
+          <List dense disablePadding>
+            {location.sourceChats.map((chatId, index) => {
+              const chat = chats?.find(c => c.id === chatId);
+              return (
+                <ListItem key={index} disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ChatIcon fontSize="small" color="primary" />
+                        {chat ? (
+                          <Button
+                            variant="text"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewChat?.(chatId);
+                            }}
+                            sx={{ textAlign: 'left', justifyContent: 'flex-start', p: 0 }}
+                          >
+                            {chat.title || 'Untitled Chat'}
+                          </Button>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            Chat no longer available
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                    secondary={chat ? new Date(chat.updatedAt).toLocaleDateString() : null}
+                  />
+                </ListItem>
+              );
+            })}
           </List>
         </Box>
       )}

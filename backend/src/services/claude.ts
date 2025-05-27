@@ -181,18 +181,29 @@ Please respond with a simple message confirming that you received this prompt. K
     // Reset processor for new conversation
     this.responseProcessor.reset();
 
-    while (continueProcessing) {
-      console.info('Processing message with current state', {
-        messageCount: messages.length,
-        continueProcessing
-      });
+    try {
+      while (continueProcessing) {
+        console.info('Processing message with current state', {
+          messageCount: messages.length,
+          continueProcessing
+        });
 
-      const result = await this.processSingleStream(messages, systemPrompt, sendSSE);
-      messages = result.messages;
-      continueProcessing = result.continueProcessing;
+        const result = await this.processSingleStream(messages, systemPrompt, sendSSE);
+        messages = result.messages;
+        continueProcessing = result.continueProcessing;
+      }
+
+      // Send complete event when processing is finished
+      console.info('Claude processing complete, sending complete event');
+      sendSSE({ type: 'complete' });
+      
+      return messages;
+    } catch (error) {
+      console.error('Error in processStream:', error);
+      sendSSE({ type: 'error', content: error instanceof Error ? error.message : 'Unknown error' });
+      sendSSE({ type: 'complete' });
+      throw error;
     }
-
-    return messages;
   }
 
   async processSingleStream(messages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
@@ -453,9 +464,10 @@ Please respond with a simple message confirming that you received this prompt. K
 2. Then use the create_map_location tool to add it to the map
 3. Move on to the next location
 
-IMPORTANT: DO NOT create duplicate locations. Before adding any location, check if it already exists on the map.
-
-DO NOT try to geocode the same location multiple times. After you've added a location to the map, move on to the next location.
+IMPORTANT: 
+- DO NOT create duplicate locations. Before adding any location, check if it already exists on the map.
+- DO NOT try to geocode the same location multiple times. After you've added a location to the map, move on to the next location.
+- When creating map locations, use the chat ID "${chat.id}" in the sourceChats array to link this location back to this conversation.
 
 Now, please process this information and extract all relevant data according to the system instructions.`;
 

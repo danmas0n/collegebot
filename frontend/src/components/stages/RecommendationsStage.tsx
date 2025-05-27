@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -13,11 +13,11 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import { useWizard } from '../../contexts/WizardContext';
+import { useChat } from '../../contexts/ChatContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { StageContainer, StageHeader } from './StageContainer';
 import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
 import { StreamingChatInterface } from '../shared/StreamingChatInterface';
-import { api } from '../../utils/api';
 
 import { AiChat } from '../../types/college';
 
@@ -27,46 +27,32 @@ interface Chat extends AiChat {
 
 export const RecommendationsStage: React.FC = () => {
   const { currentStudent, data } = useWizard();
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [currentChat, setCurrentChat] = useState<Chat | null>(null);
+  const { chats, currentChat, loadChats, setCurrentChat } = useChat();
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedChats = useRef(false);
 
   // State for tabs
   const [activeTab, setActiveTab] = useState<number>(0);
 
   // Load chats when component mounts or student changes
   useEffect(() => {
-    if (currentStudent?.id) {
-      loadChats().then(loadedChats => {
-        if (loadedChats.length > 0) {
+    if (currentStudent?.id && !hasLoadedChats.current) {
+      hasLoadedChats.current = true;
+      loadChats(currentStudent.id).then(loadedChats => {
+        // Only set a default chat if no chat is currently selected (not coming from deep link)
+        if (!currentChat && loadedChats.length > 0) {
           // Select the most recent chat
           const mostRecentChat = loadedChats[loadedChats.length - 1];
           setCurrentChat(mostRecentChat);
         }
       });
     }
+  }, [currentStudent?.id]); // Only depend on currentStudent.id
+
+  // Reset the hasLoadedChats flag when student changes
+  useEffect(() => {
+    hasLoadedChats.current = false;
   }, [currentStudent?.id]);
-
-  const loadChats = async (): Promise<Chat[]> => {
-    if (!currentStudent?.id) {
-      return [];
-    }
-
-    try {
-      const response = await api.post('/api/chat/chats', {
-        studentId: currentStudent.id
-      });
-
-      const data = await response.json();
-      const loadedChats = data.chats;
-      setChats(loadedChats);
-      return loadedChats;
-    } catch (error) {
-      console.error('Error loading chats:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load chats');
-      return []; // Return empty array on error
-    }
-  };
 
   const createNewChat = (): Chat | null => {
     if (!currentStudent?.id) {
@@ -83,28 +69,9 @@ export const RecommendationsStage: React.FC = () => {
       processed: false,
       processedAt: null
     };
-    const updatedChats = [...chats, newChat];
-    setChats(updatedChats);
+    
     setCurrentChat(newChat);
     return newChat;
-  };
-
-  const deleteChat = async (chatId: string) => {
-    try {
-      await api.delete(`/api/chat/chats/${chatId}`, {
-        body: JSON.stringify({
-          studentId: currentStudent?.id
-        })
-      });
-
-      setChats(prev => prev.filter(c => c.id !== chatId));
-      if (currentChat?.id === chatId) {
-        setCurrentChat(null);
-      }
-    } catch (error) {
-      console.error('Error deleting chat:', error);
-      setError(error instanceof Error ? error.message : 'Failed to delete chat');
-    }
   };
 
   const handleChatChange = (chat: Chat) => {
@@ -113,20 +80,47 @@ export const RecommendationsStage: React.FC = () => {
 
   const handleNewChat = () => {
     const newChat = createNewChat();
-    if (newChat) {
-      setCurrentChat(newChat);
-    }
     return newChat;
   };
 
   const handleChatUpdate = useCallback((updatedChat: Chat) => {
-    setChats(prev => prev.map(chat => 
-      chat.id === updatedChat.id ? updatedChat : chat
-    ));
-    setCurrentChat(prev => 
-      prev?.id === updatedChat.id ? updatedChat : prev
-    );
-  }, []); // Remove dependency to prevent recreation
+    // The ChatContext will handle updating the chats array
+    setCurrentChat(updatedChat);
+  }, [setCurrentChat]);
+
+  const handleDeleteChat = useCallback(async (chatId: string) => {
+    if (!currentStudent?.id) return;
+    
+    try {
+      // Use the ChatContext deleteChat method
+      // Note: We'll need to add this to ChatContext if it doesn't exist
+      // For now, we'll handle it locally and update the context
+      const response = await fetch(`/api/chat/chats/${chatId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          studentId: currentStudent.id
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete chat');
+      }
+
+      // Reload chats to update the context
+      await loadChats(currentStudent.id);
+      
+      // Clear current chat if it was the deleted one
+      if (currentChat?.id === chatId) {
+        setCurrentChat(null);
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete chat');
+    }
+  }, [currentStudent?.id, currentChat, loadChats, setCurrentChat]);
 
   const { showNotification } = useNotification();
   const [showExamples, setShowExamples] = useState(true);
@@ -224,7 +218,7 @@ export const RecommendationsStage: React.FC = () => {
               currentChat={currentChat}
               onChatChange={handleChatChange}
               onNewChat={handleNewChat}
-              onDeleteChat={deleteChat}
+              onDeleteChat={handleDeleteChat}
               onChatUpdate={handleChatUpdate}
               showInput={true}
               wizardData={data}

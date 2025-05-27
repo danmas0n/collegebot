@@ -42,12 +42,7 @@ router.post('/message', async (req: Request, res: Response) => {
     const updatedMessages = await aiService.processStream(history, systemPrompt, wrappedSendSSE);
     
     // Don't save here anymore - let frontend handle saving with complete structure
-    
-    // Send complete event with extracted title
-    sendSSE({ 
-      type: 'complete',
-      suggestedTitle: extractedTitle 
-    });
+    // Note: AI services now send the 'complete' event automatically
   } catch (error) {
     console.error('Error processing message:', error);
     // Send error through SSE before closing
@@ -254,6 +249,7 @@ router.post('/process-all', async (req: Request, res: Response) => {
         sendSSE({ 
           type: 'status',
           content: `Processing chat: ${chat.title || chat.id}`,
+          chatTitle: chat.title || chat.id,
           progress: processed + 1,
           total: unprocessedChats.length
         });

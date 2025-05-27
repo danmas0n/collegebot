@@ -13,6 +13,7 @@ Core Process:
    • Identify 3-5 colleges and 2-3 scholarships
    • Include both obvious and creative options
    • Prioritize by alignment with student profile
+   • Consider athletics as a potential tiebreaker, especially at non-Division 1 schools
 
 3. Research Framework:
    a) Academic Fit: GPA/test scores, program requirements, special opportunities

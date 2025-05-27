@@ -23,7 +23,6 @@ import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
 import { MapDebugControls } from '../map/MapDebugControls';
-import { MapProcessingView } from './MapProcessingView';
 
 const mapContainerStyle = {
   width: '100%',
@@ -61,8 +60,7 @@ export const MapStage = (): JSX.Element => {
   const [processingTotal, setProcessingTotal] = useState<number>(0);
   const [processingLogs, setProcessingLogs] = useState<string[]>([]);
   
-  // New state for processing view
-  const [showProcessingView, setShowProcessingView] = useState<boolean>(false);
+  // State for auto-processing in debug pane
   const [hasUnprocessedChats, setHasUnprocessedChats] = useState<boolean>(false);
 
   // Google Maps setup
@@ -274,7 +272,7 @@ export const MapStage = (): JSX.Element => {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `Failed to delete location: ${response.status}`);
+        throw new Error(errorData.error || `Failed to delete locations: ${response.status}`);
       }
       
       // Remove from local state
@@ -295,18 +293,32 @@ export const MapStage = (): JSX.Element => {
     }
   }, [currentStudent?.id, selectedLocation]);
 
-  // Handle processing completion
-  const handleProcessingComplete = useCallback(async () => {
-    setShowProcessingView(false);
+  // Handle processing completion from debug pane
+  const handleDebugProcessingComplete = useCallback(() => {
     setHasUnprocessedChats(false);
-    // Reload locations to show new pins
-    await loadLocations();
-  }, [loadLocations]);
+    setShowDebugControls(false); // Close the entire debug pane
+  }, []);
 
   // Handle processing error
   const handleProcessingError = useCallback((error: string) => {
     setError(error);
   }, []);
+
+  // Handle viewing a chat from map pin
+  const { goToStage } = useWizard();
+  const { setCurrentChat } = useChat();
+  
+  const handleViewChat = useCallback((chatId: string) => {
+    // Find the chat
+    const chat = chats.find(c => c.id === chatId);
+    if (chat) {
+      setCurrentChat(chat);
+      // Use setTimeout to ensure the chat context is set before navigation
+      setTimeout(() => {
+        goToStage('recommendations');
+      }, 100);
+    }
+  }, [chats, setCurrentChat, goToStage]);
 
   // Use a ref to track if we've processed chats for this session
   const processedRef = useRef(false);
@@ -320,7 +332,6 @@ export const MapStage = (): JSX.Element => {
       setProcessingStatus('');
       setProcessingLogs([]);
       setError(null);
-      setShowProcessingView(false);
       setHasUnprocessedChats(false);
       processedRef.current = false; // Reset the processed flag
       return;
@@ -349,14 +360,11 @@ export const MapStage = (): JSX.Element => {
         const hasUnprocessed = loadedChats.some(chat => !chat.processed);
         setHasUnprocessedChats(hasUnprocessed);
         
-        // Show processing view if there are unprocessed chats
+        // Auto-show debug controls if there are unprocessed chats
         if (hasUnprocessed && !processedRef.current) {
-          console.log('Found unprocessed chats, showing processing view');
-          setShowProcessingView(true);
+          console.log('Found unprocessed chats, showing debug controls');
+          setShowDebugControls(true);
           processedRef.current = true; // Mark as processed for this session
-        } else {
-          // Show debug controls if there are unprocessed chats but we're not auto-processing
-          setShowDebugControls(hasUnprocessed);
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -379,18 +387,6 @@ export const MapStage = (): JSX.Element => {
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
         <CircularProgress />
       </Box>
-    );
-  }
-
-  // Show processing view if we have unprocessed chats
-  if (showProcessingView && hasUnprocessedChats) {
-    return (
-      <Paper elevation={0} sx={{ p: 3, height: '100vh' }} ref={stageRef}>
-        <MapProcessingView
-          onComplete={handleProcessingComplete}
-          onError={handleProcessingError}
-        />
-      </Paper>
     );
   }
 
@@ -451,6 +447,10 @@ export const MapStage = (): JSX.Element => {
           isLoading={isLoading}
           currentStudent={currentStudent}
           locationsLength={locations.length}
+          hasUnprocessedChats={hasUnprocessedChats}
+          onProcessingComplete={handleDebugProcessingComplete}
+          onProcessingError={handleProcessingError}
+          onLoadLocations={loadLocations}
         />
       </Collapse>
 
@@ -512,7 +512,9 @@ export const MapStage = (): JSX.Element => {
                     <MapLocationInfoWindow
                       location={selectedLocation}
                       onDelete={handleDeleteLocation}
+                      onViewChat={handleViewChat}
                       isLoading={isLoading}
+                      chats={chats}
                     />
                   </InfoWindowF>
                 )}
