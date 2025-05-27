@@ -29,7 +29,7 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
 
   // Get preview text based on message type and content
   const getPreviewText = () => {
-    const text = message.content || '';
+    const text = typeof message.content === 'string' ? message.content : (message.content ? JSON.stringify(message.content) : '');
     
     // For tool usage messages
     if (text.startsWith('Using ')) {
@@ -51,7 +51,7 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
     return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
   };
 
-  const messageContent = message.content || '';
+  const messageContent = typeof message.content === 'string' ? message.content : (message.content ? JSON.stringify(message.content) : '');
   const hasToolData = message.toolData || 
                      messageContent.includes('Tool Data:') || 
                      (message.role === 'thinking' && 

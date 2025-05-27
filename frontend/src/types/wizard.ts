@@ -192,6 +192,14 @@ export interface WizardData {
   };
 }
 
+export interface LLMOperation {
+  id: string;
+  stage: WizardStage;
+  type: 'research' | 'map-processing' | 'chat' | 'recommendations';
+  description: string;
+  startTime: Date;
+}
+
 export interface WizardContextType {
   currentStage: WizardStage;
   currentStudent: Student | null;
@@ -205,4 +213,9 @@ export interface WizardContextType {
   canProceed: boolean;
   nextStage: () => void;
   previousStage: () => void;
+  // LLM operation tracking
+  activeLLMOperations: LLMOperation[];
+  startLLMOperation: (operation: Omit<LLMOperation, 'id' | 'startTime'>) => string;
+  endLLMOperation: (operationId: string) => void;
+  isNavigationBlocked: boolean;
 }

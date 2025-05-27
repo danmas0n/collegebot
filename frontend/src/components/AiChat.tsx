@@ -226,6 +226,30 @@ export const AiChat: React.FC<AiChatProps> = ({ consideredColleges }) => {
                   });
                   break;
 
+                case 'title':
+                  console.log('Frontend - Received title event');
+                  // Handle title-only events (no content duplication)
+                  if (currentStudent?.id && data.suggestedTitle) {
+                    updateState(() => {
+                      setMessages(prev => {
+                        const chatToSave = {
+                          id: currentChat?.id || `chat-${Date.now()}`,
+                          title: data.suggestedTitle,
+                          messages: prev,
+                          studentId: currentStudent.id,
+                          processed: false,
+                          processedAt: null,
+                          createdAt: currentChat?.createdAt || new Date().toISOString(),
+                          updatedAt: new Date().toISOString()
+                        };
+                        // Chat is now saved automatically by /api/chat/message endpoint
+                        setCurrentChat(chatToSave);
+                        return prev;
+                      });
+                    });
+                  }
+                  break;
+
                 case 'content_block_delta':
                   if (data.delta?.type === 'text_delta') {
                     console.log('Frontend - Received text delta:', data.delta.text);

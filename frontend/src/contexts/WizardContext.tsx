@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { WizardStage, WizardData, WizardContextType, Student } from '../types/wizard';
+import { WizardStage, WizardData, WizardContextType, Student, LLMOperation } from '../types/wizard';
 import { api } from '../utils/api';
 import { useAuth } from './AuthContext';
 
@@ -36,6 +36,7 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [data, setData] = useState<WizardData>(initialData);
+  const [activeLLMOperations, setActiveLLMOperations] = useState<LLMOperation[]>([]);
 
   // Load students on mount
   useEffect(() => {
@@ -52,9 +53,41 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loadStudents();
   }, []);
 
-  const goToStage = useCallback((stage: WizardStage) => {
-    setCurrentStage(stage);
+  // LLM operation management
+  const startLLMOperation = useCallback((operation: Omit<LLMOperation, 'id' | 'startTime'>) => {
+    const operationId = crypto.randomUUID();
+    const newOperation: LLMOperation = {
+      ...operation,
+      id: operationId,
+      startTime: new Date()
+    };
+    
+    setActiveLLMOperations(prev => [...prev, newOperation]);
+    console.log('Started LLM operation:', newOperation);
+    return operationId;
   }, []);
+
+  const endLLMOperation = useCallback((operationId: string) => {
+    setActiveLLMOperations(prev => {
+      const operation = prev.find(op => op.id === operationId);
+      if (operation) {
+        console.log('Ended LLM operation:', operation, 'Duration:', Date.now() - operation.startTime.getTime(), 'ms');
+      }
+      return prev.filter(op => op.id !== operationId);
+    });
+  }, []);
+
+  // Check if navigation is blocked due to active LLM operations
+  const isNavigationBlocked = activeLLMOperations.length > 0;
+
+  const goToStage = useCallback((stage: WizardStage) => {
+    // Prevent navigation if LLM operations are active
+    if (isNavigationBlocked) {
+      console.warn('Navigation blocked due to active LLM operations:', activeLLMOperations);
+      return;
+    }
+    setCurrentStage(stage);
+  }, [isNavigationBlocked, activeLLMOperations]);
 
   const updateData = useCallback(async (updates: Partial<WizardData>) => {
     setData(prev => {
@@ -190,17 +223,17 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const nextStage = useCallback(() => {
     const currentIndex = stages.indexOf(currentStage);
-    if (currentIndex < stages.length - 1 && canProceed()) {
+    if (currentIndex < stages.length - 1 && canProceed() && !isNavigationBlocked) {
       setCurrentStage(stages[currentIndex + 1]);
     }
-  }, [currentStage, canProceed]);
+  }, [currentStage, canProceed, isNavigationBlocked]);
 
   const previousStage = useCallback(() => {
     const currentIndex = stages.indexOf(currentStage);
-    if (currentIndex > 0) {
+    if (currentIndex > 0 && !isNavigationBlocked) {
       setCurrentStage(stages[currentIndex - 1]);
     }
-  }, [currentStage]);
+  }, [currentStage, isNavigationBlocked]);
 
   return (
     <WizardContext.Provider
@@ -216,7 +249,11 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteStudent,
         canProceed: canProceed(),
         nextStage,
-        previousStage
+        previousStage,
+        activeLLMOperations,
+        startLLMOperation,
+        endLLMOperation,
+        isNavigationBlocked
       }}
     >
       {children}

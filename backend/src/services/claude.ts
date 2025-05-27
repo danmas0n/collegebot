@@ -185,6 +185,7 @@ Please respond with a simple message confirming that you received this prompt. K
     let hasToolCalls = false;
     let continueProcessing = true;
     let rawMessage = ''; // Track complete raw message
+    let hasProcessedContent = false; // Track if any content was processed during streaming
 
     try {
       // Consolidate messages into proper conversation structure
@@ -223,6 +224,7 @@ Please respond with a simple message confirming that you received this prompt. K
           toolBuffer = '';
           messageContent = '';
           rawMessage = ''; // Reset raw message buffer
+          hasProcessedContent = false; // Reset processed content flag
           
           // Log cache performance if available
           if (streamEvent.message?.usage) {
@@ -256,6 +258,11 @@ Please respond with a simple message confirming that you received this prompt. K
           const processingResult = this.responseProcessor.processXmlTags(toolBuffer, messages, sendSSE);
           toolBuffer = processingResult.updatedBuffer;
           messages = processingResult.messages;
+          
+          // Track if any content was processed
+          if (processingResult.hasContent) {
+            hasProcessedContent = true;
+          }
 
           // If we have non-tag content, accumulate it
           if (!toolBuffer.includes('<')) {
@@ -265,16 +272,27 @@ Please respond with a simple message confirming that you received this prompt. K
         }
         else if (streamEvent.type === 'message_stop') {
           console.info('Message complete', { 
-            hasContent: !!(toolBuffer.trim() || messageContent.trim())
+            hasContent: !!(toolBuffer.trim() || messageContent.trim()),
+            hasProcessedContent,
+            hasSavedAnswer: !!this.responseProcessor.getSavedAnswer()
           });
           
           // Log complete raw message before processing
           console.info('Complete raw message', { message: rawMessage });
            
-          // At message_stop, check if we received any content
-          if (!toolBuffer.trim() && !messageContent.trim()) {
-            console.info('No content received, skipping processing');
+          // FIXED: Check if we processed content during streaming OR have remaining content
+          // Don't skip processing if we have a saved answer from the response processor
+          if (!toolBuffer.trim() && !messageContent.trim() && !hasProcessedContent && !this.responseProcessor.getSavedAnswer()) {
+            console.info('No content received and no content processed, skipping processing');
             return { hasToolCalls, messages, continueProcessing: false };
+          }
+
+          // If we have a saved answer but no remaining content, we're done
+          if (this.responseProcessor.getSavedAnswer() && !toolBuffer.trim() && !messageContent.trim()) {
+            console.info('Message processing complete with saved answer');
+            continueProcessing = false;
+            hasToolCalls = false;
+            return { hasToolCalls, messages, continueProcessing };
           }
 
           // Combine remaining content to check for tags
@@ -394,16 +412,20 @@ Please respond with a simple message confirming that you received this prompt. K
         }));
       
       // Add the analysis request as a new user message
-      chatMessages.push({
-        role: 'user',
-        content: `Based on our conversation above, please extract all colleges and scholarships mentioned that should be added to the student's map. For each one, you'll need to:
+      const analysisPrompt = `Based on our conversation above, please extract all colleges and scholarships mentioned that should be added to the student's map. For each one, you'll need to:
 1. Use the geocode tool to get coordinates
 2. Then use the create_map_location tool to add it to the map
 3. Move on to the next location
 
+IMPORTANT: DO NOT create duplicate locations. Before adding any location, check if it already exists on the map.
+
 DO NOT try to geocode the same location multiple times. After you've added a location to the map, move on to the next location.
 
-Now, please process this information and extract all relevant data according to the system instructions.`
+Now, please process this information and extract all relevant data according to the system instructions.`;
+
+      chatMessages.push({
+        role: 'user',
+        content: analysisPrompt
       });
 
       console.info('Continuing conversation with proper chat history');

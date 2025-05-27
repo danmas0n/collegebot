@@ -23,6 +23,7 @@ interface ProcessingResult {
 export class ResponseProcessor {
   private savedAnswer: string | null = null;
   private researchTasks: ResearchTask[] = [];
+  private titleSent: boolean = false; // Track if title has been sent to prevent duplication
 
   /**
    * Process XML tags in the buffer and send appropriate SSE events
@@ -72,17 +73,30 @@ export class ResponseProcessor {
     // Process title tags
     let titleResult;
     while ((titleResult = findCompleteTagContent('title', workingBuffer))) {
-      // Send title with the saved answer
-      sendSSE({
-        type: 'response',
-        content: this.savedAnswer,
-        suggestedTitle: titleResult.content.trim(),
-        researchTasks: this.researchTasks
-      });
+      // FIXED: Only send title information, don't duplicate the answer content
+      // If we already have a saved answer, just send the title metadata
+      if (this.savedAnswer && !this.titleSent) {
+        sendSSE({
+          type: 'title',
+          suggestedTitle: titleResult.content.trim(),
+          researchTasks: this.researchTasks
+        });
+        this.titleSent = true;
+      } else if (!this.savedAnswer) {
+        // If no saved answer yet, send as response with title
+        sendSSE({
+          type: 'response',
+          content: this.savedAnswer,
+          suggestedTitle: titleResult.content.trim(),
+          researchTasks: this.researchTasks
+        });
+      }
+      
       console.info('Found complete title tag', { 
         content: titleResult.content,
         trimmedContent: titleResult.content.trim(),
         savedAnswer: this.savedAnswer ? 'exists' : 'null',
+        titleSent: this.titleSent,
         fullMatch: titleResult.fullMatch
       });
       workingBuffer = workingBuffer.replace(titleResult.fullMatch, '');
@@ -250,6 +264,7 @@ export class ResponseProcessor {
   reset(): void {
     this.savedAnswer = null;
     this.researchTasks = [];
+    this.titleSent = false; // Reset title sent flag
   }
 
   /**

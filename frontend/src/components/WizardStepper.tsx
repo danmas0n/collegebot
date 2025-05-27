@@ -1,7 +1,9 @@
 import React from 'react';
-import { Box, Stepper, Step, StepLabel, Button, styled } from '@mui/material';
+import { Box, Stepper, Step, StepLabel, Button, styled, Alert, Chip, Typography } from '@mui/material';
 import { useWizard } from '../contexts/WizardContext';
 import { WizardStage } from '../types/wizard';
+import BlockIcon from '@mui/icons-material/Block';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 
 const STAGE_LABELS: Record<WizardStage, string> = {
   'student-selection': 'Select Student',
@@ -15,7 +17,16 @@ const STAGE_LABELS: Record<WizardStage, string> = {
 };
 
 export const WizardStepper: React.FC = () => {
-  const { currentStage, goToStage, canProceed, nextStage, previousStage, currentStudent } = useWizard();
+  const { 
+    currentStage, 
+    goToStage, 
+    canProceed, 
+    nextStage, 
+    previousStage, 
+    currentStudent,
+    isNavigationBlocked,
+    activeLLMOperations
+  } = useWizard();
 
   const stages = Object.entries(STAGE_LABELS).map(([stage, label]) => ({
     stage: stage as WizardStage,
@@ -31,22 +42,55 @@ export const WizardStepper: React.FC = () => {
 
   return (
     <Box sx={{ width: '100%' }}>
+      {/* Navigation Blocked Alert */}
+      {isNavigationBlocked && activeLLMOperations.length > 0 && (
+        <Alert 
+          severity="info" 
+          sx={{ mb: 2 }}
+          icon={<AutorenewIcon />}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="body2">
+              Navigation is temporarily blocked while AI operations are running:
+            </Typography>
+            {activeLLMOperations.map((operation) => (
+              <Chip
+                key={operation.id}
+                label={operation.description}
+                size="small"
+                color="primary"
+                variant="outlined"
+                icon={<AutorenewIcon />}
+              />
+            ))}
+          </Box>
+        </Alert>
+      )}
+
       <Stepper activeStep={currentIndex} sx={{ mb: 4 }}>
         {stages.filter(stage => stage.stage !== 'student-selection').map(({ stage, label }) => (
           <Step key={stage} completed={stages.indexOf({ stage, label }) < currentIndex}>
             <StepLabel
               sx={{
-                cursor: 'pointer',
-                '&:hover': {
+                cursor: isNavigationBlocked ? 'not-allowed' : 'pointer',
+                opacity: isNavigationBlocked ? 0.6 : 1,
+                '&:hover': !isNavigationBlocked ? {
                   '& .MuiStepLabel-label': {
                     color: 'primary.main',
                     textDecoration: 'underline'
                   }
+                } : {}
+              }}
+              onClick={() => {
+                if (!isNavigationBlocked) {
+                  goToStage(stage);
                 }
               }}
-              onClick={() => goToStage(stage)}
             >
-              {label}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {label}
+                {isNavigationBlocked && <BlockIcon fontSize="small" color="disabled" />}
+              </Box>
             </StepLabel>
           </Step>
         ))}
@@ -57,7 +101,8 @@ export const WizardStepper: React.FC = () => {
           <Button
             variant="outlined"
             onClick={previousStage}
-            disabled={currentIndex === 0}
+            disabled={currentIndex === 0 || isNavigationBlocked}
+            startIcon={isNavigationBlocked ? <BlockIcon /> : undefined}
           >
             Back
           </Button>
@@ -65,6 +110,8 @@ export const WizardStepper: React.FC = () => {
             <Button
               variant="outlined"
               onClick={() => goToStage('student-selection')}
+              disabled={isNavigationBlocked}
+              startIcon={isNavigationBlocked ? <BlockIcon /> : undefined}
             >
               Back to Student Selection
             </Button>
@@ -74,7 +121,8 @@ export const WizardStepper: React.FC = () => {
         <Button
           variant="contained"
           onClick={nextStage}
-          disabled={!canProceed || currentIndex === stages.length - 1}
+          disabled={!canProceed || currentIndex === stages.length - 1 || isNavigationBlocked}
+          startIcon={isNavigationBlocked ? <BlockIcon /> : undefined}
         >
           {currentIndex === stages.length - 2 ? 'Finish' : 'Next'}
         </Button>

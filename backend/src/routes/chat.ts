@@ -245,10 +245,7 @@ router.post('/process-all', async (req: Request, res: Response) => {
       total: unprocessedChats.length
     });
     
-    // Generate system prompt
-    const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
-
-    // Process each chat
+    // Process each chat with fresh system prompt (includes current map locations)
     const aiService = await AIServiceFactory.createService(req.user.uid);
     let processed = 0;
 
@@ -261,21 +258,22 @@ router.post('/process-all', async (req: Request, res: Response) => {
           total: unprocessedChats.length
         });
 
-    console.info(`Starting analysis of chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
-    await aiService.analyzeChatHistory(chat, systemPrompt, (update) => {
-      sendSSE({
-        type: 'thinking',
-        content: update
-      });
-    });
+        // CRITICAL: Generate fresh system prompt for each chat to include current map locations
+        // This prevents duplicate pins by informing the AI of existing locations
+        console.info(`Generating fresh system prompt for chat ${chat.id} to include current map locations`);
+        const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
 
-    // Research task processing has been removed
+        console.info(`Starting analysis of chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
+        // FIXED: Pass sendSSE directly instead of wrapping it
+        await aiService.analyzeChatHistory(chat, systemPrompt, sendSSE);
 
-    await saveChat({
-      ...chat,
-      processed: true,
-      processedAt: new Date().toISOString()
-    });
+        // Research task processing has been removed
+
+        await saveChat({
+          ...chat,
+          processed: true,
+          processedAt: new Date().toISOString()
+        });
 
         processed++;
       } catch (error) {
@@ -318,8 +316,8 @@ router.post('/analyze', async (req: Request, res: Response) => {
       throw new Error('Student not found');
     }
 
-    // Generate system prompt
-    console.log('Backend - Generating system prompt');
+    // Generate system prompt with current map locations
+    console.log('Backend - Generating system prompt with current map locations');
     const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
 
     // Process chat with service

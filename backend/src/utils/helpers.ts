@@ -96,14 +96,8 @@ export const filterChatMessages = (messages: DTOChatMessage[]): DTOChatMessage[]
       }
     }
 
-    // Also truncate any message that's excessively long (regardless of tool responses)
-    if (message.content.length > 2000) {
-      const truncatedContent = message.content.substring(0, 2000);
-      return {
-        ...message,
-        content: `${truncatedContent}... [truncated for storage - original length: ${message.content.length} characters]`
-      };
-    }
+    // Note: Removed general 2000 character truncation to allow full AI responses
+    // Only tool responses are truncated now for storage efficiency
 
     // Return unchanged if no filtering needed
     return message;
