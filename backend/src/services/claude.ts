@@ -5,6 +5,10 @@ import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
 import { claudeLogger } from '../utils/logger.js';
 
+// Timeout constants - per individual Claude API call, not entire process
+const CLAUDE_API_TIMEOUT = 180000; // 3 minutes per individual Claude API call
+const TOOL_EXECUTION_TIMEOUT = 30000; // 30 seconds per tool execution
+
 interface CacheControl {
   type: 'ephemeral';
 }
@@ -121,6 +125,19 @@ export class ClaudeService {
   }
 
   /**
+   * Wrap a promise with a timeout
+   */
+  private withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]);
+  }
+
+  /**
    * Test caching functionality with a simple prompt
    */
   async testCaching(): Promise<void> {
@@ -217,6 +234,12 @@ Please respond with a simple message confirming that you received this prompt. K
         system: cachedSystemMessage as any, // Anthropic SDK types may not be up to date with caching
         temperature: 0
       });
+
+      // Set up timeout for the entire stream processing
+      const timeoutId = setTimeout(() => {
+        claudeLogger.warn('Claude stream timeout reached, aborting stream');
+        stream.abort();
+      }, CLAUDE_API_TIMEOUT);
 
       for await (const streamEvent of stream) {
         if (streamEvent.type === 'message_start') {
@@ -393,11 +416,24 @@ Please respond with a simple message confirming that you received this prompt. K
         }
       }
 
+      // Clear timeout and cleanup
+      clearTimeout(timeoutId);
+      
       return { hasToolCalls, messages, continueProcessing };
     } catch (error: any) {
       claudeLogger.error('Error in stream processing', { error: error.message, stack: error.stack });
       sendSSE({ type: 'error', content: error.message });
       throw error;
+    } finally {
+      // Memory cleanup
+      toolBuffer = '';
+      messageContent = '';
+      rawMessage = '';
+      
+      // Force garbage collection hint (safe - only runs if --expose-gc flag is set)
+      if (global.gc) {
+        global.gc();
+      }
     }
   }
 

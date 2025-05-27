@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
 import { config } from 'dotenv';
 import { auth } from './config/firebase.js';
 import { isAdmin } from './services/firestore.js';
@@ -41,6 +42,31 @@ const corsOptions = {
 // Apply CORS before any other middleware
 app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
 app.use(cors(corsOptions));
+
+// Rate limiting configuration
+const chatRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // limit each user to 50 requests per windowMs
+  keyGenerator: (req) => req.user?.uid || req.ip, // Rate limit by user ID if authenticated, otherwise by IP
+  message: {
+    error: 'Too many requests from this user, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const analysisRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // limit each user to 10 analysis requests per hour
+  keyGenerator: (req) => req.user?.uid || req.ip,
+  message: {
+    error: 'Too many analysis requests from this user, please try again later.',
+    retryAfter: '1 hour'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Set up body parsing with increased limits
 app.use(express.json({ limit: '5mb' }));
@@ -135,8 +161,11 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
-// Protected routes
-app.use('/api/chat', authMiddleware, chatRouter);
+// Protected routes with rate limiting
+app.use('/api/chat/message', authMiddleware, chatRateLimit, chatRouter);
+app.use('/api/chat/analyze', authMiddleware, analysisRateLimit, chatRouter);
+app.use('/api/chat/process-all', authMiddleware, analysisRateLimit, chatRouter);
+app.use('/api/chat', authMiddleware, chatRouter); // Other chat routes without rate limiting
 app.use('/api/students', authMiddleware, studentsRouter);
 app.use('/api/colleges', authMiddleware, collegesRouter);
 app.use('/api/student-data', authMiddleware, studentDataRouter);
