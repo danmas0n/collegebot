@@ -3,7 +3,6 @@ import {
   Box,
   TextField,
   Typography,
-  Paper,
   FormControlLabel,
   Checkbox,
   Grid,
@@ -13,6 +12,7 @@ import {
 } from '@mui/material';
 import { useWizard } from '../../contexts/WizardContext';
 import { BudgetInfo } from '../../types/wizard';
+import { StageContainer, StageHeader } from './StageContainer';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -42,13 +42,15 @@ export const BudgetStage: React.FC = () => {
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        Budget Planning
-      </Typography>
-      <Typography color="text.secondary" paragraph>
-        Help us understand your financial situation to find colleges and opportunities within your budget.
-      </Typography>
+    <StageContainer>
+      <StageHeader>
+        <Typography variant="h5" gutterBottom>
+          Budget Planning
+        </Typography>
+        <Typography color="text.secondary" paragraph>
+          Help us understand your financial situation to find colleges and opportunities within your budget.
+        </Typography>
+      </StageHeader>
 
       <Box sx={{ mb: 6 }}>
         <Typography variant="h6" gutterBottom>
@@ -154,6 +156,6 @@ export const BudgetStage: React.FC = () => {
           />
         </FormGroup>
       </Box>
-    </Paper>
+    </StageContainer>
   );
 };

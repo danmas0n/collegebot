@@ -97,3 +97,21 @@
   target: "_blank";
   color: #1976d2;
 }
+
+/* DEBUG: Force full width for all containers */
+* {
+  box-sizing: border-box;
+}
+
+/* Force full width debugging */
+.MuiPaper-root,
+.MuiBox-root {
+  max-width: none !important;
+}
+
+/* Specific override for stage containers */
+[class*="StageContainer"] {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+}

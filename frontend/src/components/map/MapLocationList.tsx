@@ -34,7 +34,7 @@ export const MapLocationList: React.FC<MapLocationListProps> = ({
   setSortBy,
 }) => {
   return (
-    <Paper elevation={1} sx={{ p: 2, height: '600px', overflow: 'auto' }}>
+    <Paper elevation={1} sx={{ p: 2, height: '100%', overflow: 'auto' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6">
           Map Locations

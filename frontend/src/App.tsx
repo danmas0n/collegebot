@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext, createContext } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -6,6 +6,8 @@ import {
   Container,
   Box,
   Button,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
@@ -14,7 +16,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { CalendarProvider } from './contexts/CalendarContext';
 import { Login } from './components/Login';
-import { WizardStepper } from './components/WizardStepper';
+import { NavigationSidebar } from './components/NavigationSidebar';
 import { StudentSelectionStage } from './components/stages/StudentSelectionStage';
 import { StudentProfileStage } from './components/stages/StudentProfileStage';
 import { CollegeInterestsStage } from './components/stages/CollegeInterestsStage';
@@ -25,8 +27,40 @@ import { MapStage } from './components/stages/MapStage';
 import { PlanStage } from './components/stages/PlanStage';
 import { AdminPanel } from './components/admin/AdminPanel';
 
+// Sidebar width constants (must match NavigationSidebar.tsx)
+const DRAWER_WIDTH = 280;
+const DRAWER_WIDTH_COLLAPSED = 64;
+
+// Context for sidebar state
+interface SidebarContextType {
+  isCollapsed: boolean;
+  setIsCollapsed: (collapsed: boolean) => void;
+}
+
+const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
+
+export const useSidebar = () => {
+  const context = useContext(SidebarContext);
+  if (!context) {
+    throw new Error('useSidebar must be used within SidebarProvider');
+  }
+  return context;
+};
+
+const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [isCollapsed, setIsCollapsed] = useState(isMobile);
+
+  return (
+    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
+      {children}
+    </SidebarContext.Provider>
+  );
+};
+
 const WizardContent: React.FC = () => {
-  const { currentStage } = useWizard();
+  const { currentStage, currentStudent } = useWizard();
   const { currentUser, isWhitelisted } = useAuth();
 
   if (!currentUser || !isWhitelisted) {
@@ -56,10 +90,33 @@ const WizardContent: React.FC = () => {
     }
   };
 
+  // Hide sidebar entirely on student selection page
+  if (currentStage === 'student-selection') {
+    return (
+      <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
+        {renderStage()}
+      </Container>
+    );
+  }
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <WizardStepper />
-      {renderStage()}
+    <Box sx={{ display: 'flex', height: '100%' }}>
+      <NavigationSidebar />
+      <Box 
+        component="main" 
+        sx={{ 
+          flexGrow: 1, 
+          width: '100%',
+          maxWidth: 'none !important', // Force no max-width constraint
+          minWidth: 0,
+          flex: '1 1 auto',
+          p: 3,
+          height: '100%',
+          overflow: 'auto'
+        }}
+      >
+        {renderStage()}
+      </Box>
     </Box>
   );
 };
@@ -93,9 +150,15 @@ const AppContent: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
-        {showAdmin ? <AdminPanel onBack={handleExitAdmin} /> : <WizardContent />}
-      </Container>
+      <Box sx={{ flexGrow: 1, display: 'flex', overflow: 'hidden' }}>
+        {showAdmin ? (
+          <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
+            <AdminPanel onBack={handleExitAdmin} />
+          </Container>
+        ) : (
+          <WizardContent />
+        )}
+      </Box>
     </Box>
   );
 };
@@ -104,13 +167,15 @@ const App: React.FC = () => {
   return (
     <NotificationProvider>
       <AuthProvider>
-        <WizardProvider>
-          <ChatProvider>
-            <CalendarProvider>
-              <AppContent />
-            </CalendarProvider>
-          </ChatProvider>
-        </WizardProvider>
+        <SidebarProvider>
+          <WizardProvider>
+            <ChatProvider>
+              <CalendarProvider>
+                <AppContent />
+              </CalendarProvider>
+            </ChatProvider>
+          </WizardProvider>
+        </SidebarProvider>
       </AuthProvider>
     </NotificationProvider>
   );

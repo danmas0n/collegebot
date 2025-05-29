@@ -676,9 +676,9 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
 
       {/* Chat Mode Layout */}
       {mode === 'chat' && (
-        <Grid container spacing={2} sx={{ height: '100%' }}>
+        <Box sx={{ height: '100%', display: 'flex', gap: 2 }}>
           {/* Chat List */}
-          <Grid item xs={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ width: 300, flexShrink: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ p: 2, height: '100%', overflowY: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
               <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6">Chats</Typography>
@@ -719,10 +719,10 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
                 ))}
               </List>
             </Box>
-          </Grid>
+          </Box>
 
           {/* Chat Messages */}
-          <Grid item xs={9} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
             {/* Chat Title */}
             {currentChat && messages.length > 0 && (
               <Box sx={{ mb: 2 }}>
@@ -767,8 +767,8 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
                 </Box>
               </Box>
             )}
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
       )}
 
       {/* Processing Mode Layout */}

@@ -1,14 +1,24 @@
 import React from 'react';
 import { Box, Paper, styled } from '@mui/material';
 
-export const StageContainer = styled(Paper)(({ theme }) => ({
-  display: 'grid',
-  gridTemplateRows: 'auto auto 1fr auto',
-  height: 'calc(100vh - 180px)', // Account for AppBar, WizardStepper, and padding
+export const StageContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+  width: '100%',
+  maxWidth: 'none !important', // Force override any constraints
+  minWidth: 0,
+  flex: '1 1 auto',
   overflow: 'hidden',
-  padding: theme.spacing(3),
+  borderRadius: theme.shape.borderRadius,
+  // Force full width with CSS
+  '&': {
+    width: '100% !important',
+    maxWidth: 'none !important',
+    flex: '1 1 auto !important'
+  },
   '& > *': {
-    minHeight: 0, // Allow children to scroll
+    minHeight: 0,
   }
 }));
 

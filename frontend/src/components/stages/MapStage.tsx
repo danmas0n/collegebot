@@ -23,10 +23,11 @@ import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
 import { MapDebugControls } from '../map/MapDebugControls';
+import { StageContainer, StageHeader } from './StageContainer';
 
 const mapContainerStyle = {
   width: '100%',
-  height: '600px',
+  height: '100%',
 };
 
 const defaultCenter = {
@@ -391,11 +392,12 @@ export const MapStage = (): JSX.Element => {
   }
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }} ref={stageRef}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5">
-          College & Scholarship Map
-        </Typography>
+    <StageContainer ref={stageRef}>
+      <StageHeader>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5">
+            College & Scholarship Map
+          </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
@@ -430,7 +432,8 @@ export const MapStage = (): JSX.Element => {
             <SettingsIcon />
           </IconButton>
         </Box>
-      </Box>
+        </Box>
+      </StageHeader>
 
       <Collapse in={showDebugControls}>
         <MapDebugControls
@@ -467,10 +470,20 @@ export const MapStage = (): JSX.Element => {
           <CircularProgress />
         </Box>
       ) : (
-        <Grid container spacing={2}>
+        <Box sx={{ 
+          width: '100%', 
+          display: 'flex', 
+          gap: 2,
+          height: 'calc(100vh - 300px)', // Use more available height
+          minHeight: '600px' // Ensure minimum height
+        }}>
           {/* Map View */}
-          <Grid item xs={12} md={8}>
-            <Box sx={{ width: '100%', height: '600px' }}>
+          <Box sx={{ 
+            flex: 1, 
+            minWidth: 0,
+            height: '100%'
+          }}>
+            <Box sx={{ width: '100%', height: '100%' }}>
               <GoogleMap
                 mapContainerStyle={mapContainerStyle}
                 center={defaultCenter}
@@ -520,10 +533,10 @@ export const MapStage = (): JSX.Element => {
                 )}
               </GoogleMap>
             </Box>
-          </Grid>
+          </Box>
           
           {/* Location List */}
-          <Grid item xs={12} md={4}>
+          <Box sx={{ width: 300, flexShrink: 0 }}>
             <MapLocationList
               locations={locations}
               selectedLocation={selectedLocation}
@@ -532,8 +545,8 @@ export const MapStage = (): JSX.Element => {
               sortBy={sortBy}
               setSortBy={setSortBy}
             />
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
       )}
       
       {/* Tour Planning Dialog */}
@@ -542,6 +555,6 @@ export const MapStage = (): JSX.Element => {
         onClose={() => setIsTourPlanningOpen(false)}
         locations={locations}
       />
-    </Paper>
+    </StageContainer>
   );
 };

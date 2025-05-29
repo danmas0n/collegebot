@@ -12,6 +12,7 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useWizard } from '../../contexts/WizardContext';
 import { useChat } from '../../contexts/ChatContext';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -30,8 +31,6 @@ export const RecommendationsStage: React.FC = () => {
   const { chats, currentChat, loadChats, setCurrentChat } = useChat();
   const [error, setError] = useState<string | null>(null);
   const hasLoadedChats = useRef(false);
-
-  // State for tabs
   const [activeTab, setActiveTab] = useState<number>(0);
 
   // Load chats when component mounts or student changes
@@ -142,7 +141,7 @@ export const RecommendationsStage: React.FC = () => {
   };
 
   return (
-    <StageContainer elevation={0} sx={{ position: 'relative' }}>
+    <StageContainer sx={{ position: 'relative' }}>
       <StageHeader>
         <Typography variant="h5" gutterBottom>
           AI Recommendations
@@ -161,49 +160,19 @@ export const RecommendationsStage: React.FC = () => {
               icon={<TipsAndUpdatesIcon />} 
               iconPosition="start"
             />
+            <Tab 
+              label="Example Questions" 
+              icon={<HelpOutlineIcon />} 
+              iconPosition="start"
+            />
           </Tabs>
         </Box>
 
-        {/* Chat Tab Content */}
-        {activeTab === 0 && (
-          <>
-            <Collapse in={showExamples}>
-              <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography color="text.secondary">
-                    Example questions you can ask:
-                  </Typography>
-                  <IconButton size="small" onClick={() => setShowExamples(false)}>
-                    <ExpandLessIcon />
-                  </IconButton>
-                </Box>
-                <Typography component="div">
-                  <ul>
-                    <li>"What colleges would be a good fit for me based on my GPA and test scores?"</li>
-                    <li>"Which colleges offer strong programs in my areas of interest?"</li>
-                    <li>"What are my chances of getting merit scholarships at these colleges?"</li>
-                    <li>"Compare the financial aid packages at these schools."</li>
-                  </ul>
-                </Typography>
-              </Box>
-            </Collapse>
-
-            {!showExamples && (
-              <Button
-                startIcon={<ExpandMoreIcon />}
-                onClick={() => setShowExamples(true)}
-                sx={{ mb: 2 }}
-              >
-                Show Example Questions
-              </Button>
-            )}
-
-            {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
-            )}
-          </>
+        {/* Error Alert for Chat Tab */}
+        {activeTab === 0 && error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
         )}
       </StageHeader>
 
@@ -233,6 +202,106 @@ export const RecommendationsStage: React.FC = () => {
         <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: '100%', overflowY: 'auto' }}>
           {activeTab === 1 && (
             <TipsAdvicePanel />
+          )}
+        </Box>
+
+        {/* Example Questions Tab */}
+        <Box role="tabpanel" hidden={activeTab !== 2} sx={{ height: '100%', overflowY: 'auto', p: 3 }}>
+          {activeTab === 2 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Example Questions to Ask the AI
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Here are some example questions you can ask to get personalized college recommendations and advice:
+              </Typography>
+              
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  College Fit & Recommendations
+                </Typography>
+                <Box component="ul" sx={{ pl: 2 }}>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What colleges would be a good fit for me based on my GPA and test scores?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "Which colleges offer strong programs in my areas of interest?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "Can you recommend some safety, match, and reach schools for me?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What colleges have good programs for [specific major] within my budget?"
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  Financial Aid & Scholarships
+                </Typography>
+                <Box component="ul" sx={{ pl: 2 }}>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What are my chances of getting merit scholarships at these colleges?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "Compare the financial aid packages at these schools."
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "Which colleges offer the best value for my intended major?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What scholarships should I apply for based on my profile?"
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  Application Strategy
+                </Typography>
+                <Box component="ul" sx={{ pl: 2 }}>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "How can I improve my chances of admission to [specific college]?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What should I focus on in my essays for these colleges?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "Which extracurricular activities would strengthen my application?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What are the admission requirements for my target schools?"
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  Campus Life & Fit
+                </Typography>
+                <Box component="ul" sx={{ pl: 2 }}>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What's the campus culture like at [specific college]?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "Which colleges have strong alumni networks in my field?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "What are the research opportunities available to undergraduates?"
+                  </Typography>
+                  <Typography component="li" sx={{ mb: 1 }}>
+                    "How do these colleges support students in my demographic?"
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Alert severity="info" sx={{ mt: 3 }}>
+                <Typography variant="body2">
+                  <strong>Tip:</strong> The more specific your questions, the better the AI can tailor its recommendations to your unique situation and goals.
+                </Typography>
+              </Alert>
+            </Box>
           )}
         </Box>
       </Box>
