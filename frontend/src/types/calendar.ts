@@ -20,13 +20,17 @@ export interface Task {
   description?: string;
   dueDate?: string; // ISO date string
   completed: boolean;
-  category: 'application' | 'scholarship' | 'financial' | 'other';
+  category: 'application' | 'scholarship' | 'financial' | 'testing' | 'visit' | 'other';
   sourcePins: string[]; // IDs of map pins this task is related to
   priority?: 'high' | 'medium' | 'low';
   tags?: string[]; // For custom categorization
   reminderDates?: string[]; // Additional dates for reminders before the due date
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
+  // Plan-related fields
+  planId?: string; // Links task to specific plan
+  schoolId?: string | 'general'; // For filtering by school
+  sourceChat?: string; // Traceability to conversation
 }
 
 export interface PinResearchRequest {

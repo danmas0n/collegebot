@@ -1,5 +1,6 @@
 import { recommendationsInstructions } from './recommendations_instructions.js';
 import { mapInstructions } from './map_instructions.js';
+import { planInstructions } from './plan_instructions.js';
 import { getMapLocations } from '../services/firestore.js';
 import { Request } from 'express';
 
@@ -165,6 +166,132 @@ const MAP_TOOLS: Tool[] = [
   }
 ];
 
+// Tools for plan building
+const PLAN_TOOLS: Tool[] = [
+  // Research tools (same as recommendations)
+  {
+    name: 'search_college_data',
+    description: 'Search for college data sources and information',
+    parameters: [
+      {
+        name: 'query',
+        type: 'string',
+        description: 'Search query for college data',
+        required: true
+      },
+      {
+        name: 'includeWebSearch',
+        type: 'boolean',
+        description: 'Whether to include web search results',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'search_cds_data',
+    description: 'Search for available Common Data Set files with fuzzy matching',
+    parameters: [
+      {
+        name: 'query',
+        type: 'string',
+        description: 'College name or partial name to search for',
+        required: true
+      },
+      {
+        name: 'limit',
+        type: 'number',
+        description: 'Maximum number of results to return (default: 10)',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'get_cds_data',
+    description: 'Get Common Data Set information and full content for a specific college',
+    parameters: [
+      {
+        name: 'collegeName',
+        type: 'string',
+        description: 'Full, formal name of the college',
+        required: true
+      },
+      {
+        name: 'year',
+        type: 'string',
+        description: 'Academic year (e.g., "2024-2025")',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'fetch_markdown',
+    description: 'Fetch and extract markdown content from a webpage URL',
+    parameters: [
+      {
+        name: 'url',
+        type: 'string',
+        description: 'URL to fetch content from',
+        required: true
+      }
+    ]
+  },
+  // Plan creation tools
+  {
+    name: 'create_calendar_item',
+    description: 'Create a calendar event for the student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'item',
+        type: 'object',
+        description: 'Calendar item object with title, date, description, etc.',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_task',
+    description: 'Create a task for the student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'task',
+        type: 'object',
+        description: 'Task object with title, description, dueDate, priority, category, etc.',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'update_plan',
+    description: 'Update a plan with new timeline items',
+    parameters: [
+      {
+        name: 'planId',
+        type: 'string',
+        description: 'ID of the plan to update',
+        required: true
+      },
+      {
+        name: 'timelineItems',
+        type: 'array',
+        description: 'Array of timeline items to add to the plan',
+        required: true
+      }
+    ]
+  }
+];
+
 export const generateToolInstructions = (mode: string): string => {
   let instructions = 'Available tools:\n\n';
   
@@ -175,6 +302,9 @@ export const generateToolInstructions = (mode: string): string => {
       break;
     case 'map_enrichment':
       tools = MAP_TOOLS;
+      break;
+    case 'plan_building':
+      tools = PLAN_TOOLS;
       break;
     default:
       tools = RECOMMENDATION_TOOLS;
@@ -242,6 +372,12 @@ This title is mandatory and must appear at the end of every response.`;
       modeSpecificInstructions = `Goal: Extract college/scholarship locations from our conversation and add them to ${studentName}'s map.
 
 ${mapInstructions}`;
+      break;
+
+    case 'plan_building':
+      modeSpecificInstructions = `Goal: Create a comprehensive college application plan for ${studentName}.
+
+${planInstructions}`;
       break;
 
     default:

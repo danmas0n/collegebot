@@ -22,7 +22,7 @@ import { BudgetStage } from './components/stages/BudgetStage';
 import { DataCollectionStage } from './components/stages/DataCollectionStage';
 import { RecommendationsStage } from './components/stages/RecommendationsStage';
 import { MapStage } from './components/stages/MapStage';
-import { CalendarStage } from './components/stages/CalendarStage';
+import { PlanStage } from './components/stages/PlanStage';
 import { AdminPanel } from './components/admin/AdminPanel';
 
 const WizardContent: React.FC = () => {
@@ -50,7 +50,7 @@ const WizardContent: React.FC = () => {
       case 'map':
         return <MapStage />;
       case 'calendar':
-        return <CalendarStage />;
+        return <PlanStage />;
       default:
         return null;
     }

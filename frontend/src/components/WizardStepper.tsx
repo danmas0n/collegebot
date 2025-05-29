@@ -13,7 +13,7 @@ const STAGE_LABELS: Record<WizardStage, string> = {
   'data-collection': 'Data Collection',
   'recommendations': 'Recommendations',
   'map': 'Map',
-  'calendar': 'Calendar & Tasks',
+  'calendar': 'Plan',
 };
 
 export const WizardStepper: React.FC = () => {
