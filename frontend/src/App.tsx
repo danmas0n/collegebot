@@ -25,6 +25,7 @@ import { DataCollectionStage } from './components/stages/DataCollectionStage';
 import { RecommendationsStage } from './components/stages/RecommendationsStage';
 import { MapStage } from './components/stages/MapStage';
 import { PlanStage } from './components/stages/PlanStage';
+import { CollaborationStage } from './components/stages/CollaborationStage';
 import { AdminPanel } from './components/admin/AdminPanel';
 
 // Sidebar width constants (must match NavigationSidebar.tsx)
@@ -99,6 +100,8 @@ const WizardContent: React.FC = () => {
         return <MapStage />;
       case 'calendar':
         return <PlanStage />;
+      case 'collaboration':
+        return <CollaborationStage />;
       default:
         return null;
     }

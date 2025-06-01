@@ -34,6 +34,7 @@ import {
   Block as BlockIcon,
   Autorenew as AutorenewIcon,
   ExitToApp as ExitIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { useWizard } from '../contexts/WizardContext';
 import { WizardStage } from '../types/wizard';
@@ -79,6 +80,10 @@ const STAGE_CONFIG: Record<WizardStage, {
     label: 'Plan',
     icon: <PlanIcon />,
   },
+  'collaboration': {
+    label: 'Collaborate',
+    icon: <ShareIcon />,
+  },
 };
 
 interface NavigationSidebarProps {}
@@ -122,7 +127,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = () => {
         stage: stage as WizardStage,
         ...config,
       })),
-    { stage: 'student-selection' as WizardStage, label: 'Exit', icon: <ExitIcon /> }
+    { stage: 'student-selection' as WizardStage, label: 'Back to Student Selection', icon: <BackIcon /> }
   ];
 
   const currentIndex = stages.findIndex(stage => stage.stage === currentStage);
