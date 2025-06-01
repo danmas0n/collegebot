@@ -784,8 +784,34 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
 
       {/* Processing Mode Layout */}
       {mode === 'processing' && (
-        <Paper sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Box sx={{ flex: 1, overflowY: 'auto', p: 2, minHeight: 0 }}>
+        <Paper sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: 0,
+          maxHeight: '100%'
+        }}>
+          <Box sx={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            p: 2, 
+            minHeight: 0,
+            maxHeight: '100%',
+            '&::-webkit-scrollbar': {
+              width: '8px'
+            },
+            '&::-webkit-scrollbar-track': {
+              background: '#f1f1f1',
+              borderRadius: '4px'
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: '#888',
+              borderRadius: '4px'
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              background: '#555'
+            }
+          }}>
             {currentViewMode === 'collapsed' && shouldUseCollapsedView() ? (
               renderCollapsedView()
             ) : (

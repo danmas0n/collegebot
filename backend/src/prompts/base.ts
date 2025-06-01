@@ -480,7 +480,9 @@ export const generateToolInstructions = (mode: string): string => {
   instructions += `Response Format:
 
 1. Process Flow:
-   • Use <thinking></thinking> for concise reasoning
+   • Use <thinking></thinking> for concise reasoning - avoid repeating previous analysis
+   • Focus on NEW insights and decisions, not rehashing what you already know
+   • Summarize periodically rather than repeating the same information
    • Use <tool></tool> for tool calls with proper XML/JSON format
    • Use <answer></answer> for final responses in HTML format
 

@@ -38,9 +38,13 @@ Core Process:
    
    a) Check existing pins: Use list_map_location_names to see what's already on the map
    b) For each college/scholarship in your recommendations:
-      • If pin exists: Use get_map_location_details, then update_map_location to add current chat ID to sourceChats
+      • CRITICAL: Do NOT create duplicate locations. If a college/scholarship already exists on the map, use update_map_location instead of create_map_location
+      • If pin exists: Use get_map_location_details, then update_map_location to add new information
       • If pin is new: Use geocode to get coordinates, then create_map_location with full details
-   c) Chats are automatically marked as processed when saved
+      • Do NOT geocode the same location multiple times - check existing pins first
+      • The current chat will be automatically associated with any pins you create or update
+   c) Creating/updating map pins automatically marks the current chat as processed
+   d) Only then deliver your final answer
    
    Pin Data Structure:
    {
@@ -88,7 +92,6 @@ Guidelines:
 
 Workflow:
 1. Research and formulate recommendations
-2. Create/update map pins for all mentioned institutions
-3. Mark chat as processed
-4. Output final recommendations in <answer> tags
+2. Create/update map pins for all mentioned institutions (auto-marks chat as processed)
+3. Output final recommendations in <answer> tags
 `;

@@ -214,9 +214,12 @@ router.post('/mark-unprocessed', async (req: Request, res: Response) => {
 router.post('/mark-recent-unprocessed', async (req: Request, res: Response) => {
   try {
     const { studentId } = req.body;
+    console.log('mark-recent-unprocessed: Starting for studentId:', studentId);
     
     // Get all chats for the student
     const chats = await getChats(studentId);
+    console.log('mark-recent-unprocessed: Found', chats.length, 'chats');
+    console.log('mark-recent-unprocessed: Chat processed status:', chats.map(c => ({ id: c.id, title: c.title, processed: c.processed })));
     
     if (chats.length === 0) {
       return res.status(404).json({ error: 'No chats found' });
@@ -229,12 +232,27 @@ router.post('/mark-recent-unprocessed', async (req: Request, res: Response) => {
       return currentDate > latestDate ? current : latest;
     });
     
+    console.log('mark-recent-unprocessed: Most recent chat:', {
+      id: mostRecentChat.id,
+      title: mostRecentChat.title,
+      processed: mostRecentChat.processed,
+      updatedAt: mostRecentChat.updatedAt
+    });
+    
     // Mark it as unprocessed
-    await saveChat({
+    const updatedChat = {
       ...mostRecentChat,
       processed: false,
       processedAt: null
-    });
+    };
+    
+    console.log('mark-recent-unprocessed: Saving chat with processed=false');
+    await saveChat(updatedChat);
+    
+    // Verify the save worked by re-fetching
+    const verifyChats = await getChats(studentId);
+    const verifyChat = verifyChats.find(c => c.id === mostRecentChat.id);
+    console.log('mark-recent-unprocessed: Verification - chat processed status after save:', verifyChat?.processed);
     
     res.json({ 
       success: true, 
@@ -262,10 +280,17 @@ router.post('/process-all', async (req: Request, res: Response) => {
     }
 
     // Get all chats
+    console.log('process-all: Starting for studentId:', studentId);
     const chats = await getChats(studentId);
+    console.log('process-all: Found', chats.length, 'total chats');
+    console.log('process-all: Chat processed status:', chats.map(c => ({ id: c.id, title: c.title, processed: c.processed })));
+    
     const unprocessedChats = chats.filter(chat => !chat.processed);
+    console.log('process-all: Found', unprocessedChats.length, 'unprocessed chats');
+    console.log('process-all: Unprocessed chat IDs:', unprocessedChats.map(c => c.id));
     
     if (unprocessedChats.length === 0) {
+      console.log('process-all: No unprocessed chats found, sending complete');
       sendSSE({ type: 'complete' });
       return;
     }

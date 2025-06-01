@@ -56,6 +56,7 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
   onLoadLocations,
 }) => {
   const [isAutoProcessing, setIsAutoProcessing] = useState(false);
+  const [isManualProcessing, setIsManualProcessing] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [streamingComplete, setStreamingComplete] = useState(false);
 
@@ -95,9 +96,7 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
   return (
     <Paper sx={{ 
       p: 2, 
-      mb: 2,
-      position: 'relative',
-      zIndex: 1000 // Ensure it's above the map
+      mb: 2
     }}>
       <Typography variant="h6" gutterBottom>
         Chat Processing
@@ -113,8 +112,8 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
         <Button
           variant="contained"
           color="primary"
-          onClick={handleProcessAllChats}
-          disabled={isProcessing || !currentStudent}
+          onClick={() => setIsManualProcessing(true)}
+          disabled={isProcessing || isManualProcessing || !currentStudent}
         >
           Process All Chats
         </Button>
@@ -170,6 +169,40 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
               </Typography>
             </Box>
           )}
+        </Box>
+      )}
+      
+      {/* Manual processing StreamingChatInterface */}
+      {isManualProcessing && (
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1">
+              Manual Chat Processing
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setIsManualProcessing(false)}
+            >
+              Close
+            </Button>
+          </Box>
+          <StreamingChatInterface
+            mode="processing"
+            autoStart={true}
+            processingEndpoint="/api/chat/process-all"
+            onProcessingComplete={async () => {
+              await onLoadLocations();
+              setIsManualProcessing(false);
+            }}
+            onProcessingError={onProcessingError}
+            title=""
+            description=""
+            operationType="map"
+            llmOperationType="map-processing"
+            operationDescription="Processing chats to extract map locations"
+            viewMode="full"
+          />
         </Box>
       )}
       

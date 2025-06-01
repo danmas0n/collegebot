@@ -509,6 +509,7 @@ export const MapStage = (): JSX.Element => {
       ) : (
         <Box sx={{ 
           display: 'flex', 
+          flexDirection: showDebugControls && (isProcessing || hasUnprocessedChats) ? 'column' : 'row',
           gap: 2,
           flex: 1,
           minWidth: 0,

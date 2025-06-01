@@ -35,6 +35,8 @@ export class ClaudeService {
   private client: Anthropic;
   private userId?: string;
   private responseProcessor: ResponseProcessor;
+  private stepCounter: number = 0;
+  private readonly MAX_STEPS = 50;
 
   constructor(apiKey: string, userId?: string) {
     this.client = new Anthropic({
@@ -178,15 +180,44 @@ Please respond with a simple message confirming that you received this prompt. K
     let messages = [...initialMessages];
     let continueProcessing = true;
 
-    // Reset processor for new conversation
+    // Reset processor and step counter for new conversation
     this.responseProcessor.reset();
+    this.stepCounter = 0;
 
     try {
-      while (continueProcessing) {
+      while (continueProcessing && this.stepCounter < this.MAX_STEPS) {
+        this.stepCounter++;
+        
         console.info('Processing message with current state', {
           messageCount: messages.length,
-          continueProcessing
+          continueProcessing,
+          stepCounter: this.stepCounter,
+          maxSteps: this.MAX_STEPS
         });
+
+        // Check circuit breaker before processing
+        if (this.stepCounter >= this.MAX_STEPS) {
+          console.warn('Circuit breaker activated: Maximum steps reached', {
+            stepCounter: this.stepCounter,
+            maxSteps: this.MAX_STEPS
+          });
+          
+          // Inject circuit breaker message
+          messages.push({
+            role: 'user',
+            content: 'You have reached the maximum number of processing steps (50). Please stop thinking and provide your final answer now.'
+          });
+          
+          sendSSE({ 
+            type: 'system', 
+            content: `🔄 Circuit breaker activated: Forcing final answer after ${this.MAX_STEPS} steps to prevent runaway loops` 
+          });
+          
+          // Process one final time with the circuit breaker message
+          const result = await this.processSingleStream(messages, systemPrompt, sendSSE);
+          messages = result.messages;
+          break; // Force exit
+        }
 
         const result = await this.processSingleStream(messages, systemPrompt, sendSSE);
         messages = result.messages;
@@ -450,6 +481,9 @@ Please respond with a simple message confirming that you received this prompt. K
 
   async analyzeChatHistory(chat: any, systemPrompt: string, sendSSE: (data: any) => void) {
     try {
+      // Reset step counter for chat analysis
+      this.stepCounter = 0;
+      
       // Convert chat history to proper message format and continue the conversation
       const chatMessages: Message[] = chat.messages
         .filter((msg: any) => msg.content && msg.content.trim())
@@ -482,7 +516,8 @@ Now, please process this information and extract all relevant data according to 
       const updatedMessages = await this.processStream(chatMessages, systemPrompt, sendSSE);
       console.info('Finished processing chat history:', { 
         messageCount: updatedMessages.length,
-        lastMessageRole: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].role : 'none'
+        lastMessageRole: updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1].role : 'none',
+        finalStepCount: this.stepCounter
       });
       
       return updatedMessages;

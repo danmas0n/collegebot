@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from 'axios';
-import { addMapLocation, getMapLocations, deleteMapLocation, clearMapLocations } from './firestore.js';
+import { addMapLocation, getMapLocations, deleteMapLocation, clearMapLocations, getChats, saveChat } from './firestore.js';
 import { settingsService } from './settings.js';
 
 // Helper function to create MCP client
@@ -110,7 +110,52 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         if (!studentId || !location) {
           throw new Error('Student ID and location are required');
         }
-        await addMapLocation({ ...location, studentId }, userId);
+        
+        // Auto-find current chat and add to sourceChats
+        let currentChatId = null;
+        try {
+          const chats = await getChats(studentId);
+          const currentChat = chats
+            .filter(c => !c.processed)
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+          
+          if (currentChat) {
+            currentChatId = currentChat.id;
+            console.log('create_map_location: Auto-associating with current chat:', currentChat.title, 'ID:', currentChatId);
+          }
+        } catch (error) {
+          console.warn('create_map_location: Failed to find current chat:', error);
+        }
+        
+        // Add current chat ID to sourceChats if found
+        const locationWithChat = {
+          ...location,
+          studentId,
+          sourceChats: currentChatId ? [currentChatId] : (location.sourceChats || [])
+        };
+        
+        await addMapLocation(locationWithChat, userId);
+        
+        // Auto-mark current chat as processed since we're creating map pins
+        if (currentChatId) {
+          try {
+            const chats = await getChats(studentId);
+            const currentChat = chats.find(c => c.id === currentChatId);
+            
+            if (currentChat) {
+              console.log('create_map_location: Auto-marking chat as processed:', currentChat.title);
+              await saveChat({ 
+                ...currentChat, 
+                processed: true, 
+                processedAt: new Date().toISOString() 
+              });
+            }
+          } catch (error) {
+            console.warn('create_map_location: Failed to auto-mark chat as processed:', error);
+            // Don't fail the location creation if chat marking fails
+          }
+        }
+        
         return { content: [{ type: 'text', text: 'Location added successfully' }] };
       }
 
@@ -197,12 +242,34 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         
         console.log('update_map_location: Found location:', location.name);
         
+        // Auto-find current chat and add to sourceChats
+        let currentChatId = null;
+        try {
+          const chats = await getChats(studentId);
+          const currentChat = chats
+            .filter(c => !c.processed)
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+          
+          if (currentChat) {
+            currentChatId = currentChat.id;
+            console.log('update_map_location: Auto-associating with current chat:', currentChat.title, 'ID:', currentChatId);
+          }
+        } catch (error) {
+          console.warn('update_map_location: Failed to find current chat:', error);
+        }
+        
+        // Merge sourceChats: existing + updates + current chat
+        const existingSourceChats = location.sourceChats || [];
+        const updatesSourceChats = updates.sourceChats || [];
+        const allSourceChats = [...existingSourceChats, ...updatesSourceChats];
+        if (currentChatId && !allSourceChats.includes(currentChatId)) {
+          allSourceChats.push(currentChatId);
+        }
+        
         const updatedLocation = {
           ...location,
           ...updates,
-          sourceChats: updates.sourceChats ? 
-            [...new Set([...(location.sourceChats || []), ...updates.sourceChats])] :
-            location.sourceChats,
+          sourceChats: [...new Set(allSourceChats)], // Remove duplicates
           metadata: {
             ...location.metadata,
             ...(updates.metadata || {})
@@ -214,8 +281,30 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         await deleteMapLocation(studentId, locationId, userId);
         await addMapLocation(updatedLocation, userId);
         
+        // Auto-mark current chat as processed since we're updating map pins
+        try {
+          const chats = await getChats(studentId);
+          const currentChat = chats
+            .filter(c => !c.processed)
+            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+          
+          if (currentChat) {
+            console.log('update_map_location: Auto-marking chat as processed:', currentChat.title);
+            await saveChat({ 
+              ...currentChat, 
+              processed: true, 
+              processedAt: new Date().toISOString() 
+            });
+          }
+        } catch (error) {
+          console.warn('update_map_location: Failed to auto-mark chat as processed:', error);
+          // Don't fail the location update if chat marking fails
+        }
+        
         return { content: [{ type: 'text', text: 'Location updated successfully' }] };
       }
+
+
 
       default:
         throw new Error(`Unknown student-data tool: ${toolName}`);

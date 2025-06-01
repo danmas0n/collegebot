@@ -113,7 +113,11 @@ export const RecommendationsStage: React.FC = () => {
     // This ensures that title updates from streaming responses are reflected in the sidebar
     if (currentStudent?.id) {
       console.log('Chat updated, reloading chats list to reflect changes');
-      await loadChats(currentStudent.id);
+      
+      // Add a small delay to ensure backend save completes before reloading
+      setTimeout(async () => {
+        await loadChats(currentStudent.id);
+      }, 500); // 500ms delay to allow backend save to complete
     }
   }, [setCurrentChat, loadChats, currentStudent?.id]);
 
