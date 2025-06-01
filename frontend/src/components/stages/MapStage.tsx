@@ -424,9 +424,10 @@ export const MapStage = (): JSX.Element => {
       ref={stageRef} 
       data-testid="map-stage"
       sx={{
-        height: 'calc(100vh - 64px)', // Override StageContainer height
-        minHeight: 'calc(100vh - 64px)', // Override StageContainer minHeight
-        maxHeight: 'calc(100vh - 64px)' // Ensure it doesn't exceed viewport
+        height: showDebugControls ? 'auto' : 'calc(100vh - 64px)',
+        minHeight: showDebugControls ? 'auto' : 'calc(100vh - 64px)',
+        maxHeight: showDebugControls ? 'none' : 'calc(100vh - 64px)',
+        overflow: showDebugControls ? 'visible' : 'hidden'
       }}
     >
       <StageHeader>
@@ -514,17 +515,15 @@ export const MapStage = (): JSX.Element => {
           flex: 1,
           minWidth: 0,
           maxWidth: '100%',
-          height: '100%', // Explicit height for Google Maps
-          minHeight: 'calc(100vh - 200px)', // Much larger minimum height
+          height: '100%',
           overflow: 'hidden'
         }}>
           {/* Map View */}
           <Box sx={{ 
-            flex: 1, 
+            flex: showDebugControls && (isProcessing || hasUnprocessedChats) ? '0 0 70vh' : 1, // Fixed height when debug panel is open
             minWidth: 0,
             maxWidth: '100%',
-            height: '100%', // Explicit height for Google Maps container
-            minHeight: 'calc(100vh - 200px)', // Much larger minimum height
+            height: showDebugControls && (isProcessing || hasUnprocessedChats) ? '70vh' : '100%',
             position: 'relative',
             overflow: 'hidden'
           }}>
