@@ -16,6 +16,10 @@ import {
   Divider,
   Tooltip,
   Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Share as ShareIcon,
@@ -23,6 +27,7 @@ import {
   ContentCopy as CopyIcon,
   Person as PersonIcon,
   AdminPanelSettings as OwnerIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { StageContainer } from './StageContainer';
 import { useAuth } from '../../contexts/AuthContext';
@@ -43,6 +48,7 @@ export const CollaborationStage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showCounselorModal, setShowCounselorModal] = useState(false);
 
   // Get the current app URL for sharing
   const appUrl = window.location.origin;
@@ -331,6 +337,35 @@ export const CollaborationStage: React.FC = () => {
           </Alert>
         </Paper>
 
+        {/* Find College Counselor */}
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SearchIcon />
+            Professional Support
+          </Typography>
+          
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Need expert guidance? Connect with a qualified college counselor to help navigate the admissions process.
+          </Typography>
+          
+          <Button
+            variant="contained"
+            color="secondary"
+            startIcon={<SearchIcon />}
+            onClick={() => setShowCounselorModal(true)}
+            sx={{ mb: 2 }}
+          >
+            Find a College Counselor
+          </Button>
+          
+          <Alert severity="info">
+            <Typography variant="body2">
+              <strong>Coming soon:</strong> We're building a network of verified college counselors 
+              to help families navigate the college admissions process with expert guidance.
+            </Typography>
+          </Alert>
+        </Paper>
+
         {/* Error/Success Messages */}
         <Snackbar
           open={!!error}
@@ -351,6 +386,56 @@ export const CollaborationStage: React.FC = () => {
             {success}
           </Alert>
         </Snackbar>
+
+        {/* Coming Soon Modal */}
+        <Dialog
+          open={showCounselorModal}
+          onClose={() => setShowCounselorModal(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ textAlign: 'center' }}>
+            <SearchIcon sx={{ fontSize: 48, color: 'secondary.main', mb: 1 }} />
+            <Typography variant="h5" component="div">
+              Find a College Counselor
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="h6" gutterBottom sx={{ textAlign: 'center', color: 'primary.main' }}>
+              Coming Soon!
+            </Typography>
+            <Typography variant="body1" paragraph sx={{ textAlign: 'center' }}>
+              We're building a comprehensive network of verified college counselors to help families 
+              navigate the college admissions process with expert guidance.
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              This feature will include:
+            </Typography>
+            <Box component="ul" sx={{ mt: 2, pl: 3 }}>
+              <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                Verified college counselor profiles
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                Specialization matching (public vs private, specific regions, etc.)
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                Direct messaging and scheduling
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                Integrated collaboration on your student's college plan
+              </Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ justifyContent: 'center', pb: 3 }}>
+            <Button
+              onClick={() => setShowCounselorModal(false)}
+              variant="contained"
+              color="primary"
+            >
+              Got it!
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </StageContainer>
   );

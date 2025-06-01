@@ -8,8 +8,13 @@ import {
   Button,
   useTheme,
   useMediaQuery,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
+import InfoIcon from '@mui/icons-material/Info';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -140,6 +145,7 @@ const WizardContent: React.FC = () => {
 const AppContent: React.FC = () => {
   const { isAdmin } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   const handleExitAdmin = () => {
     setShowAdmin(false);
@@ -150,17 +156,27 @@ const AppContent: React.FC = () => {
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            CollegeBot
+            Counseled
           </Typography>
           {!showAdmin && (
-            <Button
-              color="inherit"
-              startIcon={<SettingsIcon />}
-              onClick={() => setShowAdmin(true)}
-              sx={{ mr: 2 }}
-            >
-              {isAdmin ? "Admin" : "Settings"}
-            </Button>
+            <>
+              <Button
+                color="inherit"
+                startIcon={<InfoIcon />}
+                onClick={() => setShowAbout(true)}
+                sx={{ mr: 2 }}
+              >
+                About
+              </Button>
+              <Button
+                color="inherit"
+                startIcon={<SettingsIcon />}
+                onClick={() => setShowAdmin(true)}
+                sx={{ mr: 2 }}
+              >
+                {isAdmin ? "Admin" : "Settings"}
+              </Button>
+            </>
           )}
           <Login />
         </Toolbar>
@@ -175,6 +191,75 @@ const AppContent: React.FC = () => {
           <WizardContent />
         )}
       </Box>
+
+      {/* About Modal */}
+      <Dialog
+        open={showAbout}
+        onClose={() => setShowAbout(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ textAlign: 'center' }}>
+          <InfoIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+          <Typography variant="h4" component="div">
+            About Counseled
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="h6" gutterBottom sx={{ color: 'primary.main' }}>
+            Your AI-Powered College Planning Companion
+          </Typography>
+          <Typography variant="body1" paragraph>
+            Counseled is a comprehensive college planning platform that guides students and families 
+            through every step of the college admissions journey. From initial exploration to final 
+            decisions, we provide personalized guidance powered by artificial intelligence.
+          </Typography>
+          
+          <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'primary.main' }}>
+            What Counseled Does:
+          </Typography>
+          <Box component="ul" sx={{ pl: 3 }}>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>Student Profiling:</strong> Build comprehensive profiles including academic achievements, 
+              interests, and goals
+            </Typography>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>College Discovery:</strong> Find colleges that match your preferences, budget, and academic profile
+            </Typography>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>Budget Planning:</strong> Understand costs and explore financial aid options
+            </Typography>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>AI-Powered Recommendations:</strong> Get personalized college suggestions based on your unique profile
+            </Typography>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>Interactive Maps:</strong> Visualize college locations and plan campus visits
+            </Typography>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>Timeline Planning:</strong> Stay organized with personalized application timelines
+            </Typography>
+            <Typography component="li" variant="body1" sx={{ mb: 1 }}>
+              <strong>Family Collaboration:</strong> Share progress and collaborate with family members and counselors
+            </Typography>
+          </Box>
+          
+          <Typography variant="body1" paragraph sx={{ mt: 3 }}>
+            Our mission is to make college planning accessible, organized, and stress-free for every family. 
+            Whether you're just starting to explore options or finalizing your college list, Counseled 
+            provides the tools and insights you need to make informed decisions about your future.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 3 }}>
+          <Button
+            onClick={() => setShowAbout(false)}
+            variant="contained"
+            color="primary"
+            size="large"
+          >
+            Get Started
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
