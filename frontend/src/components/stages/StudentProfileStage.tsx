@@ -59,7 +59,7 @@ export const StudentProfileStage: React.FC = () => {
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }}>
+    <Paper data-testid="student-profile-stage" elevation={0} sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom>
         Tell us about yourself
       </Typography>

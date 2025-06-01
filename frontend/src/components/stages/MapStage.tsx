@@ -23,11 +23,13 @@ import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
 import { MapDebugControls } from '../map/MapDebugControls';
-import { StageContainer, StageHeader } from './StageContainer';
+import { StageHeader } from './StageContainer';
 
 const mapContainerStyle = {
   width: '100%',
   height: '100%',
+  minHeight: '400px', // Ensure minimum height for Google Maps
+  minWidth: '300px',  // Ensure minimum width for Google Maps
 };
 
 const defaultCenter = {
@@ -385,14 +387,29 @@ export const MapStage = (): JSX.Element => {
 
   if (!isLoaded) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '24px' }}>
         <CircularProgress />
-      </Box>
+      </div>
     );
   }
 
   return (
-    <StageContainer ref={stageRef}>
+    <div 
+      ref={stageRef} 
+      data-testid="map-stage"
+      style={{ 
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        maxWidth: 'none',
+        minWidth: 0,
+        height: 'calc(100vh - 64px)',
+        minHeight: 'calc(100vh - 64px)',
+        padding: '8px',
+        overflow: 'hidden',
+        backgroundColor: '#fff'
+      }}>
       <StageHeader>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h5">
@@ -471,72 +488,85 @@ export const MapStage = (): JSX.Element => {
         </Box>
       ) : (
         <Box sx={{ 
-          width: '100%', 
           display: 'flex', 
           gap: 2,
-          height: 'calc(100vh - 300px)', // Use more available height
-          minHeight: '600px' // Ensure minimum height
+          flex: 1,
+          minWidth: 0,
+          maxWidth: '100%',
+          height: '100%', // Explicit height for Google Maps
+          minHeight: 'calc(100vh - 200px)', // Much larger minimum height
+          overflow: 'hidden'
         }}>
           {/* Map View */}
           <Box sx={{ 
             flex: 1, 
             minWidth: 0,
-            height: '100%'
+            maxWidth: '100%',
+            height: '100%', // Explicit height for Google Maps container
+            minHeight: 'calc(100vh - 200px)', // Much larger minimum height
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            <Box sx={{ width: '100%', height: '100%' }}>
-              <GoogleMap
-                mapContainerStyle={mapContainerStyle}
-                center={defaultCenter}
-                zoom={4}
-                options={{
-                  streetViewControl: false,
-                  mapTypeControl: false,
-                  fullscreenControl: true,
-                }}
-                onLoad={onMapLoad}
-              >
-                {locations.map((location) => (
-                  <MarkerF
-                    key={location.id}
-                    position={{
-                      lat: location.latitude,
-                      lng: location.longitude,
-                    }}
-                    onClick={() => {
-                      setSelectedLocation(location);
-                      centerMapOnLocation(location);
-                    }}
-                    icon={{
-                      url: location.type === 'college' 
-                        ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' 
-                        : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
-                    }}
+            <GoogleMap
+              mapContainerStyle={mapContainerStyle}
+              center={defaultCenter}
+              zoom={4}
+              options={{
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: true,
+              }}
+              onLoad={onMapLoad}
+            >
+              {locations.map((location) => (
+                <MarkerF
+                  key={location.id}
+                  position={{
+                    lat: location.latitude,
+                    lng: location.longitude,
+                  }}
+                  onClick={() => {
+                    setSelectedLocation(location);
+                    centerMapOnLocation(location);
+                  }}
+                  icon={{
+                    url: location.type === 'college' 
+                      ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' 
+                      : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+                  }}
+                />
+              ))}
+              
+              {selectedLocation && (
+                <InfoWindowF
+                  position={{
+                    lat: selectedLocation.latitude,
+                    lng: selectedLocation.longitude,
+                  }}
+                  onCloseClick={() => setSelectedLocation(null)}
+                >
+                  <MapLocationInfoWindow
+                    location={selectedLocation}
+                    onDelete={handleDeleteLocation}
+                    onViewChat={handleViewChat}
+                    isLoading={isLoading}
+                    chats={chats}
                   />
-                ))}
-                
-                {selectedLocation && (
-                  <InfoWindowF
-                    position={{
-                      lat: selectedLocation.latitude,
-                      lng: selectedLocation.longitude,
-                    }}
-                    onCloseClick={() => setSelectedLocation(null)}
-                  >
-                    <MapLocationInfoWindow
-                      location={selectedLocation}
-                      onDelete={handleDeleteLocation}
-                      onViewChat={handleViewChat}
-                      isLoading={isLoading}
-                      chats={chats}
-                    />
-                  </InfoWindowF>
-                )}
-              </GoogleMap>
-            </Box>
+                </InfoWindowF>
+              )}
+            </GoogleMap>
           </Box>
           
           {/* Location List */}
-          <Box sx={{ width: 300, flexShrink: 0 }}>
+          <Box sx={{ 
+            width: { xs: '100%', md: '300px' },
+            maxWidth: { xs: '100%', md: '300px' },
+            flexShrink: 0,
+            display: { xs: 'none', md: 'block' },
+            overflow: 'auto',
+            height: '100%',
+            minWidth: 0
+          }}>
             <MapLocationList
               locations={locations}
               selectedLocation={selectedLocation}
@@ -555,6 +585,6 @@ export const MapStage = (): JSX.Element => {
         onClose={() => setIsTourPlanningOpen(false)}
         locations={locations}
       />
-    </StageContainer>
+    </div>
   );
 };

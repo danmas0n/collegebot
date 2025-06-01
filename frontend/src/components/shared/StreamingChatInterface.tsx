@@ -676,9 +676,24 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
 
       {/* Chat Mode Layout */}
       {mode === 'chat' && (
-        <Box sx={{ height: '100%', display: 'flex', gap: 2 }}>
+        <Box sx={{ 
+          height: '100%', 
+          display: 'flex', 
+          gap: 2, 
+          overflow: 'hidden',
+          maxWidth: '100%',
+          minWidth: 0
+        }}>
           {/* Chat List */}
-          <Box sx={{ width: 300, flexShrink: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ 
+            width: { xs: '100%', md: '300px' }, 
+            maxWidth: { xs: '100%', md: '300px' },
+            flexShrink: 0, 
+            height: '100%', 
+            display: { xs: 'none', md: 'flex' }, 
+            flexDirection: 'column',
+            minWidth: 0
+          }}>
             <Box sx={{ p: 2, height: '100%', overflowY: 'auto', bgcolor: 'background.paper', borderRadius: 1 }}>
               <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6">Chats</Typography>
@@ -722,7 +737,15 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
           </Box>
 
           {/* Chat Messages */}
-          <Box sx={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ 
+            flex: 1, 
+            minWidth: 0, 
+            maxWidth: '100%',
+            height: '100%', 
+            display: 'flex', 
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
             {/* Chat Title */}
             {currentChat && messages.length > 0 && (
               <Box sx={{ mb: 2 }}>

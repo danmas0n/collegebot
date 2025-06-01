@@ -28,6 +28,30 @@ const theme = createTheme({
     },
   },
   components: {
+    MuiContainer: {
+      styleOverrides: {
+        root: {
+          maxWidth: 'none !important',
+          width: '100% !important',
+        },
+        maxWidthXs: {
+          maxWidth: 'none !important',
+        },
+        maxWidthSm: {
+          maxWidth: 'none !important',
+        },
+        maxWidthMd: {
+          maxWidth: 'none !important',
+        },
+        maxWidthLg: {
+          maxWidth: 'none !important',
+        },
+        maxWidthXl: {
+          maxWidth: 'none !important',
+        },
+      },
+    },
+
     MuiPaper: {
       defaultProps: {
         elevation: 0,

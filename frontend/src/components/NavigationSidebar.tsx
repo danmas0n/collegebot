@@ -86,8 +86,13 @@ interface NavigationSidebarProps {}
 export const NavigationSidebar: React.FC<NavigationSidebarProps> = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [isCollapsed, setIsCollapsed] = useState(isMobile);
+  const { isCollapsed, setIsCollapsed } = useSidebar();
   const [lastInteraction, setLastInteraction] = useState(Date.now());
+  
+  // Update sidebar state when mobile state changes
+  React.useEffect(() => {
+    setIsCollapsed(isMobile);
+  }, [isMobile, setIsCollapsed]);
   
   // Auto-collapse after 10 seconds when expanded
   useEffect(() => {

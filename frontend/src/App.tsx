@@ -62,6 +62,20 @@ const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
 const WizardContent: React.FC = () => {
   const { currentStage, currentStudent } = useWizard();
   const { currentUser, isWhitelisted } = useAuth();
+  const { isCollapsed } = useSidebar();
+  
+  // Add/remove CSS class based on sidebar state
+  React.useEffect(() => {
+    if (isCollapsed) {
+      document.body.classList.add('sidebar-collapsed');
+    } else {
+      document.body.classList.remove('sidebar-collapsed');
+    }
+    
+    return () => {
+      document.body.classList.remove('sidebar-collapsed');
+    };
+  }, [isCollapsed]);
 
   if (!currentUser || !isWhitelisted) {
     return <Login />;
@@ -100,24 +114,23 @@ const WizardContent: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%' }}>
       <NavigationSidebar />
-      <Box 
-        component="main" 
-        sx={{ 
+      <div 
+        style={{ 
           flexGrow: 1, 
           width: '100%',
-          maxWidth: 'none !important', // Force no max-width constraint
+          maxWidth: 'none',
           minWidth: 0,
           flex: '1 1 auto',
-          p: 3,
+          padding: 0,
           height: '100%',
           overflow: 'auto'
         }}
       >
         {renderStage()}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

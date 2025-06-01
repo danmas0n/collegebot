@@ -134,7 +134,7 @@ export const CollegeInterestsStage: React.FC = () => {
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }}>
+    <Paper data-testid="college-interests-stage" elevation={0} sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom>
         College & Academic Interests
       </Typography>

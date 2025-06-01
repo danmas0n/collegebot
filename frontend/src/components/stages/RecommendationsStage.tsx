@@ -141,7 +141,7 @@ export const RecommendationsStage: React.FC = () => {
   };
 
   return (
-    <StageContainer sx={{ position: 'relative' }}>
+    <StageContainer data-testid="recommendations-stage" sx={{ position: 'relative' }}>
       <StageHeader>
         <Typography variant="h5" gutterBottom>
           AI Recommendations
@@ -177,9 +177,21 @@ export const RecommendationsStage: React.FC = () => {
       </StageHeader>
 
       {/* Tab Panel Content */}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+      <Box sx={{ 
+        flex: 1, 
+        minHeight: 0, 
+        maxWidth: '100%',
+        minWidth: 0,
+        overflow: 'hidden', 
+        position: 'relative' 
+      }}>
         {/* Chat Tab */}
-        <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: '100%' }}>
+        <Box role="tabpanel" hidden={activeTab !== 0} sx={{ 
+          height: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          overflow: 'hidden'
+        }}>
           {activeTab === 0 && (
             <StreamingChatInterface
               mode="chat"
@@ -199,14 +211,25 @@ export const RecommendationsStage: React.FC = () => {
         </Box>
 
         {/* Tips & Advice Tab */}
-        <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: '100%', overflowY: 'auto' }}>
+        <Box role="tabpanel" hidden={activeTab !== 1} sx={{ 
+          height: '100%', 
+          maxWidth: '100%',
+          minWidth: 0,
+          overflowY: 'auto' 
+        }}>
           {activeTab === 1 && (
             <TipsAdvicePanel />
           )}
         </Box>
 
         {/* Example Questions Tab */}
-        <Box role="tabpanel" hidden={activeTab !== 2} sx={{ height: '100%', overflowY: 'auto', p: 3 }}>
+        <Box role="tabpanel" hidden={activeTab !== 2} sx={{ 
+          height: '100%', 
+          maxWidth: '100%',
+          minWidth: 0,
+          overflowY: 'auto', 
+          p: 3 
+        }}>
           {activeTab === 2 && (
             <Box>
               <Typography variant="h6" gutterBottom>

@@ -42,7 +42,7 @@ export const BudgetStage: React.FC = () => {
   };
 
   return (
-    <StageContainer>
+    <StageContainer data-testid="budget-stage">
       <StageHeader>
         <Typography variant="h5" gutterBottom>
           Budget Planning
@@ -60,8 +60,14 @@ export const BudgetStage: React.FC = () => {
           How much can you afford to spend per year on college?
         </Typography>
         
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', md: 'row' }, 
+          gap: 3,
+          maxWidth: '100%',
+          minWidth: 0
+        }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <TextField
               fullWidth
               label="Yearly Budget"
@@ -73,28 +79,26 @@ export const BudgetStage: React.FC = () => {
                 inputProps: { min: 0, step: 1000 }
               }}
             />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Box sx={{ px: 2 }}>
-              <Slider
-                value={data.budgetInfo.yearlyBudget || 0}
-                onChange={(_, value) => handleBudgetUpdate('yearlyBudget', value)}
-                min={0}
-                max={100000}
-                step={1000}
-                marks={[
-                  { value: 0, label: '$0' },
-                  { value: 25000, label: '$25k' },
-                  { value: 50000, label: '$50k' },
-                  { value: 75000, label: '$75k' },
-                  { value: 100000, label: '$100k' }
-                ]}
-                valueLabelDisplay="auto"
-                valueLabelFormat={formatCurrency}
-              />
-            </Box>
-          </Grid>
-        </Grid>
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0, px: 2 }}>
+            <Slider
+              value={data.budgetInfo.yearlyBudget || 0}
+              onChange={(_, value) => handleBudgetUpdate('yearlyBudget', value)}
+              min={0}
+              max={100000}
+              step={1000}
+              marks={[
+                { value: 0, label: '$0' },
+                { value: 25000, label: '$25k' },
+                { value: 50000, label: '$50k' },
+                { value: 75000, label: '$75k' },
+                { value: 100000, label: '$100k' }
+              ]}
+              valueLabelDisplay="auto"
+              valueLabelFormat={formatCurrency}
+            />
+          </Box>
+        </Box>
       </Box>
 
       <Box>

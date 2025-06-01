@@ -19,6 +19,7 @@ import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
 import PinSelector from '../calendar/PinSelector';
 import ResearchStatusPanel from '../calendar/ResearchStatusPanel';
 import { useCalendar } from '../../contexts/CalendarContext';
+import { StageContainer, StageHeader } from './StageContainer';
 
 interface PlanStageProps {
   studentId?: string;
@@ -69,15 +70,22 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
   };
   
   return (
-    <Box sx={{ width: '100%' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+    <StageContainer data-testid="plan-stage">
+      <StageHeader>
         <Typography variant="h5">
           Plan
         </Typography>
-      </Box>
+      </StageHeader>
       
       {effectiveStudentId ? (
-        <Box sx={{ width: '100%' }}>
+        <Box sx={{ 
+          width: '100%', 
+          maxWidth: '100%',
+          minWidth: 0,
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
             <Tabs 
               value={activeTab} 
@@ -92,7 +100,7 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
           </Box>
           
           {/* Research Tab */}
-          <Box role="tabpanel" hidden={activeTab !== 0}>
+          <Box role="tabpanel" hidden={activeTab !== 0} sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
             {activeTab === 0 && (
               <Box>
                 <ResearchStatusPanel 
@@ -107,14 +115,14 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
           </Box>
           
           {/* Plans Overview Tab */}
-          <Box role="tabpanel" hidden={activeTab !== 1}>
+          <Box role="tabpanel" hidden={activeTab !== 1} sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
             {activeTab === 1 && (
               <PlanOverview onPlanSelect={handlePlanSelect} />
             )}
           </Box>
           
           {/* Plan Details Tab */}
-          <Box role="tabpanel" hidden={activeTab !== 2}>
+          <Box role="tabpanel" hidden={activeTab !== 2} sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
             {activeTab === 2 && selectedPlan && (
               <Paper sx={{ p: 3 }}>
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -179,7 +187,7 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
           </Box>
           
           {/* Tips & Advice Tab */}
-          <Box role="tabpanel" hidden={activeTab !== 3}>
+          <Box role="tabpanel" hidden={activeTab !== 3} sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
             {activeTab === 3 && (
               <TipsAdvicePanel />
             )}
@@ -199,6 +207,6 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
           onClose={() => setShowAIPlanBuilder(false)}
         />
       )}
-    </Box>
+    </StageContainer>
   );
 };

@@ -119,7 +119,7 @@ export const DataCollectionStage: React.FC = () => {
   };
 
   return (
-    <Paper elevation={0} sx={{ p: 3 }}>
+    <Paper data-testid="data-collection-stage" elevation={0} sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom>
         Collecting Data
       </Typography>

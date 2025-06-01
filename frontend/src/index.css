@@ -103,15 +103,212 @@
   box-sizing: border-box;
 }
 
-/* Force full width debugging */
-.MuiPaper-root,
+/* Force full width for Material-UI containers and main content */
+.MuiContainer-root,
+.MuiBox-root[component="main"],
+main {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* Ensure stage containers take full width */
 .MuiBox-root {
+  max-width: 100% !important;
+}
+
+/* Override any Material-UI container constraints */
+.css-1x57qb5,
+.css-1oqqzyl-MuiContainer-root,
+.MuiContainer-maxWidthLg,
+.MuiContainer-maxWidthMd,
+.MuiContainer-maxWidthSm,
+.MuiContainer-maxWidthXl,
+.MuiContainer-maxWidthXs {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* Targeted fix for Google Maps width constraint */
+[data-testid="map-stage"] {
+  width: 100% !important;
   max-width: none !important;
 }
 
-/* Specific override for stage containers */
-[class*="StageContainer"] {
+[data-testid="map-stage"] > * {
   width: 100% !important;
   max-width: none !important;
-  flex: 1 1 auto !important;
+}
+
+/* Force Google Maps container specifically */
+.gm-style {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* WORKING SOLUTION: Use viewport-based width that adapts to sidebar */
+[data-testid="map-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="map-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="map-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* RECOMMENDATIONS STAGE: Use viewport-based width that adapts to sidebar */
+[data-testid="recommendations-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="recommendations-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="recommendations-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* PLAN STAGE: Use viewport-based width that adapts to sidebar */
+[data-testid="plan-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="plan-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="plan-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* BUDGET STAGE: Use viewport-based width that adapts to sidebar */
+[data-testid="budget-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="budget-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="budget-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* STUDENT PROFILE STAGE: Use viewport-based width that adapts to sidebar */
+[data-testid="student-profile-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="student-profile-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="student-profile-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* COLLEGE INTERESTS STAGE: Use viewport-based width that adapts to sidebar */
+[data-testid="college-interests-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="college-interests-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="college-interests-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* DATA COLLECTION STAGE: Use viewport-based width that adapts to sidebar */
+[data-testid="data-collection-stage"] {
+  position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* Default to expanded sidebar width */
+  width: calc(100vw - 280px) !important;
+  min-width: calc(100vw - 280px) !important;
+  max-width: calc(100vw - 280px) !important;
+}
+
+/* When sidebar is collapsed, use collapsed width */
+.sidebar-collapsed [data-testid="data-collection-stage"] {
+  width: calc(100vw - 64px) !important;
+  min-width: calc(100vw - 64px) !important;
+  max-width: calc(100vw - 64px) !important;
+}
+
+/* Ensure all child elements also take full width */
+[data-testid="data-collection-stage"] > * {
+  max-width: none !important;
+  width: 100% !important;
 }
