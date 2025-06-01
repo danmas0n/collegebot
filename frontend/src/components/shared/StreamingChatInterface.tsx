@@ -767,29 +767,8 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
               )}
             </Box>
 
-            {showInput && (
-              <Box sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <TextField
-                    fullWidth
-                    label="Ask a question"
-                    multiline
-                    rows={2}
-                    value={currentMessage}
-                    onChange={(e) => setCurrentMessage(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={() => handleSendMessage(currentMessage)}
-                    disabled={!currentMessage.trim() || isLoading}
-                    sx={{ minWidth: '100px' }}
-                  >
-                    {isLoading ? <CircularProgress size={24} /> : 'Send'}
-                  </Button>
-                </Box>
-              </Box>
-            )}
+            {/* Add padding at bottom to prevent content from being hidden behind floating input */}
+            <Box sx={{ height: '120px' }} />
           </Box>
         </Box>
       )}

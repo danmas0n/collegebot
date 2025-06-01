@@ -29,6 +29,12 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Fixed UI Layout and Component Issues**:
+  - **Map Debug Panel Z-Index Fix**: Resolved issue where Map debug panel buttons were hidden behind the map by adding `zIndex: 1000` to ensure proper layering
+  - **Responsive Floating Chat Input**: Implemented fully responsive floating chat input in RecommendationsStage that adjusts position based on sidebar state (`left: isCollapsed ? 'calc(64px + 320px)' : 'calc(280px + 320px)'`) with smooth CSS transitions
+  - **Consistent Stage Padding**: Fixed MapStage padding inconsistency by using StageContainer with height overrides to maintain both consistent padding (`theme.spacing(3)`) and full vertical space utilization (`height: 'calc(100vh - 64px)'`)
+  - **Floating Input Features**: Added tab-specific visibility, proper width alignment with StreamingChatInterface, Enter-to-send functionality, and auto-chat creation
+  - **Sidebar Responsiveness**: Enhanced sidebar collapse/expand behavior with proper component repositioning and smooth transitions
 - **Completed Navigation Redesign for Space Efficiency**:
   - **NavigationSidebar Implementation**: Created comprehensive collapsible sidebar with auto-collapse after 10 seconds and timer reset on interaction
   - **Student Name Personalization**: Added student name display in sidebar header

@@ -8,6 +8,9 @@ import {
   IconButton,
   Tabs,
   Tab,
+  TextField,
+  CircularProgress,
+  Paper,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -16,6 +19,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useWizard } from '../../contexts/WizardContext';
 import { useChat } from '../../contexts/ChatContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useSidebar } from '../../App';
 import { StageContainer, StageHeader } from './StageContainer';
 import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
 import { StreamingChatInterface } from '../shared/StreamingChatInterface';
@@ -29,6 +33,7 @@ interface Chat extends AiChat {
 export const RecommendationsStage: React.FC = () => {
   const { currentStudent, data } = useWizard();
   const { chats, currentChat, loadChats, setCurrentChat } = useChat();
+  const { isCollapsed } = useSidebar();
   const [error, setError] = useState<string | null>(null);
   const hasLoadedChats = useRef(false);
   const [activeTab, setActiveTab] = useState<number>(0);
@@ -124,6 +129,11 @@ export const RecommendationsStage: React.FC = () => {
   const { showNotification } = useNotification();
   const [showExamples, setShowExamples] = useState(true);
   
+  // Floating chat input state
+  const [floatingMessage, setFloatingMessage] = useState('');
+  const [isFloatingLoading, setIsFloatingLoading] = useState(false);
+  const streamingChatRef = useRef<any>(null);
+  
   // Auto-collapse examples after 5 seconds
   useEffect(() => {
     if (showExamples) {
@@ -135,6 +145,40 @@ export const RecommendationsStage: React.FC = () => {
     }
   }, [showExamples]);
 
+  // Handle floating chat input
+  const handleFloatingSendMessage = async () => {
+    if (!floatingMessage.trim() || isFloatingLoading) return;
+    
+    // Create a new chat if none exists
+    let chatToUse = currentChat;
+    if (!chatToUse) {
+      chatToUse = createNewChat();
+      if (!chatToUse) return;
+    }
+    
+    // Switch to chat tab if not already there
+    if (activeTab !== 0) {
+      setActiveTab(0);
+    }
+    
+    // Use the StreamingChatInterface's send message functionality
+    // We'll trigger this by calling the interface directly
+    setIsFloatingLoading(true);
+    
+    try {
+      // Call the StreamingChatInterface's handleSendMessage through a ref
+      if (streamingChatRef.current && streamingChatRef.current.handleSendMessage) {
+        await streamingChatRef.current.handleSendMessage(floatingMessage);
+      }
+      setFloatingMessage('');
+    } catch (error) {
+      console.error('Error sending floating message:', error);
+      setError('Failed to send message');
+    } finally {
+      setIsFloatingLoading(false);
+    }
+  };
+  
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -190,23 +234,84 @@ export const RecommendationsStage: React.FC = () => {
           height: '100%',
           maxWidth: '100%',
           minWidth: 0,
-          overflow: 'hidden'
+          overflow: 'hidden',
+          position: 'relative'
         }}>
           {activeTab === 0 && (
-            <StreamingChatInterface
-              mode="chat"
-              chats={chats}
-              currentChat={currentChat}
-              onChatChange={handleChatChange}
-              onNewChat={handleNewChat}
-              onDeleteChat={handleDeleteChat}
-              onChatUpdate={handleChatUpdate}
-              showInput={true}
-              wizardData={data}
-              operationType="recommendations"
-              llmOperationType="chat"
-              operationDescription="Chat conversation"
-            />
+            <>
+              <Box sx={{ 
+                // Add padding to match floating input positioning
+                pl: 0, // No left padding since the chat list provides the spacing
+                pr: 2, // Right padding to match floating input
+                pb: 10 // Bottom padding to prevent content from being hidden behind floating input
+              }}>
+                <StreamingChatInterface
+                  mode="chat"
+                  chats={chats}
+                  currentChat={currentChat}
+                  onChatChange={handleChatChange}
+                  onNewChat={handleNewChat}
+                  onDeleteChat={handleDeleteChat}
+                  onChatUpdate={handleChatUpdate}
+                  showInput={false}
+                  wizardData={data}
+                  operationType="recommendations"
+                  llmOperationType="chat"
+                  operationDescription="Chat conversation"
+                />
+              </Box>
+              
+              {/* Floating Chat Input - Pinned to bottom of viewport, above chat interface */}
+              <Paper sx={{
+                position: 'fixed',
+                bottom: 20,
+                left: isCollapsed ? 'calc(64px + 320px)' : 'calc(280px + 320px)', // Responsive sidebar width + chat list width
+                right: 20,
+                p: 2,
+                zIndex: 1000,
+                boxShadow: 3,
+                bgcolor: 'background.paper',
+                border: 1,
+                borderColor: 'divider',
+                transition: 'left 0.3s ease' // Smooth transition when sidebar collapses/expands
+              }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <TextField
+                    fullWidth
+                    placeholder="Ask a question about college recommendations..."
+                    value={floatingMessage}
+                    onChange={(e) => setFloatingMessage(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleFloatingSendMessage();
+                      }
+                    }}
+                    disabled={isFloatingLoading}
+                    size="small"
+                    multiline
+                    maxRows={3}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleFloatingSendMessage}
+                    disabled={!floatingMessage.trim() || isFloatingLoading}
+                    sx={{ 
+                      minWidth: '80px',
+                      height: '40px',
+                      borderRadius: 2
+                    }}
+                  >
+                    {isFloatingLoading ? <CircularProgress size={20} /> : 'Send'}
+                  </Button>
+                </Box>
+              </Paper>
+            </>
           )}
         </Box>
 

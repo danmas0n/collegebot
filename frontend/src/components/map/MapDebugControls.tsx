@@ -91,10 +91,48 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
   }, [countdown, streamingComplete, onProcessingComplete]);
 
   return (
-    <Paper sx={{ p: 2, mb: 2 }}>
+    <Paper sx={{ 
+      p: 2, 
+      mb: 2,
+      position: 'relative',
+      zIndex: 1000 // Ensure it's above the map
+    }}>
       <Typography variant="h6" gutterBottom>
-        Processing...
+        Chat Processing
       </Typography>
+      
+      {/* Control buttons */}
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 2, 
+        flexWrap: 'wrap', 
+        mb: 2
+      }}>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleProcessAllChats}
+          disabled={isProcessing || !currentStudent}
+        >
+          Process All Chats
+        </Button>
+        <Button
+          variant="outlined"
+          color="secondary"
+          onClick={handleMarkChatsUnprocessed}
+          disabled={isProcessing || !currentStudent}
+        >
+          Mark All Chats Unprocessed
+        </Button>
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={handleClearAllLocations}
+          disabled={isLoading || isProcessing || !currentStudent || locationsLength === 0}
+        >
+          Clear All Locations
+        </Button>
+      </Box>
       
       {/* Auto-processing StreamingChatInterface */}
       {isAutoProcessing && (
@@ -124,33 +162,6 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
           )}
         </Box>
       )}
-
-      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleProcessAllChats}
-          disabled={isProcessing || !currentStudent || isAutoProcessing}
-        >
-          Process All Chats
-        </Button>
-        <Button
-          variant="outlined"
-          color="secondary"
-          onClick={handleMarkChatsUnprocessed}
-          disabled={isProcessing || !currentStudent || isAutoProcessing}
-        >
-          Mark All Chats Unprocessed
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={handleClearAllLocations}
-          disabled={isLoading || isProcessing || !currentStudent || locationsLength === 0 || isAutoProcessing}
-        >
-          Clear All Locations
-        </Button>
-      </Box>
       
       {/* Processing status and logs (legacy - only show when not using StreamingChatInterface) */}
       {isProcessing && !isAutoProcessing && (

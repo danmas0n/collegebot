@@ -23,7 +23,7 @@ import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
 import { MapDebugControls } from '../map/MapDebugControls';
-import { StageHeader } from './StageContainer';
+import { StageContainer, StageHeader } from './StageContainer';
 
 const mapContainerStyle = {
   width: '100%',
@@ -394,22 +394,15 @@ export const MapStage = (): JSX.Element => {
   }
 
   return (
-    <div 
+    <StageContainer 
       ref={stageRef} 
       data-testid="map-stage"
-      style={{ 
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        maxWidth: 'none',
-        minWidth: 0,
-        height: 'calc(100vh - 64px)',
-        minHeight: 'calc(100vh - 64px)',
-        padding: '8px',
-        overflow: 'hidden',
-        backgroundColor: '#fff'
-      }}>
+      sx={{
+        height: 'calc(100vh - 64px)', // Override StageContainer height
+        minHeight: 'calc(100vh - 64px)', // Override StageContainer minHeight
+        maxHeight: 'calc(100vh - 64px)' // Ensure it doesn't exceed viewport
+      }}
+    >
       <StageHeader>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h5">
@@ -585,6 +578,6 @@ export const MapStage = (): JSX.Element => {
         onClose={() => setIsTourPlanningOpen(false)}
         locations={locations}
       />
-    </div>
+    </StageContainer>
   );
 };
