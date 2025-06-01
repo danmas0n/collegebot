@@ -11,5 +11,8 @@ export const toolServerMap: Record<string, string> = {
   geocode: 'student-data',
   create_map_location: 'student-data',
   get_map_locations: 'student-data',
-  clear_map_locations: 'student-data'
+  clear_map_locations: 'student-data',
+  list_map_location_names: 'student-data',
+  get_map_location_details: 'student-data',
+  update_map_location: 'student-data',
 };

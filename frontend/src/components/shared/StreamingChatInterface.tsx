@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   Box,
   Typography,
@@ -60,7 +60,11 @@ interface StreamingChatInterfaceProps {
   llmOperationType?: 'research' | 'map-processing' | 'chat' | 'recommendations';
 }
 
-export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
+export interface StreamingChatInterfaceRef {
+  handleSendMessage: (message: string) => Promise<void>;
+}
+
+export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, StreamingChatInterfaceProps>(({
   mode,
   chats = [],
   currentChat,
@@ -81,7 +85,7 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
   operationType = 'recommendations',
   operationDescription = 'Chat conversation',
   llmOperationType = 'chat'
-}) => {
+}, ref) => {
   const { currentStudent, startLLMOperation, endLLMOperation } = useWizard();
   
   // State
@@ -129,6 +133,11 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
   
   // Ref to prevent infinite chat update loops
   const isUpdatingFromParent = useRef(false);
+
+  // Expose handleSendMessage through ref
+  useImperativeHandle(ref, () => ({
+    handleSendMessage
+  }));
 
   // Auto-start processing mode
   useEffect(() => {
@@ -793,4 +802,4 @@ export const StreamingChatInterface: React.FC<StreamingChatInterfaceProps> = ({
       )}
     </Box>
   );
-};
+});

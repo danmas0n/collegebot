@@ -29,6 +29,13 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Enhanced Recommendations to Map Integration**:
+  - **New MCP Tools**: Added `list_map_location_names`, `get_map_location_details`, `update_map_location`, and `mark_chat_processed` to student-data-server
+  - **Updated Recommendations Workflow**: Modified recommendations_instructions.js to create map pins during recommendations instead of waiting for Map stage
+  - **Smart Pin Management**: Recommendations agent now checks existing pins, updates them with new chat links, or creates new pins as needed
+  - **Automatic Chat Processing**: Chats are marked as processed immediately after pin creation, eliminating delays when switching to Map stage
+  - **Tool Configuration**: Updated mcp-tools.ts to expose new map management tools to recommendations agent
+  - **Improved UX**: Users no longer wait for processing when switching to Map stage - pins are ready instantly
 - **Fixed UI Layout and Component Issues**:
   - **Map Debug Panel Z-Index Fix**: Resolved issue where Map debug panel buttons were hidden behind the map by adding `zIndex: 1000` to ensure proper layering
   - **Responsive Floating Chat Input**: Implemented fully responsive floating chat input in RecommendationsStage that adjusts position based on sidebar state (`left: isCollapsed ? 'calc(64px + 320px)' : 'calc(280px + 320px)'`) with smooth CSS transitions

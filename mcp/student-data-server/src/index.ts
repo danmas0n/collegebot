@@ -198,27 +198,6 @@ class StudentDataServer {
                 required: ['studentId', 'chatId']
               }
             },
-            mark_chat_processed: {
-              description: 'Mark a chat as processed',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  studentId: {
-                    type: 'string',
-                    description: 'Student ID'
-                  },
-                  chatId: {
-                    type: 'string',
-                    description: 'Chat ID'
-                  },
-                  lastMessageTimestamp: {
-                    type: 'string',
-                    description: 'Timestamp of last processed message'
-                  }
-                },
-                required: ['studentId', 'chatId', 'lastMessageTimestamp']
-              }
-            },
             geocode: {
               description: 'Geocode an address to get latitude and longitude coordinates',
               inputSchema: {
@@ -297,6 +276,62 @@ class StudentDataServer {
                   }
                 },
                 required: ['studentId']
+              }
+            },
+            list_map_location_names: {
+              description: 'Get a lightweight list of existing map location names and types for a student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  }
+                },
+                required: ['studentId']
+              }
+            },
+            get_map_location_details: {
+              description: 'Get full details for a specific map location by name and type',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  name: {
+                    type: 'string',
+                    description: 'Location name'
+                  },
+                  type: {
+                    type: 'string',
+                    enum: ['college', 'scholarship'],
+                    description: 'Location type'
+                  }
+                },
+                required: ['studentId', 'name', 'type']
+              }
+            },
+            update_map_location: {
+              description: 'Update an existing map location with new data',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  locationId: {
+                    type: 'string',
+                    description: 'Location ID to update'
+                  },
+                  updates: {
+                    type: 'object',
+                    description: 'Partial updates to apply to the location'
+                  }
+                },
+                required: ['studentId', 'locationId', 'updates']
               }
             }
           }
@@ -541,36 +576,6 @@ class StudentDataServer {
           }
         }
 
-        case 'mark_chat_processed': {
-          const args = request.params.arguments;
-          if (!args?.studentId || !args?.chatId || !args?.lastMessageTimestamp) {
-            throw new McpError(ErrorCode.InvalidParams, 'Student ID, chat ID, and timestamp are required');
-          }
-
-          try {
-            const chatData = await this.readChats();
-            const chatIndex = chatData.chats.findIndex(c => c.id === args.chatId && c.studentId === args.studentId);
-            if (chatIndex === -1) {
-              throw new McpError(ErrorCode.InvalidParams, 'Chat not found');
-            }
-
-            // Update chat with processed state
-            chatData.chats[chatIndex] = {
-              ...chatData.chats[chatIndex],
-              processed: true,
-              processedAt: new Date().toISOString()
-            };
-
-            await this.writeChats(chatData);
-            return {
-              content: [{ type: 'text', text: 'Chat marked as processed' }],
-            };
-          } catch (error) {
-            console.error('Error marking chat as processed:', error);
-            throw new McpError(ErrorCode.InternalError, 'Failed to mark chat as processed');
-          }
-        }
-
         case 'geocode': {
           const args = request.params.arguments;
           if (!args?.address || !args?.name) {
@@ -704,6 +709,131 @@ class StudentDataServer {
           } catch (error) {
             console.error('Error getting map locations:', error);
             throw new McpError(ErrorCode.InternalError, 'Failed to get map locations');
+          }
+        }
+
+        case 'list_map_location_names': {
+          const args = request.params.arguments;
+          if (!args?.studentId) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID is required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const student = studentData.students.find(s => s.id === args.studentId);
+            if (!student) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            const locations = student.data.map?.locations || [];
+            const locationNames = locations.map(loc => ({
+              name: loc.name,
+              type: loc.type,
+              id: loc.id
+            }));
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(locationNames)
+              }]
+            };
+          } catch (error) {
+            console.error('Error listing map location names:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to list map location names');
+          }
+        }
+
+        case 'get_map_location_details': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.name || !args?.type) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID, name, and type are required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const student = studentData.students.find(s => s.id === args.studentId);
+            if (!student) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            const locations = student.data.map?.locations || [];
+            const location = locations.find(loc => 
+              loc.name === args.name && loc.type === args.type
+            );
+
+            if (!location) {
+              throw new McpError(ErrorCode.InvalidParams, 'Location not found');
+            }
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify(location)
+              }]
+            };
+          } catch (error) {
+            console.error('Error getting map location details:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to get map location details');
+          }
+        }
+
+        case 'update_map_location': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.locationId || !args?.updates) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID, location ID, and updates are required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const studentIndex = studentData.students.findIndex(s => s.id === args.studentId);
+            if (studentIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            // Initialize map data if it doesn't exist
+            if (!studentData.students[studentIndex].data.map) {
+              studentData.students[studentIndex].data.map = { locations: [] };
+            }
+
+            const locations = studentData.students[studentIndex].data.map!.locations;
+            const locationIndex = locations.findIndex(loc => loc.id === args.locationId);
+            
+            if (locationIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Location not found');
+            }
+
+            // Apply updates to the location
+            const updates = args.updates as Partial<MapLocation>;
+            const currentLocation = locations[locationIndex];
+            
+            // Handle sourceChats array updates specially
+            if (updates.sourceChats) {
+              const existingChats = currentLocation.sourceChats || [];
+              const newChats = updates.sourceChats;
+              // Merge and deduplicate chat IDs
+              const mergedChats = [...new Set([...existingChats, ...newChats])];
+              updates.sourceChats = mergedChats;
+            }
+
+            // Merge updates with existing location
+            locations[locationIndex] = {
+              ...currentLocation,
+              ...updates,
+              // Ensure metadata is properly merged
+              metadata: {
+                ...currentLocation.metadata,
+                ...(updates.metadata || {})
+              }
+            };
+
+            await this.writeStudents(studentData);
+            return {
+              content: [{ type: 'text', text: 'Location updated successfully' }],
+            };
+          } catch (error) {
+            console.error('Error updating map location:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to update map location');
           }
         }
 

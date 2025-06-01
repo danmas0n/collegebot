@@ -264,7 +264,10 @@ export const saveChat = async (chat: ChatDTO): Promise<void> => {
   await doc.set({
     ...firestoreChat,
     createdAt: exists ? (await doc.get()).data()?.createdAt : now,
-    updatedAt: now
+    updatedAt: now,
+    // Automatically mark all chats as processed
+    processed: true,
+    processedAt: now
   });
 };
 

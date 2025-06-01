@@ -22,7 +22,8 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { useSidebar } from '../../App';
 import { StageContainer, StageHeader } from './StageContainer';
 import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
-import { StreamingChatInterface } from '../shared/StreamingChatInterface';
+import { StreamingChatInterface, StreamingChatInterfaceRef } from '../shared/StreamingChatInterface';
+import { api } from '../../utils/api';
 
 import { AiChat } from '../../types/college';
 
@@ -58,7 +59,7 @@ export const RecommendationsStage: React.FC = () => {
     hasLoadedChats.current = false;
   }, [currentStudent?.id]);
 
-  const createNewChat = (): Chat | null => {
+  const createNewChat = async (): Promise<Chat | null> => {
     if (!currentStudent?.id) {
       return null;
     }
@@ -74,44 +75,58 @@ export const RecommendationsStage: React.FC = () => {
       processedAt: null
     };
     
-    setCurrentChat(newChat);
-    return newChat;
+    try {
+      // Immediately save the chat to the backend so it has a valid ID
+      await api.post('/api/chat/save-frontend-chat', {
+        studentId: currentStudent.id,
+        chat: newChat
+      });
+      
+      console.log('New chat saved to backend:', newChat.id);
+      
+      // Reload chats to show the new chat in the sidebar
+      await loadChats(currentStudent.id);
+      
+      setCurrentChat(newChat);
+      return newChat;
+    } catch (error) {
+      console.error('Error saving new chat:', error);
+      setError('Failed to create new chat');
+      return null;
+    }
   };
 
   const handleChatChange = (chat: Chat) => {
     setCurrentChat(chat);
   };
 
-  const handleNewChat = () => {
-    const newChat = createNewChat();
+  const handleNewChat = async () => {
+    const newChat = await createNewChat();
     return newChat;
   };
 
-  const handleChatUpdate = useCallback((updatedChat: Chat) => {
+  const handleChatUpdate = useCallback(async (updatedChat: Chat) => {
     // The ChatContext will handle updating the chats array
     setCurrentChat(updatedChat);
-  }, [setCurrentChat]);
+    
+    // Always reload chats to ensure the list is updated with title changes
+    // This ensures that title updates from streaming responses are reflected in the sidebar
+    if (currentStudent?.id) {
+      console.log('Chat updated, reloading chats list to reflect changes');
+      await loadChats(currentStudent.id);
+    }
+  }, [setCurrentChat, loadChats, currentStudent?.id]);
 
   const handleDeleteChat = useCallback(async (chatId: string) => {
     if (!currentStudent?.id) return;
     
     try {
-      // Use the ChatContext deleteChat method
-      // Note: We'll need to add this to ChatContext if it doesn't exist
-      // For now, we'll handle it locally and update the context
-      const response = await fetch(`/api/chat/chats/${chatId}`, {
+      // Use the api utility which handles authentication headers
+      // Note: We need to use a custom approach since api.delete doesn't support body
+      const response = await api.get(`/api/chat/chats/${chatId}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          studentId: currentStudent.id
-        })
+        body: JSON.stringify({ studentId: currentStudent.id })
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete chat');
-      }
 
       // Reload chats to update the context
       await loadChats(currentStudent.id);
@@ -132,7 +147,7 @@ export const RecommendationsStage: React.FC = () => {
   // Floating chat input state
   const [floatingMessage, setFloatingMessage] = useState('');
   const [isFloatingLoading, setIsFloatingLoading] = useState(false);
-  const streamingChatRef = useRef<any>(null);
+  const streamingChatRef = useRef<StreamingChatInterfaceRef>(null);
   
   // Auto-collapse examples after 5 seconds
   useEffect(() => {
@@ -152,7 +167,7 @@ export const RecommendationsStage: React.FC = () => {
     // Create a new chat if none exists
     let chatToUse = currentChat;
     if (!chatToUse) {
-      chatToUse = createNewChat();
+      chatToUse = await createNewChat();
       if (!chatToUse) return;
     }
     
@@ -246,6 +261,7 @@ export const RecommendationsStage: React.FC = () => {
                 pb: 10 // Bottom padding to prevent content from being hidden behind floating input
               }}>
                 <StreamingChatInterface
+                  ref={streamingChatRef}
                   mode="chat"
                   chats={chats}
                   currentChat={currentChat}

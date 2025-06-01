@@ -210,6 +210,43 @@ router.post('/mark-unprocessed', async (req: Request, res: Response) => {
   }
 });
 
+// Mark most recent chat as unprocessed
+router.post('/mark-recent-unprocessed', async (req: Request, res: Response) => {
+  try {
+    const { studentId } = req.body;
+    
+    // Get all chats for the student
+    const chats = await getChats(studentId);
+    
+    if (chats.length === 0) {
+      return res.status(404).json({ error: 'No chats found' });
+    }
+    
+    // Find the most recent chat (by updatedAt)
+    const mostRecentChat = chats.reduce((latest, current) => {
+      const latestDate = new Date(latest.updatedAt);
+      const currentDate = new Date(current.updatedAt);
+      return currentDate > latestDate ? current : latest;
+    });
+    
+    // Mark it as unprocessed
+    await saveChat({
+      ...mostRecentChat,
+      processed: false,
+      processedAt: null
+    });
+    
+    res.json({ 
+      success: true, 
+      chatId: mostRecentChat.id,
+      chatTitle: mostRecentChat.title
+    });
+  } catch (error) {
+    console.error('Error marking most recent chat as unprocessed:', error);
+    res.status(500).json({ error: 'Failed to mark most recent chat as unprocessed' });
+  }
+});
+
 // Process all chats for a student
 router.post('/process-all', async (req: Request, res: Response) => {
   // Set up SSE response

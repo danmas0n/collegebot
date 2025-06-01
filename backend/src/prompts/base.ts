@@ -111,7 +111,104 @@ const RECOMMENDATION_TOOLS: Tool[] = [
         required: true
       }
     ]
-  }
+  },
+  // Map tools for creating pins during recommendations
+  {
+    name: 'list_map_location_names',
+    description: 'Get a lightweight list of existing map location names and types for a student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'get_map_location_details',
+    description: 'Get full details for a specific map location by name and type',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'name',
+        type: 'string',
+        description: 'Location name',
+        required: true
+      },
+      {
+        name: 'type',
+        type: 'string',
+        description: 'Location type (college or scholarship)',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'geocode',
+    description: 'Geocode an address to get latitude and longitude coordinates',
+    parameters: [
+      {
+        name: 'address',
+        type: 'string',
+        description: 'The address to geocode',
+        required: true
+      },
+      {
+        name: 'name',
+        type: 'string',
+        description: 'Name of the location',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_map_location',
+    description: 'Add a location to the student map data',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'location',
+        type: 'object',
+        description: 'Location object with coordinates and metadata',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'update_map_location',
+    description: 'Update an existing map location with new data',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'locationId',
+        type: 'string',
+        description: 'Location ID to update',
+        required: true
+      },
+      {
+        name: 'updates',
+        type: 'object',
+        description: 'Partial updates to apply to the location',
+        required: true
+      }
+    ]
+  },
 ];
 
 // Tools for managing map locations
@@ -163,7 +260,67 @@ const MAP_TOOLS: Tool[] = [
         required: true
       }
     ]
-  }
+  },
+  {
+    name: 'list_map_location_names',
+    description: 'Get a lightweight list of existing map location names and types for a student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'get_map_location_details',
+    description: 'Get full details for a specific map location by name and type',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'name',
+        type: 'string',
+        description: 'Location name',
+        required: true
+      },
+      {
+        name: 'type',
+        type: 'string',
+        description: 'Location type (college or scholarship)',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'update_map_location',
+    description: 'Update an existing map location with new data',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'locationId',
+        type: 'string',
+        description: 'Location ID to update',
+        required: true
+      },
+      {
+        name: 'updates',
+        type: 'object',
+        description: 'Partial updates to apply to the location',
+        required: true
+      }
+    ]
+  },
 ];
 
 // Tools for plan building
@@ -335,7 +492,6 @@ export const generateToolInstructions = (mode: string): string => {
 
 3. Guidelines:
    • Balance world knowledge with tool verification
-   • Use full formal college names for get_cds_data (example: "Massachusetts Institute of Technology" not "MIT")
    • Be creative with unique recommendations
    • Focus on student-specific opportunities
    • Include reference links when available

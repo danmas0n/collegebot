@@ -23,6 +23,7 @@ interface MapDebugControlsProps {
   setShowProcessingLogs: (show: boolean) => void;
   handleProcessAllChats: () => Promise<void>;
   handleMarkChatsUnprocessed: () => Promise<void>;
+  handleMarkRecentChatUnprocessed: () => Promise<void>;
   handleClearAllLocations: () => Promise<void>;
   isLoading: boolean;
   currentStudent: any;
@@ -44,6 +45,7 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
   setShowProcessingLogs,
   handleProcessAllChats,
   handleMarkChatsUnprocessed,
+  handleMarkRecentChatUnprocessed,
   handleClearAllLocations,
   isLoading,
   currentStudent,
@@ -126,6 +128,14 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
         </Button>
         <Button
           variant="outlined"
+          color="info"
+          onClick={handleMarkRecentChatUnprocessed}
+          disabled={isProcessing || !currentStudent}
+        >
+          Mark Most Recent Chat Unprocessed
+        </Button>
+        <Button
+          variant="outlined"
           color="error"
           onClick={handleClearAllLocations}
           disabled={isLoading || isProcessing || !currentStudent || locationsLength === 0}
@@ -173,7 +183,32 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
             sx={{ my: 1 }}
           />
           <Collapse in={showProcessingLogs}>
-            <Paper variant="outlined" sx={{ p: 1, mt: 1, maxHeight: 400, overflow: 'auto' }}>
+            <Paper variant="outlined" sx={{ 
+              p: 1, 
+              mt: 1, 
+              maxHeight: 400, 
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <Box sx={{
+                flex: 1,
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                '&::-webkit-scrollbar': {
+                  width: '8px'
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: '#f1f1f1'
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: '#888',
+                  borderRadius: '4px'
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: '#555'
+                }
+              }}>
               {processingLogs.map((log, index) => {
                 // Parse JSON strings if needed
                 let parsedLog: any = log;
@@ -346,6 +381,7 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
                   );
                 }
               })}
+              </Box>
             </Paper>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
               <Button 

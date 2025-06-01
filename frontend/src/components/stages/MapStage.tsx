@@ -229,6 +229,32 @@ export const MapStage = (): JSX.Element => {
       setIsProcessing(false);
     }
   }, [currentStudent?.id, chats, loadChats]);
+
+  // Function to mark most recent chat as unprocessed
+  const handleMarkRecentChatUnprocessed = useCallback(async () => {
+    if (!currentStudent?.id) return;
+    
+    try {
+      setIsProcessing(true);
+      setProcessingStatus('Marking most recent chat as unprocessed...');
+      
+      const response = await api.post('/api/chat/mark-recent-unprocessed', {
+        studentId: currentStudent.id
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setProcessingStatus(`Most recent chat "${data.chatTitle}" marked as unprocessed`);
+        // Reload chats
+        await loadChats(currentStudent.id);
+      }
+    } catch (err) {
+      console.error('Error marking recent chat as unprocessed:', err);
+      setError('Failed to mark recent chat as unprocessed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [currentStudent?.id, loadChats]);
   
   // Function to clear all map locations
   const handleClearAllLocations = useCallback(async () => {
@@ -456,6 +482,7 @@ export const MapStage = (): JSX.Element => {
           setShowProcessingLogs={setShowProcessingLogs}
           handleProcessAllChats={handleProcessAllChats}
           handleMarkChatsUnprocessed={handleMarkChatsUnprocessed}
+          handleMarkRecentChatUnprocessed={handleMarkRecentChatUnprocessed}
           handleClearAllLocations={handleClearAllLocations}
           isLoading={isLoading}
           currentStudent={currentStudent}

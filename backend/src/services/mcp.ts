@@ -140,6 +140,83 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         return { content: [{ type: 'text', text: 'Map locations cleared successfully' }] };
       }
 
+      case 'list_map_location_names': {
+        if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for list_map_location_names');
+        }
+        const { studentId } = args;
+        if (!studentId) {
+          throw new Error('Student ID is required');
+        }
+        const locations = await getMapLocations(studentId, userId);
+        const locationNames = locations.map(loc => ({
+          name: loc.name,
+          type: loc.type,
+          id: loc.id
+        }));
+        return { content: [{ type: 'text', text: JSON.stringify(locationNames) }] };
+      }
+
+      case 'get_map_location_details': {
+        if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for get_map_location_details');
+        }
+        const { studentId, name, type } = args;
+        if (!studentId || !name || !type) {
+          throw new Error('Student ID, name, and type are required');
+        }
+        const locations = await getMapLocations(studentId, userId);
+        const location = locations.find(loc => loc.name === name && loc.type === type);
+        if (!location) {
+          throw new Error('Location not found');
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(location) }] };
+      }
+
+      case 'update_map_location': {
+        if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for update_map_location');
+        }
+        const { studentId, locationId, updates } = args;
+        if (!studentId || !locationId || !updates) {
+          throw new Error('Student ID, location ID, and updates are required');
+        }
+        
+        console.log('update_map_location: Looking for locationId:', locationId);
+        const locations = await getMapLocations(studentId, userId);
+        console.log('update_map_location: Available locations:', locations.map(loc => ({ id: loc.id, name: loc.name })));
+        
+        const location = locations.find(loc => loc.id === locationId);
+        if (!location) {
+          console.log('update_map_location: Location not found. Available IDs:', locations.map(loc => loc.id));
+          throw new Error(`Location not found. Available IDs: ${locations.map(loc => loc.id).join(', ')}`);
+        }
+        
+        console.log('update_map_location: Found location:', location.name);
+        
+        const updatedLocation = {
+          ...location,
+          ...updates,
+          sourceChats: updates.sourceChats ? 
+            [...new Set([...(location.sourceChats || []), ...updates.sourceChats])] :
+            location.sourceChats,
+          metadata: {
+            ...location.metadata,
+            ...(updates.metadata || {})
+          }
+        };
+        
+        console.log('update_map_location: Updating location with sourceChats:', updatedLocation.sourceChats);
+        
+        await deleteMapLocation(studentId, locationId, userId);
+        await addMapLocation(updatedLocation, userId);
+        
+        return { content: [{ type: 'text', text: 'Location updated successfully' }] };
+      }
+
       default:
         throw new Error(`Unknown student-data tool: ${toolName}`);
     }
