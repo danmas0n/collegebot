@@ -15,4 +15,12 @@ export const toolServerMap: Record<string, string> = {
   list_map_location_names: 'student-data',
   get_map_location_details: 'student-data',
   update_map_location: 'student-data',
+  
+  // Plan creation tools (handled through Firestore)
+  create_calendar_item: 'student-data',
+  create_calendar_items_batch: 'student-data',
+  create_task: 'student-data',
+  create_tasks_batch: 'student-data',
+  create_plan: 'student-data',
+  update_plan: 'student-data',
 };

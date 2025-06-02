@@ -323,9 +323,9 @@ const MAP_TOOLS: Tool[] = [
   },
 ];
 
-// Tools for plan building
+// Tools for strategic plan building
 const PLAN_TOOLS: Tool[] = [
-  // Research tools (same as recommendations)
+  // Strategic research tools (no CDS - focus on current info)
   {
     name: 'search_college_data',
     description: 'Search for college data sources and information',
@@ -340,42 +340,6 @@ const PLAN_TOOLS: Tool[] = [
         name: 'includeWebSearch',
         type: 'boolean',
         description: 'Whether to include web search results',
-        required: false
-      }
-    ]
-  },
-  {
-    name: 'search_cds_data',
-    description: 'Search for available Common Data Set files with fuzzy matching',
-    parameters: [
-      {
-        name: 'query',
-        type: 'string',
-        description: 'College name or partial name to search for',
-        required: true
-      },
-      {
-        name: 'limit',
-        type: 'number',
-        description: 'Maximum number of results to return (default: 10)',
-        required: false
-      }
-    ]
-  },
-  {
-    name: 'get_cds_data',
-    description: 'Get Common Data Set information and full content for a specific college',
-    parameters: [
-      {
-        name: 'collegeName',
-        type: 'string',
-        description: 'Full, formal name of the college',
-        required: true
-      },
-      {
-        name: 'year',
-        type: 'string',
-        description: 'Academic year (e.g., "2024-2025")',
         required: false
       }
     ]

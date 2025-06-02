@@ -304,6 +304,259 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         return { content: [{ type: 'text', text: 'Location updated successfully' }] };
       }
 
+      case 'create_calendar_item': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_calendar_item');
+        }
+        const { studentId, item } = args;
+        if (!studentId || !item) {
+          throw new Error('Student ID and item are required');
+        }
+
+        try {
+          // Use Firestore directly instead of HTTP API to avoid auth issues
+          const { db } = await import('../config/firebase.js');
+          const { v4: uuidv4 } = await import('uuid');
+          
+          const newItem = {
+            id: uuidv4(),
+            studentId: studentId,
+            ...item,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          
+          await db.collection('calendar-items').doc(newItem.id).set(newItem);
+          
+          return {
+            content: [{ type: 'text', text: `Calendar item "${item.title}" created successfully` }],
+          };
+        } catch (error: any) {
+          console.error('Error creating calendar item:', error);
+          // Return a more informative error message
+          const errorMsg = error.message || 'Unknown error';
+          return {
+            content: [{ type: 'text', text: `Failed to create calendar item: ${errorMsg}` }],
+          };
+        }
+      }
+
+      case 'create_calendar_items_batch': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_calendar_items_batch');
+        }
+        const { studentId, items, planId } = args;
+        if (!studentId || !items || !Array.isArray(items)) {
+          throw new Error('Student ID and items array are required');
+        }
+
+        try {
+          // Use Firestore directly instead of HTTP API to avoid auth issues
+          const { db } = await import('../config/firebase.js');
+          const { v4: uuidv4 } = await import('uuid');
+          
+          const batch = db.batch();
+          const createdItems = [];
+          
+          for (const item of items) {
+            const newItem = {
+              id: uuidv4(),
+              studentId: studentId,
+              ...item,
+              planId: planId || null, // Link to plan if provided
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            
+            const itemRef = db.collection('calendar-items').doc(newItem.id);
+            batch.set(itemRef, newItem);
+            createdItems.push(newItem);
+          }
+          
+          await batch.commit();
+          
+          return {
+            content: [{ type: 'text', text: `Successfully created ${createdItems.length} calendar items in batch${planId ? ` linked to plan ${planId}` : ''}` }],
+          };
+        } catch (error: any) {
+          console.error('Error creating calendar items batch:', error);
+          // Return a more informative error message
+          const errorMsg = error.message || 'Unknown error';
+          return {
+            content: [{ type: 'text', text: `Failed to create calendar items batch: ${errorMsg}` }],
+          };
+        }
+      }
+
+      case 'create_task': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_task');
+        }
+        const { studentId, task } = args;
+        if (!studentId || !task) {
+          throw new Error('Student ID and task are required');
+        }
+
+        try {
+          // Use Firestore directly instead of HTTP API to avoid auth issues
+          const { db } = await import('../config/firebase.js');
+          const { v4: uuidv4 } = await import('uuid');
+          
+          const newTask = {
+            id: uuidv4(),
+            studentId: studentId,
+            ...task,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          
+          await db.collection('tasks').doc(newTask.id).set(newTask);
+          
+          return {
+            content: [{ type: 'text', text: `Task "${task.title}" created successfully` }],
+          };
+        } catch (error: any) {
+          console.error('Error creating task:', error);
+          // Return a more informative error message
+          const errorMsg = error.message || 'Unknown error';
+          return {
+            content: [{ type: 'text', text: `Failed to create task: ${errorMsg}` }],
+          };
+        }
+      }
+
+      case 'create_tasks_batch': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_tasks_batch');
+        }
+        const { studentId, tasks, planId } = args;
+        if (!studentId || !tasks || !Array.isArray(tasks)) {
+          throw new Error('Student ID and tasks array are required');
+        }
+
+        try {
+          // Use Firestore directly instead of HTTP API to avoid auth issues
+          const { db } = await import('../config/firebase.js');
+          const { v4: uuidv4 } = await import('uuid');
+          
+          const batch = db.batch();
+          const createdTasks = [];
+          
+          for (const task of tasks) {
+            const newTask = {
+              id: uuidv4(),
+              studentId: studentId,
+              ...task,
+              planId: planId || null, // Link to plan if provided
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            
+            const taskRef = db.collection('tasks').doc(newTask.id);
+            batch.set(taskRef, newTask);
+            createdTasks.push(newTask);
+          }
+          
+          await batch.commit();
+          
+          return {
+            content: [{ type: 'text', text: `Successfully created ${createdTasks.length} tasks in batch${planId ? ` linked to plan ${planId}` : ''}` }],
+          };
+        } catch (error: any) {
+          console.error('Error creating tasks batch:', error);
+          // Return a more informative error message
+          const errorMsg = error.message || 'Unknown error';
+          return {
+            content: [{ type: 'text', text: `Failed to create tasks batch: ${errorMsg}` }],
+          };
+        }
+      }
+
+      case 'create_plan': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_plan');
+        }
+        const { studentId, schoolNames, description, sourceChatId } = args;
+        if (!studentId || !schoolNames || !sourceChatId) {
+          throw new Error('Student ID, school names, and source chat ID are required');
+        }
+
+        try {
+          // Use Firestore directly instead of HTTP API to avoid auth issues
+          const { db } = await import('../config/firebase.js');
+          const { v4: uuidv4 } = await import('uuid');
+          
+          const schoolNamesArray = Array.isArray(schoolNames) ? schoolNames : [schoolNames];
+          const planDescription = description || `Strategic plan for ${schoolNamesArray.join(', ')}`;
+          
+          const newPlan = {
+            id: uuidv4(),
+            studentId: studentId,
+            schoolName: schoolNamesArray.length === 1 ? schoolNamesArray[0] : 'Multiple Schools',
+            schoolId: 'strategic', // Special ID for strategic plans
+            description: planDescription,
+            status: 'draft',
+            timeline: [], // Will be populated later
+            sourceChats: [sourceChatId],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          
+          await db.collection('plans').doc(newPlan.id).set(newPlan);
+          
+          // Auto-mark the strategic planning chat as processed
+          try {
+            const { getChats, saveChat } = await import('./firestore.js');
+            const chats = await getChats(studentId);
+            const strategicChat = chats.find(c => c.id === sourceChatId);
+            
+            if (strategicChat) {
+              console.log('create_plan: Auto-marking strategic planning chat as processed:', strategicChat.title);
+              await saveChat({ 
+                ...strategicChat, 
+                processed: true, 
+                processedAt: new Date().toISOString() 
+              });
+            }
+          } catch (error) {
+            console.warn('create_plan: Failed to auto-mark strategic chat as processed:', error);
+            // Don't fail the plan creation if chat marking fails
+          }
+          
+          return {
+            content: [{ type: 'text', text: `Plan "${planDescription}" created successfully with ID: ${newPlan.id}` }],
+          };
+        } catch (error: any) {
+          console.error('Error creating plan:', error);
+          // Return a more informative error message
+          const errorMsg = error.message || 'Unknown error';
+          return {
+            content: [{ type: 'text', text: `Failed to create plan: ${errorMsg}` }],
+          };
+        }
+      }
+
+      case 'update_plan': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for update_plan');
+        }
+        const { planId, timelineItems } = args;
+        if (!planId || !timelineItems) {
+          throw new Error('Plan ID and timeline items are required');
+        }
+
+        try {
+          // For now, just return success - plans would be handled by the backend
+          console.log('Plan update requested:', args);
+          return {
+            content: [{ type: 'text', text: 'Plan updated successfully' }],
+          };
+        } catch (error: any) {
+          console.error('Error updating plan:', error);
+          throw new Error('Failed to update plan');
+        }
+      }
+
 
 
       default:

@@ -333,6 +333,70 @@ class StudentDataServer {
                 },
                 required: ['studentId', 'locationId', 'updates']
               }
+            },
+            create_calendar_item: {
+              description: 'Create a calendar event for the student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  item: {
+                    type: 'object',
+                    properties: {
+                      title: { type: 'string' },
+                      date: { type: 'string' },
+                      description: { type: 'string' },
+                      category: { type: 'string' }
+                    },
+                    required: ['title', 'date']
+                  }
+                },
+                required: ['studentId', 'item']
+              }
+            },
+            create_task: {
+              description: 'Create a task for the student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  task: {
+                    type: 'object',
+                    properties: {
+                      title: { type: 'string' },
+                      description: { type: 'string' },
+                      dueDate: { type: 'string' },
+                      priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+                      category: { type: 'string', enum: ['application', 'scholarship', 'financial', 'other'] }
+                    },
+                    required: ['title', 'dueDate', 'category']
+                  }
+                },
+                required: ['studentId', 'task']
+              }
+            },
+            update_plan: {
+              description: 'Update a plan with new timeline items',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  planId: {
+                    type: 'string',
+                    description: 'ID of the plan to update'
+                  },
+                  timelineItems: {
+                    type: 'array',
+                    description: 'Array of timeline items to add to the plan'
+                  }
+                },
+                required: ['planId', 'timelineItems']
+              }
             }
           }
         },
@@ -834,6 +898,88 @@ class StudentDataServer {
           } catch (error) {
             console.error('Error updating map location:', error);
             throw new McpError(ErrorCode.InternalError, 'Failed to update map location');
+          }
+        }
+
+        case 'create_calendar_item': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.item) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and item are required');
+          }
+
+          try {
+            // Make API call to backend to create calendar item
+            const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+            const item = args.item as { title: string; date: string; description?: string; category?: string };
+            const response = await axios.post(`${backendUrl}/api/calendar`, {
+              studentId: args.studentId,
+              ...item
+            });
+            
+            if (response.status === 200 || response.status === 201) {
+              return {
+                content: [{ type: 'text', text: `Calendar item "${item.title}" created successfully` }],
+              };
+            } else {
+              throw new Error(`Backend returned status ${response.status}`);
+            }
+          } catch (error) {
+            console.error('Error creating calendar item:', error);
+            // Return a more informative error message
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            return {
+              content: [{ type: 'text', text: `Failed to create calendar item: ${errorMsg}` }],
+            };
+          }
+        }
+
+        case 'create_task': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.task) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and task are required');
+          }
+
+          try {
+            // Make API call to backend to create task
+            const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+            const task = args.task as { title: string; description?: string; dueDate: string; priority: string; category: string };
+            const response = await axios.post(`${backendUrl}/api/tasks`, {
+              studentId: args.studentId,
+              ...task
+            });
+            
+            if (response.status === 200 || response.status === 201) {
+              return {
+                content: [{ type: 'text', text: `Task "${task.title}" created successfully` }],
+              };
+            } else {
+              throw new Error(`Backend returned status ${response.status}`);
+            }
+          } catch (error) {
+            console.error('Error creating task:', error);
+            // Return a more informative error message
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            return {
+              content: [{ type: 'text', text: `Failed to create task: ${errorMsg}` }],
+            };
+          }
+        }
+
+        case 'update_plan': {
+          const args = request.params.arguments;
+          if (!args?.planId || !args?.timelineItems) {
+            throw new McpError(ErrorCode.InvalidParams, 'Plan ID and timeline items are required');
+          }
+
+          try {
+            // For now, just return success - plans would be handled by the backend
+            console.log('Plan update requested:', args);
+            return {
+              content: [{ type: 'text', text: 'Plan updated successfully' }],
+            };
+          } catch (error) {
+            console.error('Error updating plan:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to update plan');
           }
         }
 

@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { AIServiceFactory } from '../services/ai-service-factory.js';
 import { setupSSEResponse, filterChatMessages } from '../utils/helpers.js';
 import { getBasePrompt } from '../prompts/base.js';
-import { getChats, getStudent, saveChat, deleteChat } from '../services/firestore.js';
+import { getChats, getStudent, saveChat, deleteChat, getMapLocations } from '../services/firestore.js';
 import { Chat, ChatDTO, DTOChatMessage, FirestoreChatMessage } from '../types/firestore.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../utils/logger.js';
@@ -399,6 +399,287 @@ router.post('/analyze', async (req: Request, res: Response) => {
       content: `Error analyzing chat: ${error instanceof Error ? error.message : 'Unknown error'}`
     });
     sendSSE({ type: 'complete' });
+  }
+});
+
+// Strategic planning endpoint - integrates pin research into main chat system with chat persistence
+router.post('/strategic-planning', async (req: Request, res: Response) => {
+  // Set up SSE response first so we can send errors through it
+  const sendSSE = setupSSEResponse(res);
+  
+  // Create chat ID and tracking variables
+  const chatId = `strategic-plan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  let chatMessages: any[] = [];
+  let chatTitle = '';
+  let retryCount = 0;
+  const maxRetries = 2;
+  
+  // Wrap sendSSE to capture messages for chat persistence
+  const wrappedSendSSE = (data: any) => {
+    // Capture messages for chat persistence
+    if (data.type === 'response' && data.content) {
+      chatMessages.push({
+        role: 'assistant',
+        content: data.content,
+        timestamp: new Date().toISOString()
+      });
+    }
+    if (data.type === 'thinking' && data.content) {
+      chatMessages.push({
+        role: 'thinking',
+        content: data.content,
+        toolData: data.toolData,
+        timestamp: new Date().toISOString()
+      });
+    }
+    if (data.type === 'response' && data.suggestedTitle) {
+      chatTitle = data.suggestedTitle;
+    }
+    
+    // Forward to original sendSSE
+    sendSSE(data);
+  };
+  
+  const executeStrategicPlanning = async (): Promise<void> => {
+    const { studentId, pinIds, pinNames } = req.body;
+    
+    if (!studentId || !pinIds || !Array.isArray(pinIds) || pinIds.length === 0) {
+      throw new Error('Student ID and pin IDs are required');
+    }
+    
+    logger.info('Starting strategic planning', { studentId, pinIds, pinNames, attempt: retryCount + 1 });
+    
+    // Get student data
+    const student = await getStudent(studentId, req.user.uid);
+    if (!student) {
+      throw new Error('Student not found');
+    }
+    
+    // Get map locations to resolve pin names and gather context
+    const mapLocations = await getMapLocations(studentId, req.user.uid);
+    const selectedLocations = [];
+    
+    for (const pinId of pinIds) {
+      const location = mapLocations.find(loc => loc.id === pinId);
+      if (location) {
+        selectedLocations.push(location);
+        logger.info('Resolved pin', { pinId, name: location.name, type: location.type });
+      } else {
+        logger.warn('Pin not found in map locations', { pinId });
+      }
+    }
+    
+    // Get chats to find source context
+    const chats = await getChats(studentId);
+    
+    // Build rich context for each college
+    let collegeContexts = [];
+    for (const location of selectedLocations) {
+      let context = {
+        name: location.name,
+        type: location.type,
+        metadata: location.metadata || {},
+        sourceChats: location.sourceChats || [],
+        chatContext: ''
+      };
+      
+      // Find source chat context if available
+      if (location.sourceChats && location.sourceChats.length > 0) {
+        const sourceChatId = location.sourceChats[0]; // Use first source chat
+        const sourceChat = chats.find(chat => chat.id === sourceChatId);
+        if (sourceChat) {
+          // Extract relevant context from the chat
+          const relevantMessages = sourceChat.messages
+            .filter(msg => msg.role === 'assistant' && msg.content.toLowerCase().includes(location.name.toLowerCase()))
+            .slice(-2); // Get last 2 relevant messages
+          
+          if (relevantMessages.length > 0) {
+            context.chatContext = relevantMessages.map(msg => msg.content).join('\n\n');
+          }
+        }
+      }
+      
+      collegeContexts.push(context);
+    }
+    
+    logger.info('Starting strategic planning for colleges with context', { 
+      colleges: collegeContexts.map(c => ({ name: c.name, hasContext: !!c.chatContext })) 
+    });
+    
+    // Build enhanced strategic planning prompt with context
+    let contextualPrompt = `I need you to create a comprehensive strategic application plan for the following college(s). Each college has been previously identified as a good fit for ${student.name}, and I'm providing you with the existing context and analysis.
+
+`;
+    
+    // Add context for each college
+    for (const context of collegeContexts) {
+      contextualPrompt += `## ${context.name}\n`;
+      contextualPrompt += `**Type:** ${context.type}\n`;
+      
+      // Add metadata context
+      if (context.metadata.fitScore) {
+        contextualPrompt += `**Fit Score:** ${context.metadata.fitScore}/100\n`;
+      }
+      if (context.metadata.reason) {
+        contextualPrompt += `**Why it's a good fit:** ${context.metadata.reason}\n`;
+      }
+      if (context.metadata.description) {
+        contextualPrompt += `**Description:** ${context.metadata.description}\n`;
+      }
+      
+      // Add source chat context
+      if (context.chatContext) {
+        contextualPrompt += `**Previous Analysis:**\n${context.chatContext}\n`;
+      }
+      
+      contextualPrompt += `\n`;
+    }
+    
+    contextualPrompt += `
+Now, building on this existing analysis, please create a detailed strategic application plan for ${student.name}. This should integrate strategic intelligence about college revenue optimization, digital behavior tactics, financial aid positioning, and athletic opportunities where relevant.
+
+Focus on maximizing their chances of admission and financial aid to these specific colleges by:
+
+1. **Strategic Research & Timeline**: Research current requirements and create a timeline that incorporates strategic timing (when to show interest, when to apply, optimal engagement windows)
+
+2. **Financial Aid Optimization**: Develop strategies based on each college's aid model (need-based vs merit-based focus), including FAFSA timing and potential negotiation opportunities
+
+3. **Digital Behavior Strategy**: Plan when and how to engage with colleges digitally to signal genuine interest without appearing desperate
+
+4. **Athletic Integration**: If applicable, incorporate athletic outreach and recruitment strategies
+
+5. **Access-Focused Approach**: Prioritize strategies that align with colleges' actual commitment to access vs revenue optimization
+
+Use the available tools to research current information, create calendar items, and build actionable tasks that blend strategic intelligence with practical deadlines.
+
+IMPORTANT: After creating calendar items and tasks, use the create_plan tool to create a formal plan record that links back to this strategic planning conversation. This will allow users to easily navigate between the plan and the research that created it.
+
+Provide a comprehensive plan that goes beyond just deadlines - create a strategic roadmap for success.`;
+    
+    // Add user message to chat
+    chatMessages.push({
+      role: 'user',
+      content: contextualPrompt,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Generate system prompt with plan creation tools
+    const systemPrompt = await getBasePrompt(student.name, student, 'plan_building', req);
+    
+    // Create messages array for the strategic planning
+    const messages = [
+      {
+        role: 'user' as const,
+        content: contextualPrompt
+      }
+    ];
+    
+    // Process with AI service using the same iterative approach as other operations
+    const aiService = await AIServiceFactory.createService(req.user.uid);
+    logger.info('Starting strategic planning processing with AI service');
+    
+    await aiService.processStream(messages, systemPrompt, wrappedSendSSE);
+    
+    logger.info('Strategic planning completed successfully');
+  };
+  
+  try {
+    await executeStrategicPlanning();
+    
+  } catch (error: any) {
+    logger.error('Error in strategic planning:', error);
+    
+    // Check if this is a premature close error and we can retry
+    if (error.message?.includes('Premature close') && retryCount < maxRetries) {
+      retryCount++;
+      logger.info(`Retrying strategic planning due to premature close (attempt ${retryCount + 1}/${maxRetries + 1})`);
+      
+      // Send retry notification to user
+      wrappedSendSSE({ 
+        type: 'thinking',
+        content: `Connection interrupted, retrying... (attempt ${retryCount + 1}/${maxRetries + 1})`
+      });
+      
+      // Wait a moment before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      try {
+        await executeStrategicPlanning();
+      } catch (retryError: any) {
+        logger.error('Retry failed:', retryError);
+        // Send error through SSE before closing
+        wrappedSendSSE({ 
+          type: 'error',
+          content: `Error during strategic planning (after ${retryCount + 1} attempts): ${retryError instanceof Error ? retryError.message : 'Unknown error'}`
+        });
+      }
+    } else {
+      // Send error through SSE before closing
+      wrappedSendSSE({ 
+        type: 'error',
+        content: `Error during strategic planning: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  } finally {
+    // Always save the chat, even if there was an error
+    try {
+      const { studentId } = req.body;
+      
+      // Generate title if not set
+      if (!chatTitle && req.body.pinNames) {
+        chatTitle = `Strategic Plan: ${req.body.pinNames.join(', ')}`;
+      }
+      if (!chatTitle) {
+        chatTitle = 'Strategic Planning Session';
+      }
+      
+      // Clean up messages to remove undefined values that Firestore doesn't accept
+      const cleanedMessages = chatMessages.map(msg => {
+        const cleanedMsg: any = {
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp
+        };
+        
+        // Only add toolData if it's defined and not empty
+        if (msg.toolData && msg.toolData.trim() !== '') {
+          cleanedMsg.toolData = msg.toolData;
+        }
+        
+        return cleanedMsg;
+      });
+      
+      // Create chat object
+      const strategicPlanChat = {
+        id: chatId,
+        title: chatTitle,
+        messages: cleanedMessages,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        studentId: studentId,
+        type: 'strategic-planning', // Mark as strategic planning chat
+        processed: true, // Mark as processed since it's already been through AI
+        processedAt: new Date().toISOString()
+      };
+      
+      // Save the chat
+      await saveChat(strategicPlanChat);
+      logger.info('Strategic planning chat saved', { chatId, title: chatTitle, messageCount: chatMessages.length });
+      
+      // Send chat info to frontend
+      wrappedSendSSE({
+        type: 'chat_saved',
+        chatId: chatId,
+        chatTitle: chatTitle,
+        content: `Strategic planning session saved as chat: "${chatTitle}"`
+      });
+      
+    } catch (saveError) {
+      logger.error('Error saving strategic planning chat:', saveError);
+    }
+    
+    // Send completion
+    wrappedSendSSE({ type: 'complete' });
   }
 });
 

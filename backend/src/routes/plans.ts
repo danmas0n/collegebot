@@ -77,7 +77,7 @@ router.get('/:studentId', authenticateUser, async (req, res) => {
 // Create a new plan
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    const { studentId, schoolId, schoolName, description } = req.body;
+    const { studentId, schoolId, schoolName, schoolNames, description, sourceChatId } = req.body;
     const userId = req.user?.uid;
 
     if (!userId) {
@@ -91,16 +91,27 @@ router.post('/', authenticateUser, async (req, res) => {
     }
 
     const now = new Date();
+    
+    // Handle multiple schools from strategic planning
+    let finalSchoolId = schoolId || 'general';
+    let finalSchoolName = schoolName || 'General';
+    
+    if (schoolNames && Array.isArray(schoolNames) && schoolNames.length > 0) {
+      // For multiple schools, create a general plan that covers all
+      finalSchoolId = 'general';
+      finalSchoolName = schoolNames.length === 1 ? schoolNames[0] : `${schoolNames.join(', ')}`;
+    }
+    
     const planData = {
       studentId,
-      schoolId: schoolId || 'general',
-      schoolName: schoolName || 'General',
+      schoolId: finalSchoolId,
+      schoolName: finalSchoolName,
       status: 'draft',
       createdAt: now,
       updatedAt: now,
       lastModified: now,
-      sourceChats: [],
-      description: description || '',
+      sourceChats: sourceChatId ? [sourceChatId] : [],
+      description: description || `Strategic plan for ${finalSchoolName}`,
       timeline: []
     };
 
@@ -111,7 +122,7 @@ router.post('/', authenticateUser, async (req, res) => {
       ...planData
     };
 
-    logger.info(`Plan created: ${planRef.id} for student ${studentId}`);
+    logger.info(`Plan created: ${planRef.id} for student ${studentId} with source chat: ${sourceChatId}`);
     res.status(201).json(plan);
   } catch (error) {
     logger.error('Error creating plan:', error);

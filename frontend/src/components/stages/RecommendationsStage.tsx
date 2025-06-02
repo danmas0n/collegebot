@@ -29,6 +29,7 @@ import { AiChat } from '../../types/college';
 
 interface Chat extends AiChat {
   toolData?: string;
+  type?: string;
 }
 
 export const RecommendationsStage: React.FC = () => {
@@ -38,12 +39,21 @@ export const RecommendationsStage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const hasLoadedChats = useRef(false);
   const [activeTab, setActiveTab] = useState<number>(0);
+  const [strategicPlanChats, setStrategicPlanChats] = useState<Chat[]>([]);
+  const [regularChats, setRegularChats] = useState<Chat[]>([]);
 
   // Load chats when component mounts or student changes
   useEffect(() => {
     if (currentStudent?.id && !hasLoadedChats.current) {
       hasLoadedChats.current = true;
       loadChats(currentStudent.id).then(loadedChats => {
+        // Filter chats by type
+        const strategic = loadedChats.filter(chat => (chat as any).type === 'strategic-planning');
+        const regular = loadedChats.filter(chat => !(chat as any).type || (chat as any).type !== 'strategic-planning');
+        
+        setStrategicPlanChats(strategic);
+        setRegularChats(regular);
+        
         // Only set a default chat if no chat is currently selected (not coming from deep link)
         if (!currentChat && loadedChats.length > 0) {
           // Select the most recent chat

@@ -15,6 +15,7 @@ import {
   Collapse,
   Chip,
 } from '@mui/material';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -96,6 +97,10 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
   const [operationId, setOperationId] = useState<string | null>(null);
   const [currentProcessingChat, setCurrentProcessingChat] = useState<string>('');
   const [processingComplete, setProcessingComplete] = useState(false);
+  
+  // Timer state
+  const [operationStartTime, setOperationStartTime] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
   
   // Auto-detect if we should use collapsed view based on message content
   const shouldUseCollapsedView = () => {
@@ -185,6 +190,28 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     }
   }, [messages, currentChat, mode, isLoading]);
 
+  // Timer effect - update elapsed time every second when loading
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isLoading && operationStartTime) {
+      interval = setInterval(() => {
+        const now = new Date();
+        const elapsed = Math.floor((now.getTime() - operationStartTime.getTime()) / 1000);
+        setElapsedTime(elapsed);
+      }, 1000);
+    } else if (!isLoading) {
+      setOperationStartTime(null);
+      setElapsedTime(0);
+    }
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isLoading, operationStartTime]);
+
   // Cleanup operation on unmount
   useEffect(() => {
     return () => {
@@ -226,6 +253,7 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     
     try {
       setIsLoading(true);
+      setOperationStartTime(new Date());
       setError(null);
       setMessages([]);
       setProcessingComplete(false);
@@ -274,6 +302,7 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     const currentOperationId = opId;
 
     setIsLoading(true);
+    setOperationStartTime(new Date());
     setError(null);
 
     try {
@@ -519,6 +548,17 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
                   setMessages(prev => [...prev, processingMessage]);
                 }
                 break;
+
+              case 'chat_saved':
+                // Handle chat saved notification from strategic planning
+                const chatSavedMessage: Message = {
+                  role: 'thinking',
+                  content: data.content || `Strategic planning session saved as chat: "${data.chatTitle}"`,
+                  timestamp: new Date().toISOString()
+                };
+                setMessages(prev => [...prev, chatSavedMessage]);
+                console.log('Strategic planning chat saved:', { chatId: data.chatId, title: data.chatTitle });
+                break;
             }
           } catch (e) {
             console.error('Error parsing SSE data:', e);
@@ -658,11 +698,43 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     );
   };
 
+  // Format elapsed time as MM:SS
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      {/* Timer Display - Upper Right */}
+      {isLoading && operationStartTime && (
+        <Box sx={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          bgcolor: 'background.paper',
+          px: 2,
+          py: 1,
+          borderRadius: 2,
+          boxShadow: 1,
+          border: 1,
+          borderColor: 'divider'
+        }}>
+          <AccessTimeIcon fontSize="small" color="primary" />
+          <Typography variant="body2" color="primary" sx={{ fontWeight: 600, minWidth: '45px' }}>
+            {formatElapsedTime(elapsedTime)}
+          </Typography>
+        </Box>
+      )}
+
       {/* Header */}
       {(title || description) && (
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 3, pr: isLoading ? 10 : 0 }}>
           {title && (
             <Typography variant="h5" gutterBottom>
               {title}

@@ -16,6 +16,7 @@ import adminRouter from './routes/admin.js';
 import tasksRouter from './routes/tasks.js';
 import calendarRouter from './routes/calendar.js';
 import pinResearchRouter from './routes/pin-research.js';
+import pinResearchStreamRouter from './routes/pin-research-stream.js';
 import plansRouter from './routes/plans.js';
 
 // Load environment variables
@@ -174,6 +175,7 @@ app.use('/api/admin', authMiddleware, adminMiddleware, adminRouter);
 app.use('/api/tasks', authMiddleware, tasksRouter);
 app.use('/api/calendar', authMiddleware, calendarRouter);
 app.use('/api/pin-research', authMiddleware, pinResearchRouter);
+app.use('/api/pin-research-stream', authMiddleware, analysisRateLimit, pinResearchStreamRouter);
 app.use('/api/plans', authMiddleware, plansRouter);
 
 // Error handling middleware

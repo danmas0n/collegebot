@@ -29,9 +29,11 @@ import {
   CalendarToday as CalendarIcon,
   CheckCircle as CheckCircleIcon,
   Drafts as DraftIcon,
-  PlayArrow as ActiveIcon
+  PlayArrow as ActiveIcon,
+  Chat as ChatIcon
 } from '@mui/icons-material';
 import { useWizard } from '../../contexts/WizardContext';
+import { useChat } from '../../contexts/ChatContext';
 import { Plan, PlanCreationRequest } from '../../types/plan';
 import { MapLocation } from '../../types/wizard';
 import { api } from '../../utils/api';
@@ -42,6 +44,7 @@ interface PlanOverviewProps {
 
 export const PlanOverview: React.FC<PlanOverviewProps> = ({ onPlanSelect }) => {
   const { currentStudent, data } = useWizard();
+  const { setCurrentChat, loadChats } = useChat();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +119,47 @@ export const PlanOverview: React.FC<PlanOverviewProps> = ({ onPlanSelect }) => {
       console.error('Error deleting plan:', err);
       setError('Failed to delete plan');
     }
+  };
+
+  const handleViewSourceChat = async (plan: Plan) => {
+    if (!plan.sourceChats || plan.sourceChats.length === 0 || !currentStudent?.id) {
+      setError('No source chat available for this plan');
+      return;
+    }
+
+    try {
+      // Load chats to find the source chat
+      await loadChats(currentStudent.id);
+      
+      // Get the first source chat ID
+      const sourceChatId = plan.sourceChats[0];
+      
+      // Find the chat in the loaded chats
+      const chats = await api.get('/api/chat/chats', {
+        method: 'POST',
+        body: JSON.stringify({ studentId: currentStudent.id })
+      });
+      const chatData = await chats.json();
+      const sourceChat = chatData.chats.find((chat: any) => chat.id === sourceChatId);
+      
+      if (sourceChat) {
+        // Set the current chat and navigate to recommendations
+        setCurrentChat(sourceChat);
+        
+        // Navigate to recommendations stage
+        // Since we don't have access to setCurrentStage, we'll show a message
+        setError(null);
+        alert(`Source chat "${sourceChat.title}" has been loaded. Please navigate to the Recommendations stage to view it.`);
+      } else {
+        setError('Source chat not found');
+      }
+    } catch (err) {
+      console.error('Error loading source chat:', err);
+      setError('Failed to load source chat');
+    }
+    
+    setMenuAnchor(null);
+    setSelectedPlan(null);
   };
 
   const getStatusIcon = (status: Plan['status']) => {
@@ -243,9 +287,21 @@ export const PlanOverview: React.FC<PlanOverviewProps> = ({ onPlanSelect }) => {
                     </Typography>
                   )}
 
-                  <Typography variant="caption" color="text.secondary">
-                    {plan.timeline.length} tasks • Updated {new Date(plan.updatedAt).toLocaleDateString()}
-                  </Typography>
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">
+                      {plan.timeline.length} tasks • Updated {new Date(plan.updatedAt).toLocaleDateString()}
+                    </Typography>
+                    {plan.sourceChats && plan.sourceChats.length > 0 && (
+                      <Chip
+                        icon={<ChatIcon />}
+                        label="Has Source Chat"
+                        size="small"
+                        variant="outlined"
+                        color="primary"
+                        sx={{ fontSize: '0.7rem', height: '20px' }}
+                      />
+                    )}
+                  </Box>
                 </CardContent>
               </Card>
             </Grid>
@@ -303,6 +359,15 @@ export const PlanOverview: React.FC<PlanOverviewProps> = ({ onPlanSelect }) => {
         <MenuItem onClick={() => selectedPlan && onPlanSelect(selectedPlan)}>
           View Plan
         </MenuItem>
+        {selectedPlan && selectedPlan.sourceChats && selectedPlan.sourceChats.length > 0 && (
+          <MenuItem 
+            onClick={() => selectedPlan && handleViewSourceChat(selectedPlan)}
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
+            <ChatIcon fontSize="small" />
+            View Source Chat
+          </MenuItem>
+        )}
         <MenuItem 
           onClick={() => selectedPlan && handleDeletePlan(selectedPlan.id)}
           sx={{ color: 'error.main' }}

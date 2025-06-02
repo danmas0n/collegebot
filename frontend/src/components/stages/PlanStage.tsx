@@ -17,9 +17,11 @@ import { Plan } from '../../types/plan';
 import CalendarView from '../calendar/CalendarView';
 import TipsAdvicePanel from '../calendar/TipsAdvicePanel';
 import PinSelector from '../calendar/PinSelector';
-import ResearchStatusPanel from '../calendar/ResearchStatusPanel';
+import { PinResearchPanel } from '../plan/PinResearchPanel';
 import { useCalendar } from '../../contexts/CalendarContext';
 import { StageContainer, StageHeader } from './StageContainer';
+import { MapLocation } from '../../types/wizard';
+import { api } from '../../utils/api';
 
 interface PlanStageProps {
   studentId?: string;
@@ -31,7 +33,8 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
   
   const [activeTab, setActiveTab] = useState<number>(0); // Default to Research tab
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-  const [activeResearchId, setActiveResearchId] = useState<string | null>(null);
+  const [selectedPinIds, setSelectedPinIds] = useState<string[]>([]);
+  const [selectedPinNames, setSelectedPinNames] = useState<string[]>([]);
   const [showAIPlanBuilder, setShowAIPlanBuilder] = useState<boolean>(false);
   
   // Use the studentId from props if provided, otherwise use the currentStudent's id
@@ -55,18 +58,57 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
     setShowAIPlanBuilder(false);
   };
   
-  // Handle starting research on selected pins
-  const handleStartResearch = async (pinIds: string[]) => {
+  // Handle pin selection for research
+  const handlePinSelection = async (pinIds: string[]) => {
     if (!effectiveStudentId || pinIds.length === 0) return;
     
     try {
-      const request = await startPinResearch(pinIds);
-      setActiveResearchId(request.id);
+      // Load locations from API to get the most current data
+      const response = await api.post('/api/students/map-locations/get', {
+        studentId: effectiveStudentId
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load locations: ${response.status}`);
+      }
+      
+      const locations: MapLocation[] = await response.json();
+      console.log('Loaded locations for name resolution:', locations.map((loc: MapLocation) => ({ id: loc.id, name: loc.name })));
+      console.log('Selected pin IDs:', pinIds);
+      
+      const pinNames = pinIds.map(pinId => {
+        const location = locations.find((loc: MapLocation) => loc.id === pinId);
+        console.log(`Resolving pin ${pinId}:`, location ? location.name : 'NOT FOUND');
+        return location ? location.name : `Unknown College (${pinId})`;
+      });
+      
+      console.log('Resolved pin names:', pinNames);
+      
+      setSelectedPinIds(pinIds);
+      setSelectedPinNames(pinNames);
+      
       // Switch to the research tab
       setActiveTab(0);
-    } catch (err) {
-      console.error('Error starting pin research:', err);
+    } catch (error) {
+      console.error('Error loading locations for name resolution:', error);
+      // Fallback to using the pin IDs as names
+      setSelectedPinIds(pinIds);
+      setSelectedPinNames(pinIds.map(id => `College ${id.slice(-8)}`)); // Use last 8 chars of ID
+      setActiveTab(0);
     }
+  };
+  
+  // Handle research completion
+  const handleResearchComplete = () => {
+    console.log('Research completed, refreshing plans...');
+    // The plan should now be available in PlanOverview
+    // Switch to Plans Overview tab to see the new plan
+    setActiveTab(1);
+  };
+  
+  // Handle research error
+  const handleResearchError = (error: string) => {
+    console.error('Research error:', error);
   };
   
   return (
@@ -100,16 +142,21 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
           </Box>
           
           {/* Research Tab */}
-          <Box role="tabpanel" hidden={activeTab !== 0} sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <Box role="tabpanel" hidden={activeTab !== 0} sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
             {activeTab === 0 && (
               <Box>
-                <ResearchStatusPanel 
-                  activeResearchId={activeResearchId}
-                  locations={data.map?.locations || []}
-                />
-                <PinSelector 
-                  onStartResearch={handleStartResearch}
-                />
+                {selectedPinIds.length > 0 ? (
+                  <PinResearchPanel
+                    pinIds={selectedPinIds}
+                    pinNames={selectedPinNames}
+                    onResearchComplete={handleResearchComplete}
+                    onResearchError={handleResearchError}
+                  />
+                ) : (
+                  <PinSelector 
+                    onStartResearch={handlePinSelection}
+                  />
+                )}
               </Box>
             )}
           </Box>
