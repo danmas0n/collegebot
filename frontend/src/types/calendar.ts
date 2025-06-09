@@ -4,9 +4,9 @@ export interface CalendarItem {
   id: string;
   studentId: string;
   title: string;
-  description?: string;
+  description: string;
   date: string; // ISO date string
-  type: 'deadline' | 'event' | 'reminder';
+  type: 'deadline' | 'event' | 'reminder' | 'appointment' | 'task';
   sourcePins: string[]; // IDs of map pins this calendar item is related to
   completed?: boolean; // For items that can be marked complete
   createdAt: string; // ISO date string
@@ -17,14 +17,14 @@ export interface Task {
   id: string;
   studentId: string;
   title: string;
-  description?: string;
-  dueDate?: string; // ISO date string
+  description: string;
+  dueDate: string | null; // ISO date string or null
   completed: boolean;
-  category: 'application' | 'scholarship' | 'financial' | 'testing' | 'visit' | 'other';
+  category: 'application' | 'scholarship' | 'financial' | 'testing' | 'visit' | 'other' | 'deadline';
   sourcePins: string[]; // IDs of map pins this task is related to
-  priority?: 'high' | 'medium' | 'low';
-  tags?: string[]; // For custom categorization
-  reminderDates?: string[]; // Additional dates for reminders before the due date
+  priority: 'high' | 'medium' | 'low';
+  tags: string[]; // For custom categorization
+  reminderDates: string[]; // Additional dates for reminders before the due date
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
   // Plan-related fields

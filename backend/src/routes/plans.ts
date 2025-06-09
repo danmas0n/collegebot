@@ -5,6 +5,34 @@ import { logger } from '../utils/logger';
 
 const router = express.Router();
 
+// Helper function to safely convert dates from Firestore
+const safeToDate = (dateValue: any): Date | undefined => {
+  if (!dateValue) return undefined;
+  
+  // If it's a Firestore Timestamp, use toDate()
+  if (dateValue && typeof dateValue.toDate === 'function') {
+    return dateValue.toDate();
+  }
+  
+  // If it's already a Date object, return it
+  if (dateValue instanceof Date) {
+    return dateValue;
+  }
+  
+  // If it's a string (ISO date), parse it
+  if (typeof dateValue === 'string') {
+    const parsed = new Date(dateValue);
+    return isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  
+  // If it's a number (timestamp), convert it
+  if (typeof dateValue === 'number') {
+    return new Date(dateValue);
+  }
+  
+  return undefined;
+};
+
 // Plan interface matching frontend
 interface Plan {
   id: string;
@@ -55,16 +83,43 @@ router.get('/:studentId', authenticateUser, async (req, res) => {
       .orderBy('updatedAt', 'desc')
       .get();
 
+    // Fetch tasks for all plans
+    const tasksSnapshot = await db
+      .collection('tasks')
+      .where('studentId', '==', studentId)
+      .get();
+
+    // Group tasks by planId
+    const tasksByPlan: { [planId: string]: any[] } = {};
+    tasksSnapshot.docs.forEach(doc => {
+      const task = doc.data();
+      const planId = task.planId;
+      if (planId) {
+        if (!tasksByPlan[planId]) {
+          tasksByPlan[planId] = [];
+        }
+        tasksByPlan[planId].push({
+          id: doc.id,
+          title: task.title,
+          description: task.description || '',
+          dueDate: safeToDate(task.dueDate),
+          category: task.category || 'other',
+          priority: task.priority || 'medium',
+          completed: task.completed || false,
+          schoolSpecific: task.schoolSpecific || false,
+          relatedSchools: task.relatedSchools || [],
+          sourceChat: task.sourceChat
+        });
+      }
+    });
+
     const plans = plansSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate(),
-      lastModified: doc.data().lastModified?.toDate(),
-      timeline: doc.data().timeline?.map((item: any) => ({
-        ...item,
-        dueDate: item.dueDate?.toDate()
-      })) || []
+      createdAt: safeToDate(doc.data().createdAt),
+      updatedAt: safeToDate(doc.data().updatedAt),
+      lastModified: safeToDate(doc.data().lastModified),
+      timeline: tasksByPlan[doc.id] || []
     }));
 
     res.json(plans);
@@ -77,7 +132,7 @@ router.get('/:studentId', authenticateUser, async (req, res) => {
 // Create a new plan
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    const { studentId, schoolId, schoolName, schoolNames, description, sourceChatId } = req.body;
+    const { studentId, schoolId, schoolName, schoolNames, description, sourceChatId, sourcePinIds } = req.body;
     const userId = req.user?.uid;
 
     if (!userId) {
@@ -111,6 +166,7 @@ router.post('/', authenticateUser, async (req, res) => {
       updatedAt: now,
       lastModified: now,
       sourceChats: sourceChatId ? [sourceChatId] : [],
+      sourcePins: sourcePinIds && Array.isArray(sourcePinIds) ? sourcePinIds : [],
       description: description || `Strategic plan for ${finalSchoolName}`,
       timeline: []
     };
@@ -244,16 +300,35 @@ router.get('/plan/:planId', authenticateUser, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Fetch tasks for this specific plan
+    const tasksSnapshot = await db
+      .collection('tasks')
+      .where('planId', '==', planId)
+      .get();
+
+    const timeline = tasksSnapshot.docs.map(doc => {
+      const task = doc.data();
+      return {
+        id: doc.id,
+        title: task.title,
+        description: task.description || '',
+        dueDate: safeToDate(task.dueDate),
+        category: task.category || 'other',
+        priority: task.priority || 'medium',
+        completed: task.completed || false,
+        schoolSpecific: task.schoolSpecific || false,
+        relatedSchools: task.relatedSchools || [],
+        sourceChat: task.sourceChat
+      };
+    });
+
     const plan = {
       id: planDoc.id,
       ...planData,
-      createdAt: planData?.createdAt?.toDate(),
-      updatedAt: planData?.updatedAt?.toDate(),
-      lastModified: planData?.lastModified?.toDate(),
-      timeline: planData?.timeline?.map((item: any) => ({
-        ...item,
-        dueDate: item.dueDate?.toDate()
-      })) || []
+      createdAt: safeToDate(planData?.createdAt),
+      updatedAt: safeToDate(planData?.updatedAt),
+      lastModified: safeToDate(planData?.lastModified),
+      timeline
     };
 
     res.json(plan);

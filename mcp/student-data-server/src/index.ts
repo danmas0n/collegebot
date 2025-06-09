@@ -357,6 +357,34 @@ class StudentDataServer {
                 required: ['studentId', 'item']
               }
             },
+            create_calendar_items_batch: {
+              description: 'Create multiple calendar events for the student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  items: {
+                    type: 'array',
+                    description: 'Array of calendar items to create',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        title: { type: 'string' },
+                        date: { type: 'string' },
+                        description: { type: 'string' },
+                        category: { type: 'string' },
+                        priority: { type: 'string' }
+                      },
+                      required: ['title', 'date']
+                    }
+                  }
+                },
+                required: ['studentId', 'items']
+              }
+            },
             create_task: {
               description: 'Create a task for the student',
               inputSchema: {
@@ -379,6 +407,34 @@ class StudentDataServer {
                   }
                 },
                 required: ['studentId', 'task']
+              }
+            },
+            create_tasks_batch: {
+              description: 'Create multiple tasks for the student',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  tasks: {
+                    type: 'array',
+                    description: 'Array of tasks to create',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        title: { type: 'string' },
+                        description: { type: 'string' },
+                        dueDate: { type: 'string' },
+                        priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+                        category: { type: 'string', enum: ['application', 'scholarship', 'financial', 'other'] }
+                      },
+                      required: ['title', 'dueDate', 'category']
+                    }
+                  }
+                },
+                required: ['studentId', 'tasks']
               }
             },
             update_plan: {
@@ -933,6 +989,56 @@ class StudentDataServer {
           }
         }
 
+        case 'create_calendar_items_batch': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.items) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and items array are required');
+          }
+
+          try {
+            // Make API call to backend to create calendar items in batch
+            const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+            const items = args.items as Array<{ title: string; date: string; description?: string; category?: string; priority?: string }>;
+            
+            let successCount = 0;
+            let errors: string[] = [];
+            
+            // Create items one by one (could be optimized with a batch endpoint later)
+            for (const item of items) {
+              try {
+                const response = await axios.post(`${backendUrl}/api/calendar`, {
+                  studentId: args.studentId,
+                  ...item
+                });
+                
+                if (response.status === 200 || response.status === 201) {
+                  successCount++;
+                } else {
+                  errors.push(`Failed to create "${item.title}": Backend returned status ${response.status}`);
+                }
+              } catch (itemError) {
+                const errorMsg = itemError instanceof Error ? itemError.message : 'Unknown error';
+                errors.push(`Failed to create "${item.title}": ${errorMsg}`);
+              }
+            }
+            
+            const resultMessage = `Created ${successCount} of ${items.length} calendar items successfully`;
+            const fullMessage = errors.length > 0 
+              ? `${resultMessage}. Errors: ${errors.join('; ')}`
+              : resultMessage;
+            
+            return {
+              content: [{ type: 'text', text: fullMessage }],
+            };
+          } catch (error) {
+            console.error('Error creating calendar items batch:', error);
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            return {
+              content: [{ type: 'text', text: `Failed to create calendar items: ${errorMsg}` }],
+            };
+          }
+        }
+
         case 'create_task': {
           const args = request.params.arguments;
           if (!args?.studentId || !args?.task) {
@@ -961,6 +1067,56 @@ class StudentDataServer {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             return {
               content: [{ type: 'text', text: `Failed to create task: ${errorMsg}` }],
+            };
+          }
+        }
+
+        case 'create_tasks_batch': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.tasks) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID and tasks array are required');
+          }
+
+          try {
+            // Make API call to backend to create tasks in batch
+            const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+            const tasks = args.tasks as Array<{ title: string; description?: string; dueDate: string; priority: string; category: string }>;
+            
+            let successCount = 0;
+            let errors: string[] = [];
+            
+            // Create tasks one by one (could be optimized with a batch endpoint later)
+            for (const task of tasks) {
+              try {
+                const response = await axios.post(`${backendUrl}/api/tasks`, {
+                  studentId: args.studentId,
+                  ...task
+                });
+                
+                if (response.status === 200 || response.status === 201) {
+                  successCount++;
+                } else {
+                  errors.push(`Failed to create "${task.title}": Backend returned status ${response.status}`);
+                }
+              } catch (taskError) {
+                const errorMsg = taskError instanceof Error ? taskError.message : 'Unknown error';
+                errors.push(`Failed to create "${task.title}": ${errorMsg}`);
+              }
+            }
+            
+            const resultMessage = `Created ${successCount} of ${tasks.length} tasks successfully`;
+            const fullMessage = errors.length > 0 
+              ? `${resultMessage}. Errors: ${errors.join('; ')}`
+              : resultMessage;
+            
+            return {
+              content: [{ type: 'text', text: fullMessage }],
+            };
+          } catch (error) {
+            console.error('Error creating tasks batch:', error);
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            return {
+              content: [{ type: 'text', text: `Failed to create tasks: ${errorMsg}` }],
             };
           }
         }

@@ -11,11 +11,19 @@ import {
   TextField,
   CircularProgress,
   Paper,
+  FormControl,
+  Select,
+  MenuItem,
+  Chip,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import ChatIcon from '@mui/icons-material/Chat';
+import MapIcon from '@mui/icons-material/Map';
+import PlanIcon from '@mui/icons-material/Assignment';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import { useWizard } from '../../contexts/WizardContext';
 import { useChat } from '../../contexts/ChatContext';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -41,6 +49,10 @@ export const RecommendationsStage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<number>(0);
   const [strategicPlanChats, setStrategicPlanChats] = useState<Chat[]>([]);
   const [regularChats, setRegularChats] = useState<Chat[]>([]);
+  
+  // Chat filtering state
+  const [chatFilter, setChatFilter] = useState<string>('recommendations');
+  const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
 
   // Load chats when component mounts or student changes
   useEffect(() => {
@@ -63,6 +75,49 @@ export const RecommendationsStage: React.FC = () => {
       });
     }
   }, [currentStudent?.id]); // Only depend on currentStudent.id
+
+  // Filter chats based on selected filter
+  useEffect(() => {
+    const filterChats = () => {
+      switch (chatFilter) {
+        case 'recommendations':
+          // Show chats with no type or type 'recommendations'
+          return chats.filter(chat => !(chat as any).type || (chat as any).type === 'recommendations');
+        case 'strategic-planning':
+          return chats.filter(chat => (chat as any).type === 'strategic-planning');
+        case 'map-processing':
+          return chats.filter(chat => (chat as any).type === 'map-processing');
+        case 'all':
+          return chats;
+        default:
+          return chats.filter(chat => !(chat as any).type || (chat as any).type === 'recommendations');
+      }
+    };
+
+    setFilteredChats(filterChats());
+  }, [chats, chatFilter]);
+
+  // Helper function to get chat type display info
+  const getChatTypeInfo = (chat: Chat) => {
+    const type = (chat as any).type;
+    switch (type) {
+      case 'strategic-planning':
+        return { icon: <PlanIcon />, label: 'Strategic Plan', color: 'primary' };
+      case 'map-processing':
+        return { icon: <MapIcon />, label: 'Map Analysis', color: 'secondary' };
+      default:
+        return { icon: <ChatIcon />, label: 'Recommendation', color: 'default' };
+    }
+  };
+
+  // Helper function to get chat count by type
+  const getChatCounts = () => {
+    const recommendations = chats.filter(chat => !(chat as any).type || (chat as any).type === 'recommendations').length;
+    const strategic = chats.filter(chat => (chat as any).type === 'strategic-planning').length;
+    const mapProcessing = chats.filter(chat => (chat as any).type === 'map-processing').length;
+    
+    return { recommendations, strategic, mapProcessing, total: chats.length };
+  };
 
   // Reset the hasLoadedChats flag when student changes
   useEffect(() => {
@@ -274,10 +329,62 @@ export const RecommendationsStage: React.FC = () => {
                 pr: 2, // Right padding to match floating input
                 pb: 10 // Bottom padding to prevent content from being hidden behind floating input
               }}>
+                {/* Chat Filter Controls */}
+                <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, px: 2 }}>
+                  <FilterListIcon color="action" />
+                  <Typography variant="body2" color="text.secondary">
+                    Filter chats:
+                  </Typography>
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <Select
+                      value={chatFilter}
+                      onChange={(e) => setChatFilter(e.target.value)}
+                      displayEmpty
+                    >
+                      <MenuItem value="recommendations">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <ChatIcon fontSize="small" />
+                          Recommendations ({getChatCounts().recommendations})
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="strategic-planning">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <PlanIcon fontSize="small" />
+                          Strategic Planning ({getChatCounts().strategic})
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="map-processing">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <MapIcon fontSize="small" />
+                          Map Processing ({getChatCounts().mapProcessing})
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="all">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          All Chats ({getChatCounts().total})
+                        </Box>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+                  
+                  {/* Show current filter as chip */}
+                  {chatFilter !== 'recommendations' && (
+                    <Chip
+                      size="small"
+                      label={`Showing: ${chatFilter === 'all' ? 'All Chats' : 
+                        chatFilter === 'strategic-planning' ? 'Strategic Planning' :
+                        chatFilter === 'map-processing' ? 'Map Processing' : 'Recommendations'}`}
+                      onDelete={() => setChatFilter('recommendations')}
+                      color="primary"
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
+
                 <StreamingChatInterface
                   ref={streamingChatRef}
                   mode="chat"
-                  chats={chats}
+                  chats={filteredChats}
                   currentChat={currentChat}
                   onChatChange={handleChatChange}
                   onNewChat={handleNewChat}

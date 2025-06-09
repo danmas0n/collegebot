@@ -100,7 +100,6 @@ export const PinResearchPanel: React.FC<PinResearchPanelProps> = ({
             operationType="calendar"
             llmOperationType="research"
             operationDescription={`Creating strategic application plan for ${pinNames.join(', ')}`}
-            viewMode="full"
           />
           {countdown > 0 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>

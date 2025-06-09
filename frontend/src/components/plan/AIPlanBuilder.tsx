@@ -243,8 +243,8 @@ To get started, tell me:
         ...plan,
         timeline: proposedPlan.items,
         status: 'active',
-        updatedAt: new Date(),
-        lastModified: new Date(),
+        updatedAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
         sourceChats: [...plan.sourceChats, messages[messages.length - 1]?.id || '']
       };
 

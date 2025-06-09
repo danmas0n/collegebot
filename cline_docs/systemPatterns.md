@@ -101,16 +101,75 @@
   - Student ownership verification
   - Role-based access control
 
+### Strategic Planning & Plan Management
+- **Plan Stage Architecture**:
+  - **Pin-Based Planning**: Users select map pins to create strategic application plans
+  - **StreamingChatInterface Integration**: Uses same chat interface as recommendations with proper message role handling
+  - **AI-Driven Plan Creation**: AI analyzes selected colleges and creates comprehensive strategic plans
+  - **Automatic Chat Processing**: Strategic planning chats are marked as processed to prevent map stage re-processing
+
+- **Plan Data Structure**:
+  - id: Unique plan identifier
+  - studentId: Links plan to student
+  - schoolName: Primary school or "Multiple Schools" for multi-school plans
+  - schoolId: "strategic" for strategic plans vs specific school IDs
+  - description: Plan summary and goals
+  - status: Plan status (draft, active, completed)
+  - timeline: Array of timeline items and milestones
+  - sourceChats: Array of chat IDs that contributed to this plan
+  - createdAt/updatedAt: Timestamps
+
+- **Plan-Task-Calendar Linking System**:
+  - **Complete Traceability**: Plans → Tasks → Calendar Items all linked via planId
+  - **Batch Operations**: Efficient bulk creation of related items
+  - **Source Chat Linking**: Plans link back to strategic planning conversations
+  - **Data Relationships**:
+    ```
+    Strategic Planning Chat → Plan (via sourceChats)
+                           ↓
+    Plan → Tasks (via planId) → Calendar Items (via planId)
+    ```
+
+- **MCP Functions for Plan Management**:
+  - `create_plan`: Creates plan records with source chat linking and auto-processing
+  - `create_tasks_batch`: Bulk task creation with plan linking
+  - `create_calendar_items_batch`: Bulk calendar item creation with plan linking
+  - `update_plan`: Plan modification and timeline updates
+
+- **Strategic Planning Workflow**:
+  1. **Pin Selection**: User selects colleges from map pins
+  2. **AI Analysis**: AI researches selected colleges and creates strategic plan
+  3. **Plan Creation**: Plan record created with unique ID and source chat linking
+  4. **Task Generation**: Related tasks created in batch and linked to plan
+  5. **Calendar Integration**: Deadlines and events created in batch and linked to plan
+  6. **Chat Processing**: Strategic planning chat marked as processed
+
+- **UI Components**:
+  - **PlanStage**: Main container for plan management
+  - **PlanOverview**: Displays existing plans and their details
+  - **AIPlanBuilder**: Interface for creating new strategic plans
+  - **PinResearchPanel**: Shows research findings for selected pins
+  - **CollapsibleResearchInterface**: Collapsible chat interface for plan creation
+
 ### Calendar & Tasks Management
 - Task data structure:
   - id: Unique identifier
   - studentId: Links task to student
+  - planId: Links task to parent plan (for strategic planning tasks)
   - title: Task name/description
   - description: Detailed information
   - dueDate: Deadline for the task
   - completed: Task completion status
   - category: Type of task (application, scholarship, financial, other)
   - relatedEntities: Links to colleges and scholarships
+- Calendar item data structure:
+  - id: Unique identifier
+  - studentId: Links item to student
+  - planId: Links item to parent plan (for strategic planning items)
+  - title: Event/deadline name
+  - date: Event date
+  - type: Type of calendar item
+  - description: Additional details
 - Integration with research findings:
   - Automatic task generation from research findings
   - Date extraction from text using regex

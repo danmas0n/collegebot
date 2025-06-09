@@ -37,6 +37,7 @@ import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { isSameDay } from 'date-fns';
 import { useCalendar } from '../../contexts/CalendarContext';
 import { useWizard } from '../../contexts/WizardContext';
 
@@ -49,9 +50,15 @@ interface TaskFormData {
   tags: string[];
 }
 
-const TaskList: React.FC = () => {
+interface TaskListProps {
+  filterDate?: Date;
+  filterSchool?: string;
+  filterPlan?: string;
+}
+
+const TaskList: React.FC<TaskListProps> = ({ filterDate, filterSchool, filterPlan }) => {
   const { currentStudent } = useWizard();
-  const { tasks, isLoading, error, createTask, updateTask, deleteTask } = useCalendar();
+  const { tasks, calendarItems, isLoading, error, createTask, updateTask, deleteTask } = useCalendar();
   
   // State for filtering and sorting
   const [filter, setFilter] = useState<'all' | 'completed' | 'incomplete'>('all');
@@ -159,7 +166,7 @@ const TaskList: React.FC = () => {
           title: formData.title,
           description: formData.description,
           dueDate: formData.dueDate ? formData.dueDate.toISOString().split('T')[0] : null,
-          category: formData.category,
+          category: formData.category as 'application' | 'scholarship' | 'financial' | 'testing' | 'visit' | 'other' | 'deadline',
           priority: formData.priority,
           tags: formData.tags
         });
@@ -176,9 +183,9 @@ const TaskList: React.FC = () => {
           description: formData.description,
           dueDate: formData.dueDate ? formData.dueDate.toISOString().split('T')[0] : null,
           completed: false,
-          category: formData.category,
+          category: formData.category as 'application' | 'scholarship' | 'financial' | 'testing' | 'visit' | 'other' | 'deadline',
           sourcePins: [],
-          priority: formData.priority,
+          priority: formData.priority as 'high' | 'medium' | 'low',
           tags: formData.tags,
           reminderDates: []
         });
@@ -193,7 +200,35 @@ const TaskList: React.FC = () => {
   };
   
   // Filter and sort tasks
-  const filteredAndSortedTasks = tasks
+  const filteredAndSortedTasks = (tasks || [])
+    .filter(task => {
+      // Apply date filter if provided
+      if (filterDate && task.dueDate) {
+        const taskDate = new Date(task.dueDate);
+        if (!isSameDay(taskDate, filterDate)) return false;
+      }
+      return true;
+    })
+    .filter(task => {
+      // Apply school filter if provided
+      if (filterSchool) {
+        const schoolLower = filterSchool.toLowerCase();
+        const matchesSchool = 
+          task.title.toLowerCase().includes(schoolLower) ||
+          task.description.toLowerCase().includes(schoolLower) ||
+          (task.tags || []).some(tag => tag.toLowerCase().includes(schoolLower));
+        if (!matchesSchool) return false;
+      }
+      return true;
+    })
+    .filter(task => {
+      // Apply plan filter if provided
+      if (filterPlan) {
+        const planMatches = task.sourcePins?.includes(filterPlan);
+        if (!planMatches) return false;
+      }
+      return true;
+    })
     .filter(task => {
       // Apply completion filter
       if (filter === 'completed') return task.completed;
@@ -208,7 +243,7 @@ const TaskList: React.FC = () => {
         task.title.toLowerCase().includes(searchLower) ||
         task.description.toLowerCase().includes(searchLower) ||
         task.category.toLowerCase().includes(searchLower) ||
-        task.tags.some(tag => tag.toLowerCase().includes(searchLower))
+        (task.tags || []).some(tag => tag.toLowerCase().includes(searchLower))
       );
     })
     .sort((a, b) => {
@@ -255,7 +290,24 @@ const TaskList: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Tasks</Typography>
+        <Box>
+          <Typography variant="h6">Tasks</Typography>
+          {filterDate && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Filtered for {filterDate.toLocaleDateString()}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => window.dispatchEvent(new CustomEvent('clearTaskFilter'))}
+                sx={{ fontSize: '0.7rem', py: 0.25, px: 1 }}
+              >
+                Show All
+              </Button>
+            </Box>
+          )}
+        </Box>
         <Button
           variant="contained"
           color="primary"
@@ -377,7 +429,7 @@ const TaskList: React.FC = () => {
                           size="small"
                           variant="outlined"
                         />
-                        {task.tags.map((tag, index) => (
+                        {(task.tags || []).map((tag, index) => (
                           <Chip
                             key={index}
                             label={tag}

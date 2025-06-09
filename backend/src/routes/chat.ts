@@ -270,6 +270,42 @@ router.post('/process-all', async (req: Request, res: Response) => {
   // Set up SSE response
   const sendSSE = setupSSEResponse(res);
   
+  // Create processing session chat to capture the analysis
+  const processingChatId = `map-processing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  let processingMessages: any[] = [];
+  let processingChatTitle = '';
+  
+  // Wrap sendSSE to capture messages for the processing chat
+  const wrappedSendSSE = (data: any) => {
+    // Capture analysis messages for the processing chat
+    if (data.type === 'thinking' && data.content) {
+      processingMessages.push({
+        role: 'thinking',
+        content: data.content,
+        toolData: data.toolData,
+        timestamp: new Date().toISOString()
+      });
+    }
+    if (data.type === 'response' && data.content) {
+      processingMessages.push({
+        role: 'answer',
+        content: data.content,
+        timestamp: new Date().toISOString()
+      });
+    }
+    if (data.type === 'status' && data.content && data.chatTitle) {
+      // Add status messages to show processing progress
+      processingMessages.push({
+        role: 'user',
+        content: `Processing: ${data.chatTitle}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Forward to original sendSSE
+    sendSSE(data);
+  };
+  
   try {
     const { studentId } = req.body;
     
@@ -295,8 +331,18 @@ router.post('/process-all', async (req: Request, res: Response) => {
       return;
     }
 
+    // Set processing chat title
+    processingChatTitle = `Map Processing: ${new Date().toLocaleDateString()} (${unprocessedChats.length} chats)`;
+    
+    // Add initial message to processing chat
+    processingMessages.push({
+      role: 'user',
+      content: `Starting map processing session for ${unprocessedChats.length} unprocessed chats`,
+      timestamp: new Date().toISOString()
+    });
+
     // Send total count for progress tracking
-    sendSSE({ 
+    wrappedSendSSE({ 
       type: 'status',
       content: `Processing ${unprocessedChats.length} chats...`,
       total: unprocessedChats.length
@@ -308,7 +354,7 @@ router.post('/process-all', async (req: Request, res: Response) => {
 
     for (const chat of unprocessedChats) {
       try {
-        sendSSE({ 
+        wrappedSendSSE({ 
           type: 'status',
           content: `Processing chat: ${chat.title || chat.id}`,
           chatTitle: chat.title || chat.id,
@@ -322,8 +368,8 @@ router.post('/process-all', async (req: Request, res: Response) => {
         const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
 
         console.info(`Starting analysis of chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
-        // FIXED: Pass sendSSE directly instead of wrapping it
-        await aiService.analyzeChatHistory(chat, systemPrompt, sendSSE);
+        // FIXED: Pass wrappedSendSSE to capture analysis messages
+        await aiService.analyzeChatHistory(chat, systemPrompt, wrappedSendSSE);
 
         // Research task processing has been removed
 
@@ -336,17 +382,64 @@ router.post('/process-all', async (req: Request, res: Response) => {
         processed++;
       } catch (error) {
         console.error(`Error processing chat ${chat.id}:`, error);
-        sendSSE({
+        wrappedSendSSE({
           type: 'error',
           content: `Error processing chat: ${error instanceof Error ? error.message : 'Unknown error'}`
         });
       }
     }
     
-    sendSSE({ type: 'complete' });
+    wrappedSendSSE({ type: 'complete' });
   } catch (error) {
     console.error('Error processing all chats:', error);
     res.status(500).json({ error: 'Failed to process chats' });
+  } finally {
+    // Always save the processing chat
+    try {
+      const { studentId } = req.body;
+      
+      // Add completion message
+      processingMessages.push({
+        role: 'answer',
+        content: `Map processing completed. Analyzed ${processingMessages.filter(m => m.role === 'user' && m.content.startsWith('Processing:')).length} chats and updated map locations.`,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Clean up messages to remove undefined values
+      const cleanedMessages = processingMessages.map(msg => {
+        const cleanedMsg: any = {
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp
+        };
+        
+        if (msg.toolData && msg.toolData.trim() !== '') {
+          cleanedMsg.toolData = msg.toolData;
+        }
+        
+        return cleanedMsg;
+      });
+      
+      // Create processing chat object
+      const processingChat = {
+        id: processingChatId,
+        title: processingChatTitle || 'Map Processing Session',
+        messages: cleanedMessages,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        studentId: studentId,
+        type: 'map-processing', // Mark as map processing chat
+        processed: true, // Mark as processed since it's the processing itself
+        processedAt: new Date().toISOString()
+      };
+      
+      // Save the processing chat
+      await saveChat(processingChat);
+      logger.info('Map processing chat saved', { chatId: processingChatId, title: processingChatTitle, messageCount: processingMessages.length });
+      
+    } catch (saveError) {
+      logger.error('Error saving map processing chat:', saveError);
+    }
   }
 });
 
@@ -419,7 +512,7 @@ router.post('/strategic-planning', async (req: Request, res: Response) => {
     // Capture messages for chat persistence
     if (data.type === 'response' && data.content) {
       chatMessages.push({
-        role: 'assistant',
+        role: 'answer',
         content: data.content,
         timestamp: new Date().toISOString()
       });
@@ -483,7 +576,7 @@ router.post('/strategic-planning', async (req: Request, res: Response) => {
         chatContext: ''
       };
       
-      // Find source chat context if available
+      // Find source chat context if available (optional - manually added locations may not have this)
       if (location.sourceChats && location.sourceChats.length > 0) {
         const sourceChatId = location.sourceChats[0]; // Use first source chat
         const sourceChat = chats.find(chat => chat.id === sourceChatId);
@@ -499,6 +592,7 @@ router.post('/strategic-planning', async (req: Request, res: Response) => {
         }
       }
       
+      // Always add the college to contexts, even without source chats
       collegeContexts.push(context);
     }
     
@@ -552,8 +646,6 @@ Focus on maximizing their chances of admission and financial aid to these specif
 
 Use the available tools to research current information, create calendar items, and build actionable tasks that blend strategic intelligence with practical deadlines.
 
-IMPORTANT: After creating calendar items and tasks, use the create_plan tool to create a formal plan record that links back to this strategic planning conversation. This will allow users to easily navigate between the plan and the research that created it.
-
 Provide a comprehensive plan that goes beyond just deadlines - create a strategic roadmap for success.`;
     
     // Add user message to chat
@@ -563,8 +655,41 @@ Provide a comprehensive plan that goes beyond just deadlines - create a strategi
       timestamp: new Date().toISOString()
     });
     
-    // Generate system prompt with plan creation tools
-    const systemPrompt = await getBasePrompt(student.name, student, 'plan_building', req);
+    // Generate system prompt with plan creation tools and source chat context
+    // Use the first source chat from the selected locations as the primary context
+    let primarySourceChatId = null;
+    let primarySourceChatTitle = null;
+    
+    // Find the first available source chat from the selected locations
+    for (const context of collegeContexts) {
+      if (context.sourceChats && context.sourceChats.length > 0) {
+        const sourceChatId = context.sourceChats[0];
+        const sourceChat = chats.find(chat => chat.id === sourceChatId);
+        if (sourceChat) {
+          primarySourceChatId = sourceChatId;
+          primarySourceChatTitle = sourceChat.title;
+          logger.info('Using source chat as context for strategic planning', { 
+            sourceChatId, 
+            sourceChatTitle: sourceChat.title,
+            collegeName: context.name 
+          });
+          break; // Use the first valid source chat found
+        }
+      }
+    }
+    
+    // If no source chat found, log warning but continue with current chat
+    if (!primarySourceChatId) {
+      logger.warn('No source chats found in selected map pins - strategic planning will use current chat context only');
+      primarySourceChatId = chatId;
+      primarySourceChatTitle = chatTitle || `Strategic Plan: ${req.body.pinNames?.join(', ') || 'Planning Session'}`;
+    }
+    
+    const systemPrompt = await getBasePrompt(student.name, student, 'plan_building', req, {
+      currentChatId: primarySourceChatId || undefined,
+      currentChatTitle: primarySourceChatTitle || undefined,
+      sourcePinIds: pinIds // Pass pin IDs to the AI context
+    });
     
     // Create messages array for the strategic planning
     const messages = [
@@ -576,7 +701,7 @@ Provide a comprehensive plan that goes beyond just deadlines - create a strategi
     
     // Process with AI service using the same iterative approach as other operations
     const aiService = await AIServiceFactory.createService(req.user.uid);
-    logger.info('Starting strategic planning processing with AI service');
+    logger.info('Starting strategic planning processing with AI service', { chatId, chatTitle });
     
     await aiService.processStream(messages, systemPrompt, wrappedSendSSE);
     

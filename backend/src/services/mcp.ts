@@ -476,10 +476,17 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         if (typeof args === 'string') {
           throw new Error('Invalid arguments for create_plan');
         }
-        const { studentId, schoolNames, description, sourceChatId } = args;
-        if (!studentId || !schoolNames || !sourceChatId) {
-          throw new Error('Student ID, school names, and source chat ID are required');
+        const { studentId, schoolNames, description, sourceChatId, sourcePinIds } = args;
+        if (!studentId || !schoolNames) {
+          throw new Error('Student ID and school names are required');
         }
+
+        console.log('=== CREATE_PLAN FUNCTION CALLED ===');
+        console.log(`Student ID: ${studentId}`);
+        console.log(`School Names: ${JSON.stringify(schoolNames)}`);
+        console.log(`Description: ${description || 'Auto-generated'}`);
+        console.log(`Source Chat ID: ${sourceChatId || 'None provided'}`);
+        console.log(`Source Pin IDs: ${JSON.stringify(sourcePinIds) || 'None provided'}`);
 
         try {
           // Use Firestore directly instead of HTTP API to avoid auth issues
@@ -497,37 +504,59 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
             description: planDescription,
             status: 'draft',
             timeline: [], // Will be populated later
-            sourceChats: [sourceChatId],
+            sourceChats: sourceChatId ? [sourceChatId] : [],
+            sourcePins: sourcePinIds && Array.isArray(sourcePinIds) ? sourcePinIds : [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
           
-          await db.collection('plans').doc(newPlan.id).set(newPlan);
+          console.log(`Creating plan with ID: ${newPlan.id}`);
+          console.log(`Plan will be linked to source chats: ${JSON.stringify(newPlan.sourceChats)}`);
           
-          // Auto-mark the strategic planning chat as processed
+          await db.collection('plans').doc(newPlan.id).set(newPlan);
+          console.log('Plan successfully saved to Firestore');
+          
+          // Find and mark the current strategic planning chat as processed to prevent map reprocessing
           try {
             const { getChats, saveChat } = await import('./firestore.js');
             const chats = await getChats(studentId);
-            const strategicChat = chats.find(c => c.id === sourceChatId);
             
-            if (strategicChat) {
-              console.log('create_plan: Auto-marking strategic planning chat as processed:', strategicChat.title);
+            // Find the most recent strategic planning chat (should be the current one)
+            const strategicPlanningChat = chats
+              .filter(c => (c as any).type === 'strategic-planning' && !c.processed)
+              .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+            
+            if (strategicPlanningChat) {
+              console.log(`Found current strategic planning chat: "${strategicPlanningChat.title}" (ID: ${strategicPlanningChat.id})`);
+              console.log('Marking strategic planning chat as processed to prevent map reprocessing...');
               await saveChat({ 
-                ...strategicChat, 
+                ...strategicPlanningChat, 
                 processed: true, 
                 processedAt: new Date().toISOString() 
               });
+              console.log('Strategic planning chat successfully marked as processed');
+            } else {
+              console.log('No unprocessed strategic planning chat found - this may be normal');
+            }
+            
+            if (sourceChatId) {
+              console.log(`Source chat ID ${sourceChatId} was used for context (already processed)`);
+            } else {
+              console.log('No source chat ID provided - plan will not be linked to any source conversation');
             }
           } catch (error) {
-            console.warn('create_plan: Failed to auto-mark strategic chat as processed:', error);
+            console.warn('create_plan: Failed to mark strategic planning chat as processed:', error);
             // Don't fail the plan creation if chat marking fails
           }
+          
+          console.log('=== CREATE_PLAN FUNCTION COMPLETED ===');
           
           return {
             content: [{ type: 'text', text: `Plan "${planDescription}" created successfully with ID: ${newPlan.id}` }],
           };
         } catch (error: any) {
           console.error('Error creating plan:', error);
+          console.log('=== CREATE_PLAN FUNCTION FAILED ===');
           // Return a more informative error message
           const errorMsg = error.message || 'Unknown error';
           return {
@@ -557,7 +586,41 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         }
       }
 
+      case 'mark_chat_processed': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for mark_chat_processed');
+        }
+        const { studentId, chatId } = args;
+        if (!studentId || !chatId) {
+          throw new Error('Student ID and chat ID are required');
+        }
 
+        try {
+          const chats = await getChats(studentId);
+          const chat = chats.find(c => c.id === chatId);
+          
+          if (!chat) {
+            throw new Error('Chat not found');
+          }
+
+          console.log('mark_chat_processed: Marking chat as processed:', chat.title);
+          await saveChat({ 
+            ...chat, 
+            processed: true, 
+            processedAt: new Date().toISOString() 
+          });
+          
+          return {
+            content: [{ type: 'text', text: `Chat "${chat.title}" marked as processed successfully` }],
+          };
+        } catch (error: any) {
+          console.error('Error marking chat as processed:', error);
+          const errorMsg = error.message || 'Unknown error';
+          return {
+            content: [{ type: 'text', text: `Failed to mark chat as processed: ${errorMsg}` }],
+          };
+        }
+      }
 
       default:
         throw new Error(`Unknown student-data tool: ${toolName}`);

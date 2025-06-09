@@ -5,7 +5,7 @@ export const toolServerMap: Record<string, string> = {
   search_cds_data: 'college-data',
   
   // Fetch server tools
-  fetch_markdown: 'fetch',
+  fetch_txt: 'fetch',
 
   // Student data server tools (now handled through Firestore)
   geocode: 'student-data',
@@ -23,4 +23,5 @@ export const toolServerMap: Record<string, string> = {
   create_tasks_batch: 'student-data',
   create_plan: 'student-data',
   update_plan: 'student-data',
+  mark_chat_processed: 'student-data',
 };

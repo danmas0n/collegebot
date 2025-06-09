@@ -22,6 +22,11 @@ import { useCalendar } from '../../contexts/CalendarContext';
 import { StageContainer, StageHeader } from './StageContainer';
 import { MapLocation } from '../../types/wizard';
 import { api } from '../../utils/api';
+import { Chip, Divider, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
+import EventIcon from '@mui/icons-material/Event';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
 
 interface PlanStageProps {
   studentId?: string;
@@ -29,7 +34,16 @@ interface PlanStageProps {
 
 export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
   const { currentStudent, data } = useWizard();
-  const { startPinResearch } = useCalendar();
+  const { startPinResearch, calendarItems, tasks } = useCalendar();
+  
+  // Debug logging
+  console.log('PlanStage: Rendering with data:', {
+    studentId,
+    effectiveStudentId: studentId || currentStudent?.id,
+    calendarItemsCount: calendarItems?.length || 0,
+    calendarItems,
+    tasksCount: tasks?.length || 0
+  });
   
   const [activeTab, setActiveTab] = useState<number>(0); // Default to Research tab
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -137,6 +151,7 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
               <Tab label="Research" />
               <Tab label="Plans Overview" />
               <Tab label="Plan Details" disabled={!selectedPlan} />
+              <Tab label="Calendar" />
               <Tab label="Tips & Advice" />
             </Tabs>
           </Box>
@@ -229,13 +244,163 @@ export const PlanStage: React.FC<PlanStageProps> = ({ studentId }) => {
                     ))}
                   </Box>
                 )}
+                
+                {/* Calendar Items and Tasks for this Plan */}
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Related Calendar Items & Tasks
+                  </Typography>
+                  
+                  {(() => {
+                    // Filter calendar items and tasks related to this plan
+                    const planCalendarItems = (calendarItems || []).filter(item => {
+                      // Check if any of the plan's source pins match the item's source pins
+                      const hasMatchingPins = selectedPlan.sourcePins?.some(planPin => 
+                        item.sourcePins?.includes(planPin)
+                      );
+                      // Also check for school name matches in title/description
+                      const hasSchoolNameMatch = item.title.toLowerCase().includes(selectedPlan.schoolName.toLowerCase());
+                      
+                      return hasMatchingPins || hasSchoolNameMatch;
+                    });
+                    
+                    const planTasks = (tasks || []).filter(task => {
+                      // Check if any of the plan's source pins match the task's source pins
+                      const hasMatchingPins = selectedPlan.sourcePins?.some(planPin => 
+                        task.sourcePins?.includes(planPin)
+                      );
+                      // Also check for school name matches in title/description
+                      const hasSchoolNameMatch = 
+                        task.title.toLowerCase().includes(selectedPlan.schoolName.toLowerCase()) ||
+                        task.description.toLowerCase().includes(selectedPlan.schoolName.toLowerCase());
+                      
+                      return hasMatchingPins || hasSchoolNameMatch;
+                    });
+                    
+                    const totalItems = planCalendarItems.length + planTasks.length;
+                    
+                    if (totalItems === 0) {
+                      return (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          No calendar items or tasks found for this plan.
+                        </Typography>
+                      );
+                    }
+                    
+                    return (
+                      <Box>
+                        {/* Calendar Items */}
+                        {planCalendarItems.length > 0 && (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle1" sx={{ mb: 1, color: 'primary.main' }}>
+                              📅 Calendar Items ({planCalendarItems.length})
+                            </Typography>
+                            <List dense>
+                              {planCalendarItems.map(item => (
+                                <ListItem key={item.id} sx={{ pl: 0 }}>
+                                  <ListItemIcon>
+                                    <EventIcon color="primary" />
+                                  </ListItemIcon>
+                                  <ListItemText
+                                    primary={item.title}
+                                    secondary={
+                                      <Box>
+                                        <Typography variant="body2" component="span">
+                                          {item.description}
+                                        </Typography>
+                                        <br />
+                                        <Typography variant="caption" color="text.secondary">
+                                          {new Date(item.date).toLocaleDateString()} • {item.type}
+                                        </Typography>
+                                      </Box>
+                                    }
+                                  />
+                                </ListItem>
+                              ))}
+                            </List>
+                          </Box>
+                        )}
+                        
+                        {/* Tasks */}
+                        {planTasks.length > 0 && (
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ mb: 1, color: 'warning.main' }}>
+                              ✅ Tasks ({planTasks.length})
+                            </Typography>
+                            <List dense>
+                              {planTasks.map(task => {
+                                const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && !task.completed;
+                                const getTaskIcon = () => {
+                                  if (task.completed) return <AssignmentTurnedInIcon color="success" />;
+                                  if (isOverdue) return <AssignmentLateIcon color="error" />;
+                                  return <AssignmentIcon color="primary" />;
+                                };
+                                
+                                return (
+                                  <ListItem key={task.id} sx={{ pl: 0 }}>
+                                    <ListItemIcon>
+                                      {getTaskIcon()}
+                                    </ListItemIcon>
+                                    <ListItemText
+                                      primary={
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                          <Typography 
+                                            variant="body1" 
+                                            sx={{ 
+                                              textDecoration: task.completed ? 'line-through' : 'none',
+                                              flexGrow: 1
+                                            }}
+                                          >
+                                            {task.title}
+                                          </Typography>
+                                          <Chip
+                                            label={task.completed ? 'Completed' : task.priority}
+                                            size="small"
+                                            color={
+                                              task.completed ? 'success' : 
+                                              task.priority === 'high' ? 'error' : 
+                                              task.priority === 'medium' ? 'warning' : 'info'
+                                            }
+                                          />
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Box>
+                                        <Typography variant="body2" component="span">
+                                          {task.description || ''}
+                                        </Typography>
+                                          <br />
+                                          <Typography variant="caption" color="text.secondary">
+                                            {task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'} • 
+                                            Category: {task.category}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                    />
+                                  </ListItem>
+                                );
+                              })}
+                            </List>
+                          </Box>
+                        )}
+                      </Box>
+                    );
+                  })()}
+                </Box>
               </Paper>
             )}
           </Box>
           
-          {/* Tips & Advice Tab */}
+          {/* Calendar Tab */}
           <Box role="tabpanel" hidden={activeTab !== 3} sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
-            {activeTab === 3 && (
+            {activeTab === 3 && effectiveStudentId && (
+              <CalendarView studentId={effectiveStudentId} />
+            )}
+          </Box>
+          
+          {/* Tips & Advice Tab */}
+          <Box role="tabpanel" hidden={activeTab !== 4} sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+            {activeTab === 4 && (
               <TipsAdvicePanel />
             )}
           </Box>

@@ -29,6 +29,15 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Implemented Complete Strategic Planning Workflow**:
+  - **Strategic Planning System**: Implemented end-to-end strategic planning workflow where users select map pins and create comprehensive application plans
+  - **Plan Creation MCP Function**: Added `create_plan` function that creates plan records in Firestore with proper source chat linking and automatic chat processing
+  - **Batch Operations for Performance**: Implemented `create_tasks_batch` and `create_calendar_items_batch` functions for efficient bulk creation of related items
+  - **Plan-Task-Calendar Linking**: All tasks and calendar items created during strategic planning are linked to their parent plan via `planId` field for complete traceability
+  - **Automatic Chat Processing**: Strategic planning chats are automatically marked as processed when plans are created, preventing map stage from re-processing them
+  - **UI Improvements**: Fixed answer message colors (green for answers, blue for users) and maintained collapsible thinking sections
+  - **StreamingChatInterface Integration**: Strategic planning uses the same chat interface as recommendations with proper message role handling
+  - **Complete Data Flow**: Pin selection → Strategic planning chat → Plan creation → Task/calendar generation → All linked together
 - **Enhanced Recommendations to Map Integration**:
   - **New MCP Tools**: Added `list_map_location_names`, `get_map_location_details`, `update_map_location`, and `mark_chat_processed` to student-data-server
   - **Updated Recommendations Workflow**: Modified recommendations_instructions.js to create map pins during recommendations instead of waiting for Map stage

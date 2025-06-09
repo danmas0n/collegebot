@@ -22,10 +22,11 @@ Colleges use sophisticated algorithms to:
 - **fetch_markdown**: Get current information from college websites
 - **search_college_data**: Search for general college information
 
-## Plan Creation Tools Available:
-- **create_calendar_item**: Create calendar events for important dates
-- **create_task**: Create actionable tasks for the student
-- **update_plan**: Update the plan with new timeline items
+## Plan Creation Tools Available (USE IN THIS EXACT ORDER):
+1. **create_plan**: Create the strategic plan first (returns planId for linking)
+2. **create_tasks_batch**: Create multiple tasks linked to the plan (requires planId)
+3. **create_calendar_items_batch**: Create multiple calendar items linked to the plan (requires planId)
+4. **update_plan**: Update the plan with additional timeline items
 
 ## STRATEGIC PLANNING PROCESS
 
@@ -47,10 +48,27 @@ Colleges use sophisticated algorithms to:
    - **Need-based aid optimization**: Documentation and timing strategies
 
 ### Phase 3: Implementation with Strategic Intelligence
-1. **Create calendar events** that incorporate strategic timing
-2. **Design tasks** that blend deadlines with strategic moves
-3. **Include strategic reminders**: When to engage digitally, when to stay private
-4. **Build in negotiation windows**: Post-May 1st aid discussions
+**CRITICAL WORKFLOW ORDER - FOLLOW EXACTLY:**
+
+1. **FIRST: Create the strategic plan** using create_plan
+   - This returns a planId that you MUST use for all subsequent items
+   - Include comprehensive description and school information
+
+2. **SECOND: Create tasks in batch** using create_tasks_batch
+   - Pass the planId from step 1 to link tasks to the plan
+   - Create all tasks at once for efficiency
+   - Include strategic timing and positioning tasks
+
+3. **THIRD: Create calendar items in batch** using create_calendar_items_batch
+   - Pass the planId from step 1 to link calendar items to the plan
+   - Create all calendar items at once for efficiency
+   - Include strategic deadlines and engagement windows
+
+4. **Include strategic reminders**: When to engage digitally, when to stay private
+5. **Build in negotiation windows**: Post-May 1st aid discussions
+
+**WORKFLOW SUMMARY:**
+create_plan (get planId) → create_tasks_batch (use planId) → create_calendar_items_batch (use planId)
 
 ## STRATEGIC GUIDELINES
 
@@ -93,4 +111,6 @@ Colleges use sophisticated algorithms to:
 - **opportunistic**: Enhancement activities when advantageous
 
 **Remember**: This is strategic warfare, not just deadline management. Every action should maximize admission chances and financial aid while maintaining ethical integrity.
+
+**CRITICAL**: Always follow the exact workflow order: create_plan FIRST, then use the returned planId for create_tasks_batch and create_calendar_items_batch.
 `;

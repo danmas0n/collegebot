@@ -1,7 +1,7 @@
 import { recommendationsInstructions } from './recommendations_instructions.js';
 import { mapInstructions } from './map_instructions.js';
 import { planInstructions } from './plan_instructions.js';
-import { getMapLocations } from '../services/firestore.js';
+import { getMapLocations, getChats } from '../services/firestore.js';
 import { Request } from 'express';
 
 interface ToolParameter {
@@ -101,8 +101,8 @@ const RECOMMENDATION_TOOLS: Tool[] = [
     ]
   },
   {
-    name: 'fetch_markdown',
-    description: 'Fetch and extract markdown content from a webpage URL',
+    name: 'fetch_txt',
+    description: 'Fetch and extract clean text content from a webpage URL (strips HTML and JavaScript)',
     parameters: [
       {
         name: 'url',
@@ -205,6 +205,18 @@ const RECOMMENDATION_TOOLS: Tool[] = [
         name: 'updates',
         type: 'object',
         description: 'Partial updates to apply to the location',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'clear_map_locations',
+    description: 'Clear all map locations for a student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
         required: true
       }
     ]
@@ -345,8 +357,8 @@ const PLAN_TOOLS: Tool[] = [
     ]
   },
   {
-    name: 'fetch_markdown',
-    description: 'Fetch and extract markdown content from a webpage URL',
+    name: 'fetch_txt',
+    description: 'Fetch and extract clean text content from a webpage URL (strips HTML and JavaScript)',
     parameters: [
       {
         name: 'url',
@@ -376,6 +388,30 @@ const PLAN_TOOLS: Tool[] = [
     ]
   },
   {
+    name: 'create_calendar_items_batch',
+    description: 'Create multiple calendar events for the student in one operation',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'items',
+        type: 'array',
+        description: 'Array of calendar item objects with title, date, description, category, priority, etc.',
+        required: true
+      },
+      {
+        name: 'planId',
+        type: 'string',
+        description: 'ID of the plan to link calendar items to',
+        required: false
+      }
+    ]
+  },
+  {
     name: 'create_task',
     description: 'Create a task for the student',
     parameters: [
@@ -394,6 +430,30 @@ const PLAN_TOOLS: Tool[] = [
     ]
   },
   {
+    name: 'create_tasks_batch',
+    description: 'Create multiple tasks for the student in one operation',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'tasks',
+        type: 'array',
+        description: 'Array of task objects with title, description, dueDate, priority, category, etc.',
+        required: true
+      },
+      {
+        name: 'planId',
+        type: 'string',
+        description: 'ID of the plan to link tasks to',
+        required: false
+      }
+    ]
+  },
+  {
     name: 'update_plan',
     description: 'Update a plan with new timeline items',
     parameters: [
@@ -407,6 +467,72 @@ const PLAN_TOOLS: Tool[] = [
         name: 'timelineItems',
         type: 'array',
         description: 'Array of timeline items to add to the plan',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_plan',
+    description: 'Create a strategic plan for the student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'schoolNames',
+        type: 'array',
+        description: 'Array of school names or single school name for the plan',
+        required: true
+      },
+      {
+        name: 'description',
+        type: 'string',
+        description: 'Description of the plan',
+        required: false
+      },
+      {
+        name: 'sourceChatId',
+        type: 'string',
+        description: 'ID of the source chat (if any) to link to the plan',
+        required: false
+      },
+      {
+        name: 'sourcePinIds',
+        type: 'array',
+        description: 'Array of pin/location IDs that this plan is based on',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'clear_map_locations',
+    description: 'Clear all map locations for a student',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'mark_chat_processed',
+    description: 'Mark a chat as processed to prevent reprocessing',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'chatId',
+        type: 'string',
+        description: 'ID of the chat to mark as processed',
         required: true
       }
     ]
@@ -468,7 +594,7 @@ export const generateToolInstructions = (mode: string): string => {
   return instructions;
 };
 
-export const getBasePrompt = async (studentName: string, studentData: any, mode = 'recommendations', req?: Request): Promise<string> => {
+export const getBasePrompt = async (studentName: string, studentData: any, mode = 'recommendations', req?: Request, additionalOptions?: { currentChatId?: string; currentChatTitle?: string; sourcePinIds?: string[] }): Promise<string> => {
   const baseInstructions = `You are an AI college advisor helping ${studentName}. Use tools to fetch current college information as needed.
 
 IMPORTANT AWARENESS: Colleges use sophisticated algorithms to track student digital behavior and optimize pricing. Always focus on net price (what families actually pay) rather than sticker price, and be aware that merit scholarships often go to affluent families rather than those with the greatest need.`;
@@ -497,6 +623,18 @@ ${mapInstructions}`;
       break;
 
     case 'plan_building':
+      // Log strategic planning context for debugging
+      console.log('=== STRATEGIC PLANNING SESSION STARTING ===');
+      console.log(`Student: ${studentName} (ID: ${studentData.id})`);
+      if (additionalOptions?.currentChatId) {
+        console.log(`Source Chat ID: ${additionalOptions.currentChatId}`);
+        console.log(`Source Chat Title: ${additionalOptions.currentChatTitle || 'No title'}`);
+        console.log('This chat will be used as context for strategic planning and linked to the created plan.');
+      } else {
+        console.log('WARNING: No source chat ID provided - plan may not be properly linked to source conversation');
+      }
+      console.log('=== END STRATEGIC PLANNING CONTEXT ===');
+
       modeSpecificInstructions = `Goal: Create a comprehensive college application plan for ${studentName}.
 
 ${planInstructions}`;
@@ -545,6 +683,93 @@ This title is mandatory and must appear at the end of every response.`;
       const mapLocations = await getMapLocations(studentData.id, req.user.uid);
       additionalContext = `\nCurrent Map State:
 ${JSON.stringify(mapLocations, null, 2)}`;
+    }
+    
+    // Add source chat context for plan building
+    if (mode === 'plan_building' && additionalOptions?.currentChatId && studentData?.id) {
+      console.log(`Fetching source chat context for plan building: ${additionalOptions.currentChatId}`);
+      
+      const chats = await getChats(studentData.id);
+      const sourceChat = chats.find(chat => chat.id === additionalOptions.currentChatId);
+      
+      if (sourceChat) {
+        // Filter to only include user questions and assistant answers
+        const relevantMessages = sourceChat.messages.filter(msg => 
+          msg.role === 'user' || msg.role === 'assistant'
+        );
+        
+        if (relevantMessages.length > 0) {
+          const sourceChatContext = relevantMessages.map(msg => {
+            const role = msg.role === 'user' ? 'Student Question' : 'AI Response';
+            return `${role}: ${msg.content}`;
+          }).join('\n\n');
+          
+          additionalContext += `\n\nSource Pin IDs: ${additionalOptions.sourcePinIds || 'None provided'}
+Source Chat Context:
+Chat ID: ${additionalOptions.currentChatId}
+Chat Title: ${additionalOptions.currentChatTitle || 'No title'}
+
+This strategic plan is being created based on the following conversation where college recommendations were discussed:
+
+${sourceChatContext}
+
+Use this context to create a strategic plan that builds upon the colleges and insights discussed in this conversation.`;
+          
+          console.log(`Added source chat context: ${relevantMessages.length} messages from chat "${additionalOptions.currentChatTitle}"`);
+        } else {
+          console.log('Source chat found but no relevant messages (user/assistant) to include');
+        }
+      } else {
+        console.log(`Source chat ${additionalOptions.currentChatId} not found in student's chats`);
+      }
+    }
+    
+    // Add source pin IDs context for plan building
+    if (mode === 'plan_building' && additionalOptions?.sourcePinIds && additionalOptions.sourcePinIds.length > 0) {
+      console.log(`Adding source pin IDs to plan building context: ${JSON.stringify(additionalOptions.sourcePinIds)}`);
+      
+      // Get map locations to resolve pin names
+      if (studentData?.id && req?.user?.uid) {
+        try {
+          const mapLocations = await getMapLocations(studentData.id, req.user.uid);
+          const sourcePinDetails = additionalOptions.sourcePinIds.map(pinId => {
+            const location = mapLocations.find(loc => loc.id === pinId);
+            return location ? {
+              id: pinId,
+              name: location.name,
+              type: location.type,
+              metadata: location.metadata
+            } : {
+              id: pinId,
+              name: `Unknown Location (${pinId})`,
+              type: 'unknown',
+              metadata: {}
+            };
+          });
+          
+          additionalContext += `\n\nSource Pin Context:
+Pin IDs: ${JSON.stringify(additionalOptions.sourcePinIds)}
+
+These colleges/locations were selected for strategic planning:
+
+${sourcePinDetails.map(pin => `- ${pin.name} (ID: ${pin.id}, Type: ${pin.type})`).join('\n')}
+
+IMPORTANT: When creating plans, you MUST include these source pin IDs in the sourcePinIds parameter of the create_plan tool so that the plan can be properly linked to these specific colleges/locations.`;
+          
+          console.log(`Added source pin context: ${sourcePinDetails.length} pins resolved`);
+        } catch (error) {
+          console.error('Error resolving source pin details:', error);
+          additionalContext += `\n\nSource Pin Context:
+Pin IDs: ${JSON.stringify(additionalOptions.sourcePinIds)}
+
+IMPORTANT: When creating plans, you MUST include these source pin IDs in the sourcePinIds parameter of the create_plan tool.`;
+        }
+      } else {
+        additionalContext += `\n\nSource Pin Context:
+Pin IDs: ${JSON.stringify(additionalOptions.sourcePinIds)}
+
+IMPORTANT: When creating plans, you MUST include these source pin IDs in the sourcePinIds parameter of the create_plan tool.`;
+      }
     }
   } catch (error) {
     console.error('Error getting additional context:', error);

@@ -1,57 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from '../utils/api';
 import { useWizard } from './WizardContext';
-
-interface CalendarItem {
-  id: string;
-  studentId: string;
-  title: string;
-  description: string;
-  date: string;
-  type: string;
-  sourcePins: string[];
-  completed?: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface Task {
-  id: string;
-  studentId: string;
-  title: string;
-  description: string;
-  dueDate: string | null;
-  completed: boolean;
-  category: string;
-  sourcePins: string[];
-  priority: 'high' | 'medium' | 'low';
-  tags: string[];
-  reminderDates: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface PinResearchRequest {
-  id: string;
-  studentId: string;
-  pinIds: string[];
-  status: 'pending' | 'in-progress' | 'complete' | 'error';
-  progress: number;
-  findings: Array<{
-    pinId: string;
-    deadlines?: Array<{
-      date: string;
-      description: string;
-      source?: string;
-    }>;
-    requirements?: Array<{
-      description: string;
-      source?: string;
-    }>;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-}
+import { CalendarItem, Task, PinResearchRequest } from '../types/calendar';
 
 interface CalendarContextType {
   calendarItems: CalendarItem[];
@@ -101,14 +51,20 @@ export const CalendarProvider: React.FC<CalendarProviderProps> = ({ children }) 
       setIsLoading(true);
       setError(null);
       
+      console.log('CalendarContext: Loading calendar items for student:', studentId);
       const response = await api.get(`/api/calendar/${studentId}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('CalendarContext: API error response:', errorData);
         throw new Error(errorData.error || `Failed to load calendar items: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('CalendarContext: Received calendar data:', data);
+      console.log('CalendarContext: Calendar items count:', data.items?.length || 0);
+      console.log('CalendarContext: Calendar items:', data.items);
+      
       setCalendarItems(data.items || []);
     } catch (err) {
       console.error('Error loading calendar items:', err);

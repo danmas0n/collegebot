@@ -10,6 +10,15 @@ import {
   Collapse,
   IconButton,
   Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -37,7 +46,7 @@ const defaultCenter = {
   lng: -98.5795,
 };
 
-const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = [];
+const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = ["places"];
 
 export const MapStage = (): JSX.Element => {
   const { currentStudent } = useWizard();
@@ -54,6 +63,8 @@ export const MapStage = (): JSX.Element => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<boolean>(false);
   const [editingLocation, setEditingLocation] = useState<MapLocation | null>(null);
   const [locationFormErrors, setLocationFormErrors] = useState<Record<string, string>>({});
+  const [locationAddress, setLocationAddress] = useState<string>('');
+  const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
   const [showDebugControls, setShowDebugControls] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'name' | 'type'>('name');
   const [isTourPlanningOpen, setIsTourPlanningOpen] = useState<boolean>(false);
@@ -322,6 +333,126 @@ export const MapStage = (): JSX.Element => {
     }
   }, [currentStudent?.id, selectedLocation]);
 
+  // Function to save a location (add or edit)
+  const handleSaveLocation = useCallback(async () => {
+    if (!currentStudent?.id || !editingLocation) return;
+    
+    // Validate form
+    const errors: Record<string, string> = {};
+    if (!editingLocation.name.trim()) {
+      errors.name = 'Name is required';
+    }
+    if (!editingLocation.latitude || editingLocation.latitude === 0) {
+      errors.latitude = 'Latitude is required';
+    }
+    if (!editingLocation.longitude || editingLocation.longitude === 0) {
+      errors.longitude = 'Longitude is required';
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setLocationFormErrors(errors);
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      setLocationFormErrors({});
+      
+      const response = await api.post('/api/students/map-locations', {
+        studentId: currentStudent.id,
+        ...editingLocation
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Failed to save location: ${response.status}`);
+      }
+      
+      // Reload locations to get the updated list
+      await loadLocations();
+      
+      // Close dialog
+      setIsEditDialogOpen(false);
+      setEditingLocation(null);
+      setError(null);
+    } catch (err) {
+      console.error('Error saving location:', err);
+      setError('Failed to save location: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentStudent?.id, editingLocation, loadLocations]);
+
+  // Function to handle location form changes
+  const handleLocationFormChange = useCallback((field: string, value: any) => {
+    if (!editingLocation) return;
+    
+    setEditingLocation(prev => prev ? {
+      ...prev,
+      [field]: value
+    } : null);
+    
+    // Clear error for this field
+    if (locationFormErrors[field]) {
+      setLocationFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  }, [editingLocation, locationFormErrors]);
+
+  // Function to geocode an address
+  const handleGeocodeAddress = useCallback(async () => {
+    if (!locationAddress.trim() || !isLoaded) return;
+    
+    try {
+      setIsGeocoding(true);
+      setLocationFormErrors({});
+      
+      const geocoder = new google.maps.Geocoder();
+      const result = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
+        geocoder.geocode({ address: locationAddress }, (results, status) => {
+          if (status === google.maps.GeocoderStatus.OK && results) {
+            resolve(results);
+          } else {
+            reject(new Error(`Geocoding failed: ${status}`));
+          }
+        });
+      });
+      
+      if (result.length > 0) {
+        const location = result[0].geometry.location;
+        const lat = location.lat();
+        const lng = location.lng();
+        const formattedAddress = result[0].formatted_address;
+        
+        // Update the editing location with coordinates and address
+        setEditingLocation(prev => prev ? {
+          ...prev,
+          latitude: lat,
+          longitude: lng,
+          metadata: {
+            ...prev.metadata,
+            address: formattedAddress
+          }
+        } : null);
+        
+        // Clear any previous errors
+        setLocationFormErrors({});
+      } else {
+        setLocationFormErrors({ address: 'No results found for this address' });
+      }
+    } catch (err) {
+      console.error('Geocoding error:', err);
+      setLocationFormErrors({ 
+        address: 'Failed to find location. Please check the address and try again.' 
+      });
+    } finally {
+      setIsGeocoding(false);
+    }
+  }, [locationAddress, isLoaded]);
+
   // Handle processing completion from debug pane
   const handleDebugProcessingComplete = useCallback(() => {
     setHasUnprocessedChats(false);
@@ -456,6 +587,8 @@ export const MapStage = (): JSX.Element => {
                 longitude: 0,
                 metadata: {}
               } as MapLocation);
+              setLocationAddress('');
+              setLocationFormErrors({});
               setIsEditDialogOpen(true);
             }}
             disabled={!currentStudent || isProcessing}
@@ -605,6 +738,98 @@ export const MapStage = (): JSX.Element => {
         onClose={() => setIsTourPlanningOpen(false)}
         locations={locations}
       />
+
+      {/* Add/Edit Location Dialog */}
+      <Dialog
+        open={isEditDialogOpen}
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setEditingLocation(null);
+          setLocationFormErrors({});
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {editingLocation?.id?.startsWith('custom-') ? 'Add New Location' : 'Edit Location'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <TextField
+              fullWidth
+              label="Name"
+              value={editingLocation?.name || ''}
+              onChange={(e) => handleLocationFormChange('name', e.target.value)}
+              error={!!locationFormErrors.name}
+              helperText={locationFormErrors.name}
+              sx={{ mb: 2 }}
+            />
+            
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Type</InputLabel>
+              <Select
+                value={editingLocation?.type || 'college'}
+                onChange={(e) => handleLocationFormChange('type', e.target.value)}
+                label="Type"
+              >
+                <MenuItem value="college">College</MenuItem>
+                <MenuItem value="scholarship">Scholarship</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </Select>
+            </FormControl>
+            
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <TextField
+                fullWidth
+                label="Address"
+                value={locationAddress}
+                onChange={(e) => setLocationAddress(e.target.value)}
+                error={!!locationFormErrors.address}
+                helperText={locationFormErrors.address || 'Enter the full address (e.g., "Harvard University, Cambridge, MA")'}
+                placeholder="e.g., Harvard University, Cambridge, MA"
+              />
+              <Button
+                variant="outlined"
+                onClick={handleGeocodeAddress}
+                disabled={!locationAddress.trim() || isGeocoding}
+                sx={{ minWidth: '120px' }}
+              >
+                {isGeocoding ? <CircularProgress size={20} /> : 'Find Location'}
+              </Button>
+            </Box>
+            
+            {editingLocation?.latitude !== 0 && editingLocation?.longitude !== 0 && (
+              <Box sx={{ mb: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+                <Typography variant="body2" color="success.dark">
+                  ✓ Location found: {editingLocation?.latitude?.toFixed(6)}, {editingLocation?.longitude?.toFixed(6)}
+                </Typography>
+              </Box>
+            )}
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Enter the address and click "Find Location" to automatically get the coordinates.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setIsEditDialogOpen(false);
+              setEditingLocation(null);
+              setLocationFormErrors({});
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveLocation}
+            variant="contained"
+            disabled={isLoading}
+          >
+            {isLoading ? <CircularProgress size={20} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </StageContainer>
   );
 };

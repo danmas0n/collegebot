@@ -1,13 +1,14 @@
 export interface Plan {
   id: string;
   studentId: string;
-  schoolId: string | 'general'; // 'general' for school-independent tasks
-  schoolName: string | 'General';
+  schoolId: string;
+  schoolName: string;
   status: 'draft' | 'active' | 'completed';
-  createdAt: Date;
-  updatedAt: Date;
-  sourceChats: string[]; // Links to creation + edit conversations
-  lastModified: Date;
+  createdAt: string;
+  updatedAt: string;
+  lastModified: string;
+  sourceChats: string[];
+  sourcePins: string[];
   description?: string;
   timeline: PlanItem[];
 }

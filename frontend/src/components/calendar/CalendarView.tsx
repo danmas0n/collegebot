@@ -49,11 +49,22 @@ interface CalendarItemFormData {
 }
 
 const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
-  const { calendarItems, isLoading, error, createCalendarItem, updateCalendarItem, deleteCalendarItem } = useCalendar();
+  const { calendarItems, tasks, isLoading, error, createCalendarItem, updateCalendarItem, deleteCalendarItem } = useCalendar();
+  
+  // Debug logging
+  console.log('CalendarView: Rendering with data:', {
+    studentId,
+    calendarItemsCount: calendarItems?.length || 0,
+    calendarItems,
+    tasksCount: tasks?.length || 0,
+    isLoading,
+    error
+  });
   
   // State for calendar navigation
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [taskFilterDate, setTaskFilterDate] = useState<Date | undefined>(new Date());
   
   // State for calendar item form
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
@@ -84,7 +95,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
   // Handle date selection
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
+    setTaskFilterDate(date);
   };
+  
+  // Handle clearing task filter
+  useEffect(() => {
+    const handleClearFilter = () => {
+      setTaskFilterDate(undefined);
+    };
+    
+    window.addEventListener('clearTaskFilter', handleClearFilter);
+    return () => window.removeEventListener('clearTaskFilter', handleClearFilter);
+  }, []);
   
   // Handle opening the form for creating a new calendar item
   const handleOpenNewItemForm = (date: Date = selectedDate) => {
@@ -134,7 +156,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
           title: formData.title,
           description: formData.description,
           date: formData.date.toISOString().split('T')[0],
-          type: formData.type
+          type: formData.type as 'deadline' | 'event' | 'reminder' | 'appointment' | 'task'
         });
       } else {
         // Create new item
@@ -143,7 +165,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
           title: formData.title,
           description: formData.description,
           date: formData.date.toISOString().split('T')[0],
-          type: formData.type,
+          type: formData.type as 'deadline' | 'event' | 'reminder' | 'appointment' | 'task',
           sourcePins: []
         });
       }
@@ -173,7 +195,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
     end: endOfMonth(currentMonth)
   });
   
-  // Get items for a specific date
+  // Get calendar items for a specific date
   const getItemsForDate = (date: Date) => {
     return calendarItems.filter(item => {
       const itemDate = new Date(item.date);
@@ -181,8 +203,25 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
     });
   };
   
+  // Get tasks due on a specific date
+  const getTasksForDate = (date: Date) => {
+    return (tasks || []).filter(task => {
+      if (!task.dueDate) return false;
+      const taskDate = new Date(task.dueDate);
+      return isSameDay(taskDate, date);
+    });
+  };
+  
+  // Get all items (calendar items + tasks) for a specific date
+  const getAllItemsForDate = (date: Date) => {
+    const calendarItems = getItemsForDate(date);
+    const tasksForDate = getTasksForDate(date);
+    return { calendarItems, tasks: tasksForDate };
+  };
+  
   // Get items for the selected date
   const selectedDateItems = getItemsForDate(selectedDate);
+  const selectedDateTasks = getTasksForDate(selectedDate);
   
   // Get color for item type
   const getItemTypeColor = (type: string): 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
@@ -263,8 +302,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
               {/* Calendar days */}
               {calendarDays.map(day => {
                 const dayItems = getItemsForDate(day);
+                const dayTasks = getTasksForDate(day);
                 const isSelected = isSameDay(day, selectedDate);
                 const isCurrentMonth = isSameMonth(day, currentMonth);
+                const totalItems = dayItems.length + dayTasks.length;
+                
+                // Determine if there are overdue tasks
+                const hasOverdueTasks = dayTasks.some(task => 
+                  !task.completed && new Date(task.dueDate!) < new Date()
+                );
                 
                 return (
                   <Box
@@ -277,9 +323,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
                       bgcolor: isSelected ? 'primary.light' : isCurrentMonth ? 'background.paper' : 'action.hover',
                       color: isSelected ? 'primary.contrastText' : 'inherit',
                       border: isSelected ? '2px solid' : '1px solid',
-                      borderColor: isSelected ? 'primary.main' : 'divider',
+                      borderColor: isSelected ? 'primary.main' : hasOverdueTasks ? 'error.main' : 'divider',
                       borderRadius: 1,
                       cursor: 'pointer',
+                      position: 'relative',
                       '&:hover': {
                         bgcolor: isSelected ? 'primary.light' : 'action.hover'
                       }
@@ -289,20 +336,49 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
                       {format(day, 'd')}
                     </Typography>
                     
-                    {dayItems.slice(0, 2).map(item => (
+                    {/* Show calendar items first */}
+                    {dayItems.slice(0, 1).map(item => (
                       <Chip
-                        key={item.id}
+                        key={`item-${item.id}`}
                         label={item.title}
                         size="small"
                         color={getItemTypeColor(item.type)}
-                        sx={{ my: 0.5, maxWidth: '100%', overflow: 'hidden' }}
+                        sx={{ my: 0.25, maxWidth: '100%', overflow: 'hidden', fontSize: '0.7rem' }}
                       />
                     ))}
                     
-                    {dayItems.length > 2 && (
-                      <Typography variant="caption" sx={{ display: 'block', textAlign: 'center' }}>
-                        +{dayItems.length - 2} more
+                    {/* Show tasks */}
+                    {dayTasks.slice(0, totalItems > 2 ? 1 : 2).map(task => (
+                      <Chip
+                        key={`task-${task.id}`}
+                        label={task.title}
+                        size="small"
+                        color={task.completed ? 'success' : hasOverdueTasks ? 'error' : 'warning'}
+                        variant="outlined"
+                        sx={{ my: 0.25, maxWidth: '100%', overflow: 'hidden', fontSize: '0.7rem' }}
+                      />
+                    ))}
+                    
+                    {/* Show count if more items */}
+                    {totalItems > 2 && (
+                      <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', fontSize: '0.65rem' }}>
+                        +{totalItems - 2} more
                       </Typography>
+                    )}
+                    
+                    {/* Visual indicator for tasks */}
+                    {dayTasks.length > 0 && (
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 2,
+                          right: 2,
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          bgcolor: hasOverdueTasks ? 'error.main' : dayTasks.some(t => !t.completed) ? 'warning.main' : 'success.main'
+                        }}
+                      />
                     )}
                   </Box>
                 );
@@ -332,65 +408,124 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
                 <CircularProgress />
               </Box>
-            ) : selectedDateItems.length === 0 ? (
+            ) : selectedDateItems.length === 0 && selectedDateTasks.length === 0 ? (
               <Typography variant="body2" sx={{ textAlign: 'center', p: 2 }}>
-                No events scheduled for this day
+                No events or tasks scheduled for this day
               </Typography>
             ) : (
               <Box>
-                {selectedDateItems.map(item => (
-                  <Box
-                    key={item.id}
-                    sx={{
-                      p: 2,
-                      mb: 1,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      bgcolor: 'background.paper'
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <EventIcon color={getItemTypeColor(item.type)} sx={{ mr: 1 }} />
-                        <Typography variant="subtitle1">{item.title}</Typography>
+                {/* Calendar Items Section */}
+                {selectedDateItems.length > 0 && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>
+                      📅 Events & Appointments
+                    </Typography>
+                    {selectedDateItems.map(item => (
+                      <Box
+                        key={item.id}
+                        sx={{
+                          p: 2,
+                          mb: 1,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 1,
+                          bgcolor: 'background.paper'
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <EventIcon color={getItemTypeColor(item.type)} sx={{ mr: 1 }} />
+                            <Typography variant="subtitle1">{item.title}</Typography>
+                          </Box>
+                          <Box>
+                            <Tooltip title="Edit">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenEditItemForm(item.id)}
+                                sx={{ mr: 0.5 }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteItem(item.id)}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </Box>
+                        
+                        {item.description && (
+                          <Typography variant="body2" sx={{ mt: 1 }}>
+                            {item.description}
+                          </Typography>
+                        )}
+                        
+                        <Chip
+                          label={item.type}
+                          size="small"
+                          color={getItemTypeColor(item.type)}
+                          variant="outlined"
+                          sx={{ mt: 1 }}
+                        />
                       </Box>
-                      <Box>
-                        <Tooltip title="Edit">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenEditItemForm(item.id)}
-                            sx={{ mr: 0.5 }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDeleteItem(item.id)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </Box>
-                    
-                    {item.description && (
-                      <Typography variant="body2" sx={{ mt: 1 }}>
-                        {item.description}
-                      </Typography>
-                    )}
-                    
-                    <Chip
-                      label={item.type}
-                      size="small"
-                      color={getItemTypeColor(item.type)}
-                      variant="outlined"
-                      sx={{ mt: 1 }}
-                    />
+                    ))}
                   </Box>
-                ))}
+                )}
+
+                {/* Tasks Section */}
+                {selectedDateTasks.length > 0 && (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'warning.main' }}>
+                      ✅ Tasks Due
+                    </Typography>
+                    {selectedDateTasks.map(task => (
+                      <Box
+                        key={task.id}
+                        sx={{
+                          p: 2,
+                          mb: 1,
+                          border: '1px solid',
+                          borderColor: task.completed ? 'success.main' : 'warning.main',
+                          borderRadius: 1,
+                          bgcolor: task.completed ? 'success.light' : 'warning.light',
+                          opacity: task.completed ? 0.7 : 1
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Typography 
+                            variant="subtitle1" 
+                            sx={{ 
+                              textDecoration: task.completed ? 'line-through' : 'none',
+                              flexGrow: 1
+                            }}
+                          >
+                            {task.title}
+                          </Typography>
+                          <Chip
+                            label={task.completed ? 'Completed' : task.priority}
+                            size="small"
+                            color={task.completed ? 'success' : task.priority === 'high' ? 'error' : task.priority === 'medium' ? 'warning' : 'info'}
+                            sx={{ ml: 1 }}
+                          />
+                        </Box>
+                        
+                        {task.description && (
+                          <Typography variant="body2" sx={{ mt: 1 }}>
+                            {task.description}
+                          </Typography>
+                        )}
+                        
+                        <Typography variant="caption" color="text.secondary">
+                          Category: {task.category}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
               </Box>
             )}
           </Paper>
@@ -398,7 +533,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
         
         {/* Task list */}
         <Grid item xs={12} md={4}>
-          <TaskList />
+          <TaskList filterDate={taskFilterDate} />
         </Grid>
       </Grid>
       
