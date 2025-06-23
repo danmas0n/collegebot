@@ -168,14 +168,124 @@ export class GeminiService {
 
       console.error('File loaded, size:', fileContent.length);
 
-      // Create prompt for parsing
-      const prompt = `You are a Common Data Set (CDS) parser. Please analyze this ${format.toUpperCase()} file containing CDS data and extract the following sections:
+      // Create comprehensive prompt for parsing
+      const prompt = `You are a Common Data Set (CDS) parser. Please analyze this ${format.toUpperCase()} file and extract comprehensive data in the following JSON structure:
 
-1. Admissions data (including enrollment numbers, acceptance rates, test scores)
-2. Expenses data (including tuition, room & board, fees)
-3. Financial aid data (including scholarships, grants, loans)
+{
+  "admissions_profile": {
+    "acceptance_rate": "percentage of applicants admitted",
+    "yield_rate": "percentage of admitted students who enrolled", 
+    "total_applicants": "number who applied",
+    "total_admitted": "number admitted",
+    "total_enrolled": "number enrolled",
+    "gpa_ranges": {
+      "middle_50_gpa": "25th-75th percentile GPA",
+      "average_gpa": "average high school GPA",
+      "percent_top_10_percent": "% in top 10% of HS class",
+      "percent_top_25_percent": "% in top 25% of HS class"
+    },
+    "test_scores": {
+      "sat_ranges": {
+        "composite_25th": "25th percentile SAT composite",
+        "composite_75th": "75th percentile SAT composite", 
+        "reading_writing_25th": "25th percentile SAT EBRW",
+        "reading_writing_75th": "75th percentile SAT EBRW",
+        "math_25th": "25th percentile SAT Math",
+        "math_75th": "75th percentile SAT Math"
+      },
+      "act_ranges": {
+        "composite_25th": "25th percentile ACT composite",
+        "composite_75th": "75th percentile ACT composite"
+      },
+      "test_policy": "required/optional/test-blind policy",
+      "percent_submitting_sat": "% of enrolled students who submitted SAT",
+      "percent_submitting_act": "% of enrolled students who submitted ACT"
+    },
+    "demonstrated_interest": "whether school considers demonstrated interest (campus visits, info sessions, etc.)",
+    "early_programs": {
+      "early_decision_available": "yes/no",
+      "early_action_available": "yes/no", 
+      "restrictive_early_action": "yes/no",
+      "early_decision_acceptance_rate": "if available",
+      "early_action_acceptance_rate": "if available"
+    },
+    "waitlist_data": {
+      "offers_waitlist": "yes/no",
+      "waitlist_offered": "number offered place on waitlist",
+      "waitlist_accepted": "number accepting waitlist place", 
+      "waitlist_admitted": "number admitted from waitlist"
+    }
+  },
+  "financial_profile": {
+    "cost_of_attendance": {
+      "tuition_fees": "annual tuition and required fees",
+      "room_board": "annual room and board costs",
+      "total_cost": "total annual cost",
+      "books_supplies": "estimated books and supplies cost",
+      "other_expenses": "other estimated expenses"
+    },
+    "financial_aid": {
+      "percent_receiving_need_aid": "% receiving need-based aid",
+      "percent_receiving_merit_aid": "% receiving non-need aid", 
+      "average_need_based_aid": "average need-based aid package",
+      "average_merit_aid": "average merit-based aid",
+      "percent_need_fully_met": "% whose need was fully met",
+      "average_percent_need_met": "average % of need met",
+      "average_debt_at_graduation": "average debt for graduates who borrowed"
+    },
+    "special_aid_programs": "any special financial aid initiatives or policies mentioned"
+  },
+  "student_experience": {
+    "retention_graduation": {
+      "first_year_retention_rate": "% of first-year students returning for sophomore year",
+      "four_year_graduation_rate": "% graduating in 4 years",
+      "six_year_graduation_rate": "% graduating in 6 years"
+    },
+    "academic_environment": {
+      "student_faculty_ratio": "student to faculty ratio",
+      "class_sizes": "distribution of class sizes",
+      "percent_classes_under_20": "% of classes with fewer than 20 students",
+      "percent_classes_over_50": "% of classes with 50+ students"
+    },
+    "campus_life": {
+      "percent_living_on_campus": "% of students living in college housing",
+      "percent_out_of_state": "% of students from out of state",
+      "percent_international": "% of international students"
+    },
+    "diversity": {
+      "racial_ethnic_breakdown": "breakdown by race/ethnicity",
+      "percent_first_generation": "% who are first-generation college students"
+    }
+  },
+  "academic_programs": {
+    "popular_majors": "most popular degree areas with percentages",
+    "special_programs": "honors programs, study abroad, research opportunities, etc.",
+    "academic_requirements": "general education or core curriculum requirements"
+  },
+  "application_process": {
+    "application_deadlines": {
+      "regular_decision_deadline": "regular application deadline",
+      "early_decision_deadline": "early decision deadline if available",
+      "early_action_deadline": "early action deadline if available"
+    },
+    "notification_dates": {
+      "regular_decision_notification": "when regular decisions are released",
+      "early_decision_notification": "when early decisions are released",
+      "early_action_notification": "when early actions are released"
+    },
+    "application_requirements": {
+      "high_school_units_required": "required high school coursework",
+      "high_school_units_recommended": "recommended high school coursework",
+      "essay_required": "yes/no",
+      "interview_policy": "required/recommended/not considered",
+      "letters_of_recommendation": "number required"
+    },
+    "application_fee": "application fee amount",
+    "fee_waiver_available": "yes/no for fee waivers"
+  }
+}
 
-Please structure the data in a clear JSON format with these main sections. For each data point, include both the question/label and the value.`;
+Extract as much data as possible from the CDS file. If a data point is not available, use null. Focus on accuracy and include specific numbers, percentages, and policies as stated in the document.`;
 
       // Generate content with the file data
       const result = await this.model.generateContent([
@@ -187,7 +297,15 @@ Please structure the data in a clear JSON format with these main sections. For e
       const text = response.text();
 
       try {
-        return JSON.parse(text);
+        // Remove markdown code block wrapper if present
+        let cleanText = text.trim();
+        if (cleanText.startsWith('```json')) {
+          cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanText.startsWith('```')) {
+          cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        return JSON.parse(cleanText);
       } catch (error) {
         console.error('Error parsing Gemini response as JSON:', error);
         return {

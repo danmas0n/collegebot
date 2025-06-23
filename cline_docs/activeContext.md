@@ -29,6 +29,17 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Enhanced Calendar UX - Consolidated Tasks and Events Display**:
+  - **Removed Duplicate Content**: Eliminated the confusing duplicate display of tasks and calendar items that appeared both below the calendar and on the right side
+  - **Created TasksAndEventsPanel**: Built new consolidated component that combines both tasks and calendar items in a unified interface on the right side
+  - **Full-Width Calendar**: Modified CalendarView to use full width layout (flex: 1) instead of the previous 8/12 grid split
+  - **Enhanced Filtering and Sorting**: Added comprehensive filtering options (All, Tasks Only, Events Only, Completed, Incomplete) and sorting by due date, priority, category, or type
+  - **Preserved Visual Appeal**: Maintained colorful chip styling and visual indicators while consolidating the display
+  - **Default "Show All" Behavior**: Right panel now shows ALL tasks and calendar items by default, with clear section headers and counts
+  - **Smart Date Filtering**: When users click a calendar date, the right panel filters to show items for that date with a prominent "Show All" button to return to full view
+  - **Unified Item Management**: Single interface for creating, editing, and deleting both tasks and calendar items with proper form handling
+  - **Visual Hierarchy**: Clear distinction between tasks (with checkboxes) and events (with event icons) while maintaining consistent styling
+  - **Improved UX Flow**: Users can now see everything at once by default, then filter down as needed, eliminating the confusion from the previous dual-display approach
 - **Implemented Complete Strategic Planning Workflow**:
   - **Strategic Planning System**: Implemented end-to-end strategic planning workflow where users select map pins and create comprehensive application plans
   - **Plan Creation MCP Function**: Added `create_plan` function that creates plan records in Firestore with proper source chat linking and automatic chat processing
@@ -76,6 +87,30 @@
   - Added the function to backend tool configurations and prompts
   - AI models can now search for colleges with partial names (e.g., "Harvard", "MIT") before calling get_cds_data
   - This should dramatically improve success rate when models guess college names
+- **Completely Enhanced CDS Data Extraction System**:
+  - **Comprehensive Data Structure**: Redesigned CDS parsing to extract 5 major categories: admissions_profile, financial_profile, student_experience, academic_programs, and application_process
+  - **Demonstrated Interest Detection**: Successfully implemented extraction of demonstrated interest policies - the key insight from user feedback that some schools track campus visits/info sessions while others don't
+  - **Rich Admissions Intelligence**: Now extracts acceptance rates, yield rates, GPA ranges, test score ranges, early program details, and waitlist statistics
+  - **Financial Intelligence**: Captures complete cost breakdowns, financial aid statistics, debt levels, and special aid programs (like Harvard's $85K free tuition threshold)
+  - **Student Experience Metrics**: Extracts retention rates, graduation rates, student-faculty ratios, campus life statistics, and diversity breakdowns
+  - **Application Strategy Data**: Captures all deadlines, notification dates, requirements, and policies to help students optimize their application approach
+  - **JSON Structure Validation**: Fixed markdown wrapper parsing issue so Gemini responses are properly converted to structured JSON
+  - **Test Validation**: Successfully tested with Harvard 2023-24 CDS file, extracting 50+ data points including the critical "demonstrated interest: Considered" policy
+  - **Strategic Value**: This enhanced extraction enables Collegebot to provide much more personalized recommendations, accurate financial planning, and strategic application guidance
+- **Enhanced AI Prompts to Leverage CDS Data**:
+  - **Recommendations Prompt Enhancement**: Added comprehensive "Leveraging Enhanced CDS Data" section with 4 key intelligence areas:
+    - ADMISSIONS INTELLIGENCE: Compare student stats to CDS ranges, assess admission chances, leverage demonstrated interest policies
+    - FINANCIAL INTELLIGENCE: Use real cost data, predict aid likelihood, identify special programs like income thresholds
+    - STRATEGIC APPLICATION GUIDANCE: Optimize deadlines, requirements, test policies, and early program strategies
+    - STUDENT EXPERIENCE INSIGHTS: Use retention rates, student-faculty ratios, campus life data for fit assessment
+  - **Plan Instructions Enhancement**: Added "CDS-Driven Strategic Intelligence" section that transforms strategic planning:
+    - ADMISSIONS STRATEGY: Use acceptance rates and demonstrated interest for campus visit planning
+    - FINANCIAL STRATEGY: Leverage aid statistics for realistic budget planning and negotiation timing
+    - APPLICATION TIMING STRATEGY: Strategic submission timing based on deadlines and notification dates
+    - STUDENT EXPERIENCE VALIDATION: Use retention and diversity data for fit validation
+  - **Real-World Example Integration**: Both prompts now include concrete examples like Harvard's 3.45% acceptance rate, $85K free tuition threshold, and demonstrated interest policy
+  - **Tool Integration**: Added get_cds_data and search_cds_data to available research tools in both prompts
+  - **Strategic Impact**: AI agents now provide data-driven recommendations instead of generic advice, enabling families to make informed decisions based on actual institutional statistics rather than marketing materials
 - Created deployment scripts to simplify the deployment process:
   - Created `scripts/deploy-backend.sh` for building and deploying the backend/DB
   - Created `scripts/deploy-frontend.sh` for building and deploying the frontend

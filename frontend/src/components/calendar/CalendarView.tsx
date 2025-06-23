@@ -3,11 +3,9 @@ import {
   Box,
   Typography,
   Paper,
-  Grid,
   Button,
   IconButton,
   Chip,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -18,24 +16,18 @@ import {
   Select,
   MenuItem,
   Alert,
-  CircularProgress,
-  Tooltip
+  CircularProgress
 } from '@mui/material';
-import { SelectChangeEvent } from '@mui/material/Select';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import TodayIcon from '@mui/icons-material/Today';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EventIcon from '@mui/icons-material/Event';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { useCalendar } from '../../contexts/CalendarContext';
-import { useWizard } from '../../contexts/WizardContext';
-import TaskList from './TaskList';
+import TasksAndEventsPanel from './TasksAndEventsPanel';
 
 interface CalendarViewProps {
   studentId: string;
@@ -50,16 +42,6 @@ interface CalendarItemFormData {
 
 const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
   const { calendarItems, tasks, isLoading, error, createCalendarItem, updateCalendarItem, deleteCalendarItem } = useCalendar();
-  
-  // Debug logging
-  console.log('CalendarView: Rendering with data:', {
-    studentId,
-    calendarItemsCount: calendarItems?.length || 0,
-    calendarItems,
-    tasksCount: tasks?.length || 0,
-    isLoading,
-    error
-  });
   
   // State for calendar navigation
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -122,23 +104,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
     setIsFormOpen(true);
   };
   
-  // Handle opening the form for editing a calendar item
-  const handleOpenEditItemForm = (itemId: string) => {
-    const item = calendarItems.find(i => i.id === itemId);
-    if (!item) return;
-    
-    setFormData({
-      title: item.title,
-      description: item.description,
-      date: new Date(item.date),
-      type: item.type
-    });
-    setIsEditMode(true);
-    setEditingItemId(itemId);
-    setFormError(null);
-    setIsFormOpen(true);
-  };
-  
   // Handle form submission
   const handleSubmitForm = async () => {
     try {
@@ -178,17 +143,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
     }
   };
   
-  // Handle calendar item deletion
-  const handleDeleteItem = async (itemId: string) => {
-    if (window.confirm('Are you sure you want to delete this calendar item?')) {
-      try {
-        await deleteCalendarItem(itemId);
-      } catch (err) {
-        console.error('Error deleting calendar item:', err);
-      }
-    }
-  };
-  
   // Generate calendar days
   const calendarDays = eachDayOfInterval({
     start: startOfMonth(currentMonth),
@@ -212,17 +166,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
     });
   };
   
-  // Get all items (calendar items + tasks) for a specific date
-  const getAllItemsForDate = (date: Date) => {
-    const calendarItems = getItemsForDate(date);
-    const tasksForDate = getTasksForDate(date);
-    return { calendarItems, tasks: tasksForDate };
-  };
-  
-  // Get items for the selected date
-  const selectedDateItems = getItemsForDate(selectedDate);
-  const selectedDateTasks = getTasksForDate(selectedDate);
-  
   // Get color for item type
   const getItemTypeColor = (type: string): 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info' => {
     switch (type) {
@@ -243,10 +186,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
         </Alert>
       )}
       
-      <Grid container spacing={2}>
-        {/* Calendar */}
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2, mb: 2 }}>
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        {/* Calendar - Full Width */}
+        <Box sx={{ flex: 1 }}>
+          <Paper sx={{ p: 2 }}>
             {/* Calendar header */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -385,157 +328,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({ studentId }) => {
               })}
             </Box>
           </Paper>
-          
-          {/* Selected date details */}
-          <Paper sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">
-                {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-              </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={() => handleOpenNewItemForm(selectedDate)}
-                size="small"
-              >
-                Add Event
-              </Button>
-            </Box>
-            
-            <Divider sx={{ mb: 2 }} />
-            
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
-                <CircularProgress />
-              </Box>
-            ) : selectedDateItems.length === 0 && selectedDateTasks.length === 0 ? (
-              <Typography variant="body2" sx={{ textAlign: 'center', p: 2 }}>
-                No events or tasks scheduled for this day
-              </Typography>
-            ) : (
-              <Box>
-                {/* Calendar Items Section */}
-                {selectedDateItems.length > 0 && (
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>
-                      📅 Events & Appointments
-                    </Typography>
-                    {selectedDateItems.map(item => (
-                      <Box
-                        key={item.id}
-                        sx={{
-                          p: 2,
-                          mb: 1,
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          borderRadius: 1,
-                          bgcolor: 'background.paper'
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <EventIcon color={getItemTypeColor(item.type)} sx={{ mr: 1 }} />
-                            <Typography variant="subtitle1">{item.title}</Typography>
-                          </Box>
-                          <Box>
-                            <Tooltip title="Edit">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleOpenEditItemForm(item.id)}
-                                sx={{ mr: 0.5 }}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDeleteItem(item.id)}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </Box>
-                        
-                        {item.description && (
-                          <Typography variant="body2" sx={{ mt: 1 }}>
-                            {item.description}
-                          </Typography>
-                        )}
-                        
-                        <Chip
-                          label={item.type}
-                          size="small"
-                          color={getItemTypeColor(item.type)}
-                          variant="outlined"
-                          sx={{ mt: 1 }}
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                )}
-
-                {/* Tasks Section */}
-                {selectedDateTasks.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'warning.main' }}>
-                      ✅ Tasks Due
-                    </Typography>
-                    {selectedDateTasks.map(task => (
-                      <Box
-                        key={task.id}
-                        sx={{
-                          p: 2,
-                          mb: 1,
-                          border: '1px solid',
-                          borderColor: task.completed ? 'success.main' : 'warning.main',
-                          borderRadius: 1,
-                          bgcolor: task.completed ? 'success.light' : 'warning.light',
-                          opacity: task.completed ? 0.7 : 1
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Typography 
-                            variant="subtitle1" 
-                            sx={{ 
-                              textDecoration: task.completed ? 'line-through' : 'none',
-                              flexGrow: 1
-                            }}
-                          >
-                            {task.title}
-                          </Typography>
-                          <Chip
-                            label={task.completed ? 'Completed' : task.priority}
-                            size="small"
-                            color={task.completed ? 'success' : task.priority === 'high' ? 'error' : task.priority === 'medium' ? 'warning' : 'info'}
-                            sx={{ ml: 1 }}
-                          />
-                        </Box>
-                        
-                        {task.description && (
-                          <Typography variant="body2" sx={{ mt: 1 }}>
-                            {task.description}
-                          </Typography>
-                        )}
-                        
-                        <Typography variant="caption" color="text.secondary">
-                          Category: {task.category}
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                )}
-              </Box>
-            )}
-          </Paper>
-        </Grid>
+        </Box>
         
-        {/* Task list */}
-        <Grid item xs={12} md={4}>
-          <TaskList filterDate={taskFilterDate} />
-        </Grid>
-      </Grid>
+        {/* Tasks and Events Panel */}
+        <Box sx={{ width: 400, flexShrink: 0 }}>
+          <TasksAndEventsPanel filterDate={taskFilterDate} />
+        </Box>
+      </Box>
       
       {/* Calendar Item Form Dialog */}
       <Dialog open={isFormOpen} onClose={() => setIsFormOpen(false)} maxWidth="sm" fullWidth>
