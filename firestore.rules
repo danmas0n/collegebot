@@ -98,6 +98,22 @@ service cloud.firestore {
         && isWhitelisted(request.auth.token.email);
     }
 
+    // Plans collection
+    match /plans/{planId} {
+      allow read: if request.auth != null 
+        && isWhitelisted(request.auth.token.email);
+      allow create: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && request.resource.data.studentId != null
+        && exists(/databases/$(database)/documents/students/$(request.resource.data.studentId))
+        && get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null 
+        && isWhitelisted(request.auth.token.email)
+        && resource.data.studentId != null
+        && exists(/databases/$(database)/documents/students/$(resource.data.studentId))
+        && get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.userId == request.auth.uid;
+    }
+
     // Settings collection (AI settings, etc.)
     match /settings/{document} {
       allow read: if request.auth != null;

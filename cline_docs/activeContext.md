@@ -29,6 +29,13 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Fixed Plans Loading Issue - Missing Firestore Index and Security Rules**:
+  - **Root Cause**: Plans collection was missing required Firestore composite index for query `where('studentId', '==', studentId).orderBy('updatedAt', 'desc')`
+  - **Index Added**: Added composite index for `plans` collection with fields: `studentId` (Ascending) and `updatedAt` (Descending) to `firestore.indexes.json`
+  - **Security Rules Added**: Added proper Firestore security rules for `plans` collection to allow authenticated users to read/write their own plans
+  - **Deployment**: Successfully deployed both rules and indexes to production Firebase project
+  - **Resolution**: Plans should now load correctly in the application without the "FAILED_PRECONDITION" error
+  - **Future Prevention**: Index is now in version control via `firestore.indexes.json` for consistent deployments
 - **Enhanced Calendar UX - Consolidated Tasks and Events Display**:
   - **Removed Duplicate Content**: Eliminated the confusing duplicate display of tasks and calendar items that appeared both below the calendar and on the right side
   - **Created TasksAndEventsPanel**: Built new consolidated component that combines both tasks and calendar items in a unified interface on the right side
