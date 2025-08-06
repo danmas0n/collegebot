@@ -210,6 +210,36 @@ const RECOMMENDATION_TOOLS: Tool[] = [
     ]
   },
   {
+    name: 'geocode_batch',
+    description: 'Geocode multiple addresses to get latitude and longitude coordinates',
+    parameters: [
+      {
+        name: 'locations',
+        type: 'array',
+        description: 'Array of locations to geocode with name and address',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_map_locations_batch',
+    description: 'Create multiple map locations for the student in one operation',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'locations',
+        type: 'array',
+        description: 'Array of location objects with coordinates and metadata',
+        required: true
+      }
+    ]
+  },
+  {
     name: 'clear_map_locations',
     description: 'Clear all map locations for a student',
     parameters: [
@@ -329,6 +359,36 @@ const MAP_TOOLS: Tool[] = [
         name: 'updates',
         type: 'object',
         description: 'Partial updates to apply to the location',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'geocode_batch',
+    description: 'Geocode multiple addresses to get latitude and longitude coordinates',
+    parameters: [
+      {
+        name: 'locations',
+        type: 'array',
+        description: 'Array of locations to geocode with name and address',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'create_map_locations_batch',
+    description: 'Create multiple map locations for the student in one operation',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      },
+      {
+        name: 'locations',
+        type: 'array',
+        description: 'Array of location objects with coordinates and metadata',
         required: true
       }
     ]
@@ -595,9 +655,57 @@ export const generateToolInstructions = (mode: string): string => {
 };
 
 export const getBasePrompt = async (studentName: string, studentData: any, mode = 'recommendations', req?: Request, additionalOptions?: { currentChatId?: string; currentChatTitle?: string; sourcePinIds?: string[] }): Promise<string> => {
+  // Calculate temporal context
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-indexed
+  const graduationYear = studentData.studentProfile?.graduationYear;
+  
+  let temporalContext = `Current Date: ${currentDate.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  })}`;
+  
+  if (graduationYear) {
+    const classYear = `Class of ${graduationYear}`;
+    
+    // Calculate time to graduation (assuming June graduation)
+    const graduationDate = new Date(graduationYear, 5, 1); // June 1st of graduation year
+    const monthsToGraduation = Math.max(0, Math.round((graduationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
+    
+    // Determine current grade level based on graduation year
+    const yearsToGraduation = graduationYear - currentYear;
+    let gradeLevel = '';
+    if (yearsToGraduation <= 0) {
+      gradeLevel = 'Recent Graduate';
+    } else if (yearsToGraduation < 1) {
+      gradeLevel = 'High School Senior';
+    } else if (yearsToGraduation < 2) {
+      gradeLevel = 'High School Junior';
+    } else if (yearsToGraduation < 3) {
+      gradeLevel = 'High School Sophomore';
+    } else {
+      gradeLevel = 'High School Freshman or younger';
+    }
+    
+    temporalContext += `
+Student Timeline: ${studentName} is ${classYear} (${gradeLevel})
+Time to Graduation: ${monthsToGraduation} months
+Academic Context: ${yearsToGraduation <= 0 ? 'Post-graduation planning' : 
+  yearsToGraduation < 1 ? 'Senior year - active application period' :
+  yearsToGraduation < 2 ? 'Junior year - preparation and planning phase' :
+  'Underclassman - early exploration phase'}`;
+  }
+
   const baseInstructions = `You are an AI college advisor helping ${studentName}. Use tools to fetch current college information as needed.
 
-IMPORTANT AWARENESS: Colleges use sophisticated algorithms to track student digital behavior and optimize pricing. Always focus on net price (what families actually pay) rather than sticker price, and be aware that merit scholarships often go to affluent families rather than those with the greatest need.`;
+${temporalContext}
+
+IMPORTANT AWARENESS: Colleges use sophisticated algorithms to track student digital behavior and optimize pricing. Always focus on net price (what families actually pay) rather than sticker price, and be aware that merit scholarships often go to affluent families rather than those with the greatest need.
+
+TIMELINE AWARENESS: Always consider the student's graduation timeline when making recommendations and creating plans. Use the temporal context above to provide time-appropriate advice and realistic deadlines.`;
 
   let modeSpecificInstructions: string;
 

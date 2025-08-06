@@ -586,6 +586,143 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         }
       }
 
+      case 'geocode_batch': {
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for geocode_batch');
+        }
+        const { locations } = args;
+        if (!locations || !Array.isArray(locations)) {
+          throw new Error('Locations array is required');
+        }
+
+        const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+        if (!apiKey) {
+          throw new Error('Google Maps API key not configured');
+        }
+
+        try {
+          const results: Array<{ name: string; latitude?: number; longitude?: number; formattedAddress?: string; error?: string }> = [];
+
+          // Process locations with rate limiting (avoid hitting API limits)
+          for (const location of locations) {
+            try {
+              const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+                params: {
+                  address: location.address,
+                  key: apiKey
+                }
+              });
+
+              if (response.data.status === 'OK') {
+                const geocodeResult = response.data.results[0].geometry.location;
+                results.push({
+                  name: location.name,
+                  latitude: geocodeResult.lat,
+                  longitude: geocodeResult.lng,
+                  formattedAddress: response.data.results[0].formatted_address
+                });
+              } else {
+                results.push({
+                  name: location.name,
+                  error: `Geocoding failed: ${response.data.status}`
+                });
+              }
+
+              // Add small delay to avoid rate limiting
+              if (locations.length > 1) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            } catch (locationError: any) {
+              const errorMsg = locationError.message || 'Unknown error';
+              results.push({
+                name: location.name,
+                error: errorMsg
+              });
+            }
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(results)
+            }]
+          };
+        } catch (error: any) {
+          throw new Error(`Failed to batch geocode locations: ${error.message}`);
+        }
+      }
+
+      case 'create_map_locations_batch': {
+        if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for create_map_locations_batch');
+        }
+        const { studentId, locations } = args;
+        if (!studentId || !locations || !Array.isArray(locations)) {
+          throw new Error('Student ID and locations array are required');
+        }
+
+        try {
+          // Import the batch function from firestore
+          const { addMapLocationsBatch } = await import('./firestore.js');
+          
+          // Auto-find current chat and add to sourceChats for all locations
+          let currentChatId = null;
+          try {
+            const chats = await getChats(studentId);
+            const currentChat = chats
+              .filter(c => !c.processed)
+              .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+            
+            if (currentChat) {
+              currentChatId = currentChat.id;
+              console.log('create_map_locations_batch: Auto-associating with current chat:', currentChat.title, 'ID:', currentChatId);
+            }
+          } catch (error) {
+            console.warn('create_map_locations_batch: Failed to find current chat:', error);
+          }
+          
+          // Add current chat ID to sourceChats for all locations
+          const locationsWithChat = locations.map((location: any) => ({
+            ...location,
+            studentId,
+            sourceChats: currentChatId ? [currentChatId] : (location.sourceChats || [])
+          }));
+          
+          // Use the batch function from firestore
+          const result = await addMapLocationsBatch(locationsWithChat, userId);
+          
+          // Auto-mark current chat as processed since we're creating map pins
+          if (currentChatId && result.successCount > 0) {
+            try {
+              const chats = await getChats(studentId);
+              const currentChat = chats.find(c => c.id === currentChatId);
+              
+              if (currentChat) {
+                console.log('create_map_locations_batch: Auto-marking chat as processed:', currentChat.title);
+                await saveChat({ 
+                  ...currentChat, 
+                  processed: true, 
+                  processedAt: new Date().toISOString() 
+                });
+              }
+            } catch (error) {
+              console.warn('create_map_locations_batch: Failed to auto-mark chat as processed:', error);
+              // Don't fail the location creation if chat marking fails
+            }
+          }
+          
+          const message = `Created ${result.successCount} of ${locations.length} map locations successfully`;
+          const fullMessage = result.errors.length > 0 
+            ? `${message}. Errors: ${result.errors.join('; ')}`
+            : message;
+          
+          return { content: [{ type: 'text', text: fullMessage }] };
+        } catch (error: any) {
+          throw new Error(`Failed to create map locations batch: ${error.message}`);
+        }
+      }
+
       case 'mark_chat_processed': {
         if (typeof args === 'string') {
           throw new Error('Invalid arguments for mark_chat_processed');

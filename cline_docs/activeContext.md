@@ -29,6 +29,28 @@
   - Added college tour planning feature that integrates with Google Maps
 
 ## Recent Changes
+- **Enhanced User Experience with Three Key Improvements**:
+  - **Fixed Sticky Timer Display**: Made the elapsed time clock in chat conversations sticky (position: fixed) so it scrolls with the user and remains visible at all times during AI operations, positioned below the AppBar at top: 80px with proper z-index
+  - **Added Batch Tools to Both Stages**: Added `geocode_batch` and `create_map_locations_batch` tools to both RECOMMENDATION_TOOLS and MAP_TOOLS arrays in `base.ts`, ensuring AI agents can use efficient batch operations in both Recommendations and Map stages
+  - **Implemented Smart Overlapping Pin Handling**: Created `getMarkerPosition()` utility function that automatically detects overlapping map pins (within 11-meter tolerance) and arranges them in a small circular pattern with 55-meter offsets, making all pins at the same location individually clickable
+- **Implemented Batch Map Location Creation for Faster Pin Generation**:
+  - **Added Batch Firestore Function**: Created `addMapLocationsBatch` in `firestore.ts` that efficiently creates multiple map locations using Firestore batch operations
+  - **Duplicate Detection**: Batch function automatically detects and skips duplicate locations (same name + type) to prevent redundant pins
+  - **Batch Geocoding Tool**: Added `geocode_batch` tool that can geocode multiple addresses in one operation with rate limiting to avoid Google Maps API limits
+  - **Batch Map Creation Tool**: Added `create_map_locations_batch` tool that creates multiple map pins in one operation, following the same pattern as existing batch tools
+  - **Tool Integration**: Added both new tools to `base.ts` RECOMMENDATION_TOOLS array and `mcp-tools.ts` configuration
+  - **MCP Implementation**: Implemented both tools in `mcp.ts` with proper error handling and chat association
+  - **Performance Benefits**: Agents can now create multiple college/scholarship pins with just 2 tool calls instead of N*2 calls (geocode + create for each location)
+  - **Consistent Architecture**: Follows the same pattern as existing `create_tasks_batch` and `create_calendar_items_batch` tools
+  - **Example Usage**: Agent can now call `geocode_batch` with array of locations, then `create_map_locations_batch` with the geocoded results
+- **Enhanced Plan Generation with Student Timeline Context**:
+  - **Added Temporal Context to AI Prompts**: Modified `getBasePrompt` function in `base.ts` to include current date, student graduation year, class level, and time to graduation
+  - **Timeline-Aware Planning**: Enhanced `plan_instructions.js` to emphasize working backwards from graduation date and creating time-appropriate plans
+  - **Grade Level Detection**: Automatically determines if student is Senior, Junior, Sophomore, or Freshman based on graduation year
+  - **Academic Context Awareness**: Provides context like "Senior year - active application period" or "Junior year - preparation and planning phase"
+  - **Realistic Timeline Calculation**: Calculates months to graduation and provides appropriate urgency levels for different student cohorts
+  - **Example Context Output**: "Student Timeline: John Smith is Class of 2027 (High School Junior), Time to Graduation: 22 months, Academic Context: Junior year - preparation and planning phase"
+  - **Strategic Planning Enhancement**: Plan instructions now emphasize different strategies for Seniors (immediate deadlines) vs Juniors (test prep, visits) vs Underclassmen (academic prep, exploration)
 - **Fixed Plans and Pin-Research-Requests Loading Issues - Missing Firestore Indexes and Security Rules**:
   - **Root Cause**: Both `plans` and `pin-research-requests` collections were missing required Firestore composite indexes and security rules
   - **Plans Collection**: Added composite index for query `where('studentId', '==', studentId).orderBy('updatedAt', 'desc')`

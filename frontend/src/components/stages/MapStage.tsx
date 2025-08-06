@@ -48,6 +48,35 @@ const defaultCenter = {
 
 const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = ["places"];
 
+// Utility function to handle overlapping markers by adding small offsets
+const getMarkerPosition = (location: MapLocation, allLocations: MapLocation[]) => {
+  const basePosition = { lat: location.latitude, lng: location.longitude };
+  
+  // Find all locations at the same coordinates (within a very small tolerance)
+  const tolerance = 0.0001; // About 11 meters
+  const overlappingLocations = allLocations.filter(loc => 
+    Math.abs(loc.latitude - location.latitude) < tolerance &&
+    Math.abs(loc.longitude - location.longitude) < tolerance
+  );
+  
+  // If there's only one location at this position, return the original position
+  if (overlappingLocations.length <= 1) {
+    return basePosition;
+  }
+  
+  // Find the index of this location among the overlapping ones
+  const index = overlappingLocations.findIndex(loc => loc.id === location.id);
+  
+  // Create a small circular offset pattern
+  const offsetDistance = 0.0005; // About 55 meters
+  const angle = (index * 2 * Math.PI) / overlappingLocations.length;
+  
+  return {
+    lat: basePosition.lat + offsetDistance * Math.cos(angle),
+    lng: basePosition.lng + offsetDistance * Math.sin(angle)
+  };
+};
+
 export const MapStage = (): JSX.Element => {
   const { currentStudent } = useWizard();
   const { chats, loadChats } = useChat();
@@ -674,10 +703,7 @@ export const MapStage = (): JSX.Element => {
               {locations.map((location) => (
                 <MarkerF
                   key={location.id}
-                  position={{
-                    lat: location.latitude,
-                    lng: location.longitude,
-                  }}
+                  position={getMarkerPosition(location, locations)}
                   onClick={() => {
                     setSelectedLocation(location);
                     centerMapOnLocation(location);

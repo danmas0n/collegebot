@@ -707,12 +707,12 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-      {/* Timer Display - Upper Right */}
+      {/* Timer Display - Upper Right (Sticky) */}
       {isLoading && operationStartTime && (
         <Box sx={{
-          position: 'absolute',
-          top: 8,
-          right: 8,
+          position: 'fixed',
+          top: 80, // Below the AppBar
+          right: 16,
           zIndex: 1000,
           display: 'flex',
           alignItems: 'center',
@@ -721,7 +721,7 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
           px: 2,
           py: 1,
           borderRadius: 2,
-          boxShadow: 1,
+          boxShadow: 2,
           border: 1,
           borderColor: 'divider'
         }}>

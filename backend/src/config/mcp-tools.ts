@@ -24,4 +24,8 @@ export const toolServerMap: Record<string, string> = {
   create_plan: 'student-data',
   update_plan: 'student-data',
   mark_chat_processed: 'student-data',
+  
+  // Batch map location tools
+  geocode_batch: 'student-data',
+  create_map_locations_batch: 'student-data',
 };

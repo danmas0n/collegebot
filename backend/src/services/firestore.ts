@@ -330,6 +330,88 @@ export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'created
   console.log('Location document created with ID:', docRef.id);
 };
 
+export const addMapLocationsBatch = async (locations: Omit<MapLocation, 'id' | 'createdAt'>[], userId: string): Promise<{ successCount: number; errors: string[] }> => {
+  console.log('Adding map locations batch:', locations.length, 'locations');
+  
+  if (!locations || locations.length === 0) {
+    return { successCount: 0, errors: [] };
+  }
+
+  // Verify all locations have the same studentId
+  const studentId = locations[0].studentId;
+  if (!studentId || typeof studentId !== 'string') {
+    throw new Error('Invalid student ID');
+  }
+
+  // Check that all locations are for the same student
+  const invalidLocations = locations.filter(loc => loc.studentId !== studentId);
+  if (invalidLocations.length > 0) {
+    throw new Error('All locations must be for the same student');
+  }
+
+  // First verify the student exists and belongs to this user
+  const student = await getStudent(studentId, userId);
+  if (!student) {
+    throw new Error('Student not found');
+  }
+
+  // Get existing locations to check for duplicates
+  const existingLocations = await getMapLocations(studentId, userId);
+  const existingLocationKeys = new Set(
+    existingLocations.map(loc => `${loc.name}:${loc.type}`)
+  );
+
+  let successCount = 0;
+  const errors: string[] = [];
+  const now = Timestamp.now();
+
+  // Use Firestore batch for efficient bulk operations
+  const batch = db.batch();
+  const locationsToCreate: Array<{ ref: any; data: any }> = [];
+
+  for (const location of locations) {
+    try {
+      // Check for duplicates (same name + type)
+      const locationKey = `${location.name}:${location.type}`;
+      if (existingLocationKeys.has(locationKey)) {
+        console.log(`Skipping duplicate location: ${location.name} (${location.type})`);
+        continue; // Skip duplicates but don't count as error
+      }
+
+      // Create new location document
+      const docRef = mapLocationsRef.doc();
+      const newLocation = {
+        ...location,
+        createdAt: now
+      };
+
+      locationsToCreate.push({ ref: docRef, data: newLocation });
+      batch.set(docRef, newLocation);
+      
+      // Add to existing set to prevent duplicates within this batch
+      existingLocationKeys.add(locationKey);
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Failed to prepare "${location.name}": ${errorMsg}`);
+    }
+  }
+
+  // Execute the batch operation
+  if (locationsToCreate.length > 0) {
+    try {
+      await batch.commit();
+      successCount = locationsToCreate.length;
+      console.log(`Successfully created ${successCount} map locations`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Batch commit failed: ${errorMsg}`);
+    }
+  }
+
+  return { successCount, errors };
+};
+
 export const deleteMapLocation = async (studentId: string, locationId: string, userId: string): Promise<void> => {
   // First verify the student exists and belongs to this user
   const student = await getStudent(studentId, userId);
