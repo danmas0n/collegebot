@@ -180,32 +180,32 @@ export const CollapsibleMessage: React.FC<CollapsibleMessageProps> = ({ message,
           sx={{
             whiteSpace: 'pre-wrap',
             fontFamily: 'inherit',
-            // Tighten spacing for HTML content
+            // Ultra-tight spacing for HTML content
             '& h1, & h2, & h3, & h4, & h5, & h6': {
-              margin: '0.5em 0 0.3em 0',
-              lineHeight: 1.2,
+              margin: '0.15em 0 0.1em 0',
+              lineHeight: 1.05,
             },
             '& p': {
-              margin: '0.5em 0',
-              lineHeight: 1.4,
+              margin: '0.1em 0',
+              lineHeight: 1.25,
             },
             '& ul, & ol': {
-              margin: '0.5em 0',
-              paddingLeft: '1.5em',
+              margin: '0.1em 0',
+              paddingLeft: '1em',
             },
             '& li': {
-              margin: '0.2em 0',
-              lineHeight: 1.3,
+              margin: '0.05em 0',
+              lineHeight: 1.15,
             },
             '& div': {
-              margin: '0.3em 0',
+              margin: '0.05em 0',
             },
             '& br': {
-              lineHeight: 1.2,
+              lineHeight: 1.05,
             },
-            // Remove excessive spacing from nested elements
+            // Minimal spacing between elements
             '& * + *': {
-              marginTop: '0.5em',
+              marginTop: '0.1em',
             },
             '& *:first-child': {
               marginTop: 0,
