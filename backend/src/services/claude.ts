@@ -4,6 +4,7 @@ import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
 import { claudeLogger } from '../utils/logger.js';
+import { flowCostTracker } from './flow-cost-tracker.js';
 
 // Timeout constants - per individual Claude API call, not entire process
 const CLAUDE_API_TIMEOUT = 180000; // 3 minutes per individual Claude API call
@@ -37,6 +38,9 @@ export class ClaudeService {
   private responseProcessor: ResponseProcessor;
   private stepCounter: number = 0;
   private readonly MAX_STEPS = 50;
+  private currentChatId?: string;
+  private currentStage?: 'recommendations' | 'map' | 'plan' | 'research' | 'other';
+  private currentUsage?: CacheUsage; // Track usage for current request
 
   constructor(apiKey: string, userId?: string) {
     this.client = new Anthropic({
@@ -45,6 +49,60 @@ export class ClaudeService {
     });
     this.userId = userId;
     this.responseProcessor = new ResponseProcessor();
+  }
+
+  /**
+   * Set the current chat context for cost tracking
+   */
+  setChatContext(chatId: string, stage: 'recommendations' | 'map' | 'plan' | 'research' | 'other') {
+    this.currentChatId = chatId;
+    this.currentStage = stage;
+  }
+
+  /**
+   * Track request cost for the current chat flow
+   */
+  private async trackRequestCost(usage: CacheUsage, model: string): Promise<void> {
+    if (!this.currentChatId || !this.currentStage || !this.userId) {
+      return;
+    }
+
+    try {
+      // Start flow if not already active
+      if (!flowCostTracker.isFlowActive(this.currentChatId)) {
+        // We need studentId - for now we'll use userId as studentId
+        // In a real implementation, you'd get the actual studentId from the chat context
+        await flowCostTracker.startFlow(
+          this.currentChatId,
+          this.userId, // Using userId as studentId for now
+          this.userId,
+          this.currentStage
+        );
+      }
+
+      // Add this request to the flow
+      await flowCostTracker.addRequestToFlow(this.currentChatId, {
+        provider: 'claude',
+        model,
+        usage: {
+          inputTokens: usage.input_tokens,
+          outputTokens: usage.output_tokens,
+          cacheCreationTokens: usage.cache_creation_input_tokens,
+          cacheReadTokens: usage.cache_read_input_tokens
+        },
+        requestSequence: this.stepCounter
+      });
+
+      claudeLogger.info('Tracked request cost', {
+        chatId: this.currentChatId,
+        stage: this.currentStage,
+        model,
+        usage,
+        requestSequence: this.stepCounter
+      });
+    } catch (error) {
+      claudeLogger.error('Error tracking request cost', { error, chatId: this.currentChatId });
+    }
   }
 
   /**
@@ -291,8 +349,9 @@ Please respond with a simple message confirming that you received this prompt. K
           rawMessage = ''; // Reset raw message buffer
           hasProcessedContent = false; // Reset processed content flag
           
-          // Log cache performance if available
+          // Store usage for cost tracking
           if (streamEvent.message?.usage) {
+            this.currentUsage = streamEvent.message.usage;
             this.logCachePerformance(streamEvent.message.usage);
           }
         }
@@ -341,6 +400,15 @@ Please respond with a simple message confirming that you received this prompt. K
             hasProcessedContent,
             hasSavedAnswer: !!this.responseProcessor.getSavedAnswer()
           });
+          
+          // Track cost if we have chat context and usage data
+          if (this.currentChatId && this.currentStage && this.currentUsage) {
+            try {
+              await this.trackRequestCost(this.currentUsage, model);
+            } catch (error) {
+              claudeLogger.error('Error tracking request cost', { error, chatId: this.currentChatId });
+            }
+          }
           
           // Log complete raw message before processing
           console.info('Complete raw message', { message: rawMessage });

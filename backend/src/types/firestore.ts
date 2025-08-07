@@ -213,3 +213,73 @@ export interface AISettings {
   updatedAt: Timestamp;
   updatedBy: string;
 }
+
+// LLM Cost Tracking Types
+export interface LLMPricingConfig {
+  id: string;
+  provider: 'claude' | 'gemini' | 'openai';
+  model: string;
+  pricing: {
+    input: number;           // per 1M tokens
+    output: number;          // per 1M tokens
+    cacheCreation?: number;  // Claude-specific: per 1M tokens
+    cacheRead?: number;      // Claude-specific: per 1M tokens
+  };
+  updatedAt: Timestamp;
+  updatedBy: string; // admin user ID
+}
+
+export interface LLMFlowCost {
+  id: string;
+  chatId: string;           // Links to the chat that represents this flow
+  studentId: string;
+  userId: string;
+  stage: 'recommendations' | 'map' | 'plan' | 'research' | 'other';
+  
+  // Aggregated metrics for the entire flow
+  totalRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheCreationTokens: number;  // Claude-specific
+  totalCacheReadTokens: number;      // Claude-specific
+  totalEstimatedCost: number;        // in USD
+  
+  // Provider breakdown (in case we use multiple providers in one flow)
+  providerBreakdown: {
+    [provider: string]: {
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheCreationTokens?: number;
+      cacheReadTokens?: number;
+      estimatedCost: number;
+    }
+  };
+  
+  // Flow timing
+  startedAt: Timestamp;
+  completedAt: Timestamp | null;
+  createdAt: Timestamp;
+}
+
+export interface LLMRequestLog {
+  id: string;
+  flowCostId: string;       // Links to the parent flow
+  chatId: string;
+  requestSequence: number;  // 1st, 2nd, 3rd request in the flow
+  
+  provider: 'claude' | 'gemini' | 'openai';
+  model: string;
+  
+  // Raw token counts from API
+  inputTokens: number;              // Total input
+  outputTokens: number;             // Output
+  cacheCreationTokens?: number;     // Cache creation (Claude)
+  cacheReadTokens?: number;         // Cache read (Claude)
+  
+  // Calculated for cost breakdown
+  regularInputTokens: number;       // inputTokens - cacheCreationTokens - cacheReadTokens
+  
+  estimatedCost: number;
+  timestamp: Timestamp;
+}

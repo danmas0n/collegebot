@@ -1,11 +1,12 @@
 import express, { Request, Response } from 'express';
-import { AIServiceFactory } from '../services/ai-service-factory.js';
+import { AIServiceFactory, setChatContextForService } from '../services/ai-service-factory.js';
 import { setupSSEResponse, filterChatMessages } from '../utils/helpers.js';
 import { getBasePrompt } from '../prompts/base.js';
 import { getChats, getStudent, saveChat, deleteChat, getMapLocations } from '../services/firestore.js';
 import { Chat, ChatDTO, DTOChatMessage, FirestoreChatMessage } from '../types/firestore.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import { logger } from '../utils/logger.js';
+import { flowCostTracker } from '../services/flow-cost-tracker.js';
 
 const router = express.Router();
 
