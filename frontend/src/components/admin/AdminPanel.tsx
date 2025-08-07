@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { WhitelistManager } from './WhitelistManager';
 import { AISettingsManager } from './AISettingsManager';
+import { CostTrackingDashboard } from './CostTrackingDashboard';
 
 interface AdminPanelProps {
   onBack: () => void;
@@ -40,11 +41,13 @@ export const AdminPanel = ({ onBack }: AdminPanelProps) => {
             >
               <Tab label="Users & Access" />
               <Tab label="AI Settings" />
+              <Tab label="Cost Tracking" />
             </Tabs>
           </Paper>
 
           {activeTab === 0 && <WhitelistManager adminView={true} />}
           {activeTab === 1 && <AISettingsManager />}
+          {activeTab === 2 && <CostTrackingDashboard />}
         </>
       ) : (
         <>
