@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { AIServiceFactory, setChatContextForService } from '../services/ai-service-factory.js';
+import { ClaudeService } from '../services/claude.js';
 import { setupSSEResponse, filterChatMessages } from '../utils/helpers.js';
 import { getBasePrompt } from '../prompts/base.js';
 import { getChats, getStudent, saveChat, deleteChat, getMapLocations } from '../services/firestore.js';
@@ -40,6 +41,16 @@ router.post('/message', async (req: Request, res: Response) => {
 
     // Process message with service
     const aiService = await AIServiceFactory.createService(req.user.uid);
+    
+    // Set chat context for cost tracking
+    if (chatId) {
+      setChatContextForService(aiService, chatId, 'recommendations');
+      // Also set the student context for proper cost tracking
+      if (aiService instanceof ClaudeService && studentId) {
+        aiService.setStudentContext(studentId);
+      }
+    }
+    
     const updatedMessages = await aiService.processStream(history, systemPrompt, wrappedSendSSE);
     
     // Don't save here anymore - let frontend handle saving with complete structure
@@ -368,6 +379,9 @@ router.post('/process-all', async (req: Request, res: Response) => {
         console.info(`Generating fresh system prompt for chat ${chat.id} to include current map locations`);
         const systemPrompt = await getBasePrompt(student.name, student, 'map_enrichment', req);
 
+        // Set chat context for cost tracking
+        setChatContextForService(aiService, chat.id, 'map');
+
         console.info(`Starting analysis of chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
         // FIXED: Pass wrappedSendSSE to capture analysis messages
         await aiService.analyzeChatHistory(chat, systemPrompt, wrappedSendSSE);
@@ -474,6 +488,10 @@ router.post('/analyze', async (req: Request, res: Response) => {
 
     // Process chat with service
     const aiService = await AIServiceFactory.createService(req.user.uid);
+    
+    // Set chat context for cost tracking
+    setChatContextForService(aiService, chat.id, 'map');
+    
     console.info(`Starting analysis of single chat ${chat.id}: ${chat.title || 'Untitled Chat'}`);
     await aiService.analyzeChatHistory(chat, systemPrompt, sendSSE);
     console.info(`Completed analysis of chat ${chat.id}`);

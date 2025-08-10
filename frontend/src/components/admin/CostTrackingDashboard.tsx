@@ -317,8 +317,8 @@ export const CostTrackingDashboard: React.FC<CostTrackingDashboardProps> = () =>
                 <React.Fragment key={user.userId}>
                   <TableRow hover>
                     <TableCell>
-                      <Typography variant="body2" fontFamily="monospace">
-                        {user.userId.substring(0, 8)}...
+                      <Typography variant="body2">
+                        {user.userEmail || `${user.userId.substring(0, 8)}...`}
                       </Typography>
                     </TableCell>
                     <TableCell>

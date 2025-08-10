@@ -188,7 +188,22 @@
 - Updated App.tsx to render the CalendarStage component
 - Updated documentation in cline_docs
 
+## Recent Changes
+- **Consolidated Cost Tracking Logging System**:
+  - **Eliminated Inconsistent Logging**: Replaced all `claudeLogger` instances with the standard Winston `logger` to consolidate logging
+  - **Standardized Log Prefixes**: Added consistent prefixes ("Claude:", "Cost Calculator:", "Flow Cost Tracker:") to identify log sources
+  - **Replaced Console Logs**: Converted all `console.log/info/error` statements in cost tracking code to use Winston logger
+  - **Single Log Destination**: All cost tracking logs now go to `backend/logs/combined.log` with structured JSON format
+  - **Created Documentation**: Added `backend/docs/cost-tracking-logs.md` with complete guide on log locations and formats
+  - **Improved Debugging**: Cost tracking issues can now be debugged from a single file with consistent formatting
+  - **Log Filtering Commands**: Provided grep commands to filter specific cost tracking logs from the combined log file
+  - **Eliminated Log Scatter**: No more logs appearing in multiple places (console, separate log files, different formats)
+
 ## Next Steps
+- Test the consolidated logging system:
+  - Run cost tracking operations and verify all logs appear in `backend/logs/combined.log`
+  - Confirm log prefixes are working correctly
+  - Test the grep commands for filtering specific log types
 - Test the new deployment scripts:
   - Verify that the backend deployment script works correctly
   - Test the frontend deployment script

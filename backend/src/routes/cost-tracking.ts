@@ -4,8 +4,66 @@ import { costCalculator } from '../services/cost-calculator.js';
 import { db } from '../config/firebase.js';
 import { LLMPricingConfig } from '../types/firestore.js';
 import { logger } from '../utils/logger.js';
+import { auth } from '../config/firebase.js';
 
 const router = express.Router();
+
+/**
+ * Helper function to resolve user email from Firebase Auth
+ */
+async function getUserEmail(userId: string): Promise<string> {
+  try {
+    const userRecord = await auth.getUser(userId);
+    return userRecord.email || userId; // Fallback to userId if no email
+  } catch (error: any) {
+    logger.warn('Could not resolve user email', { userId, error: error.message });
+    return userId; // Fallback to userId if user not found
+  }
+}
+
+/**
+ * Helper function to normalize Firestore timestamps to JavaScript dates
+ */
+function normalizeDate(firestoreDate: any): Date | null {
+  if (!firestoreDate) return null;
+  
+  // If it's already a Date object, return it
+  if (firestoreDate instanceof Date) {
+    return firestoreDate;
+  }
+  
+  // If it's a Firestore Timestamp, convert it
+  if (firestoreDate && typeof firestoreDate.toDate === 'function') {
+    return firestoreDate.toDate();
+  }
+  
+  // If it's a string or number, try to parse it
+  if (typeof firestoreDate === 'string' || typeof firestoreDate === 'number') {
+    const parsed = new Date(firestoreDate);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+  
+  return null;
+}
+
+/**
+ * Helper function to normalize flow data for frontend consumption
+ */
+function normalizeFlowData(flow: any): any {
+  return {
+    ...flow,
+    createdAt: normalizeDate(flow.createdAt),
+    completedAt: normalizeDate(flow.completedAt),
+    startedAt: normalizeDate(flow.startedAt),
+    // Ensure numeric fields are properly typed
+    totalInputTokens: Number(flow.totalInputTokens) || 0,
+    totalOutputTokens: Number(flow.totalOutputTokens) || 0,
+    totalCacheCreationTokens: Number(flow.totalCacheCreationTokens) || 0,
+    totalCacheReadTokens: Number(flow.totalCacheReadTokens) || 0,
+    totalEstimatedCost: Number(flow.totalEstimatedCost) || 0,
+    totalRequests: Number(flow.totalRequests) || 0
+  };
+}
 
 /**
  * Get cost summary for all users (admin only)
@@ -50,13 +108,21 @@ router.get('/users/summary', async (req, res) => {
       userSummaries[userId].stageBreakdown[stage].flows += 1;
     }
 
-    // Convert to array and add average cost per flow
+    // Convert to array and add average cost per flow, then resolve user emails
     const summaries = Object.values(userSummaries).map((summary: any) => ({
       ...summary,
       averageCostPerFlow: summary.totalFlows > 0 ? summary.totalCost / summary.totalFlows : 0
     }));
 
-    res.json(summaries);
+    // Resolve user emails for all users
+    const summariesWithEmails = await Promise.all(
+      summaries.map(async (summary: any) => ({
+        ...summary,
+        userEmail: await getUserEmail(summary.userId)
+      }))
+    );
+
+    res.json(summariesWithEmails);
   } catch (error) {
     logger.error('Error getting user cost summaries', { error });
     res.status(500).json({ error: 'Failed to get user cost summaries' });
@@ -70,7 +136,29 @@ router.get('/user/:userId/flows', async (req, res) => {
   try {
     const { userId } = req.params;
     const flows = await flowCostTracker.getUserFlowCosts(userId);
-    res.json(flows);
+    
+    // Transform and normalize Firestore data to frontend-expected format
+    const transformedFlows = flows.map((flow: any) => {
+      const normalized = normalizeFlowData(flow);
+      return {
+        id: normalized.id,
+        userId: normalized.userId,
+        stage: normalized.stage,
+        chatId: normalized.chatId,
+        chatTitle: 'Untitled', // TODO: Get actual chat title from chats collection
+        createdAt: normalized.createdAt,
+        completedAt: normalized.completedAt,
+        totalInputTokens: normalized.totalInputTokens,
+        totalOutputTokens: normalized.totalOutputTokens,
+        totalCacheCreationInputTokens: normalized.totalCacheCreationTokens,
+        totalCacheReadInputTokens: normalized.totalCacheReadTokens,
+        totalEstimatedCost: normalized.totalEstimatedCost,
+        requestCount: normalized.totalRequests,
+        isCompleted: !!normalized.completedAt
+      };
+    });
+    
+    res.json(transformedFlows);
   } catch (error) {
     logger.error('Error getting user flows', { error, userId: req.params.userId });
     res.status(500).json({ error: 'Failed to get user flows' });
@@ -143,7 +231,25 @@ router.get('/admin/pricing', async (req, res) => {
       ...doc.data()
     }));
 
-    res.json(pricingConfigs);
+    // Transform and resolve user emails for updatedBy fields
+    const configsWithEmails = await Promise.all(
+      pricingConfigs.map(async (config: any) => ({
+        id: config.id,
+        provider: config.provider,
+        model: config.model,
+        pricing: {
+          inputTokensPerMillion: config.pricing?.input || 0,
+          outputTokensPerMillion: config.pricing?.output || 0,
+          cacheCreationInputTokensPerMillion: config.pricing?.cacheCreation || 0,
+          cacheReadInputTokensPerMillion: config.pricing?.cacheRead || 0
+        },
+        updatedAt: config.updatedAt && config.updatedAt.toDate ? config.updatedAt.toDate() : new Date(),
+        updatedBy: config.updatedBy,
+        updatedByEmail: config.updatedBy ? await getUserEmail(config.updatedBy) : 'Unknown'
+      }))
+    );
+
+    res.json(configsWithEmails);
   } catch (error) {
     logger.error('Error getting pricing configuration', { error });
     res.status(500).json({ error: 'Failed to get pricing configuration' });
@@ -174,10 +280,18 @@ router.put('/admin/pricing', async (req, res) => {
 
       const docRef = id ? db.collection('llm_pricing_config').doc(id) : db.collection('llm_pricing_config').doc();
       
+      // Transform frontend pricing format to backend format
+      const backendPricing = {
+        input: pricing.inputTokensPerMillion || 0,
+        output: pricing.outputTokensPerMillion || 0,
+        cacheCreation: pricing.cacheCreationInputTokensPerMillion || 0,
+        cacheRead: pricing.cacheReadInputTokensPerMillion || 0
+      };
+      
       const pricingConfig: Omit<LLMPricingConfig, 'id'> = {
         provider,
         model,
-        pricing,
+        pricing: backendPricing,
         updatedAt: new Date() as any,
         updatedBy: req.user?.uid || 'admin' // TODO: Get from authenticated user
       };

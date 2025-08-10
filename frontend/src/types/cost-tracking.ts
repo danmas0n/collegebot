@@ -33,6 +33,7 @@ export interface LLMFlowCost {
 
 export interface UserCostSummary {
   userId: string;
+  userEmail?: string;
   totalCost: number;
   totalFlows: number;
   lastActivity: Date | null;
@@ -66,6 +67,7 @@ export interface LLMPricingConfig {
   };
   updatedAt: Date;
   updatedBy: string;
+  updatedByEmail?: string;
 }
 
 export interface FlowCostDetails {

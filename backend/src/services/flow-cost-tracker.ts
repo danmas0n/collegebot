@@ -258,7 +258,7 @@ export class FlowCostTracker {
   }
 
   /**
-   * Update flow totals with new request data
+   * Update flow totals with new request data using Firestore transactions for safety
    */
   private async updateFlowTotals(
     flowCostId: string,
@@ -267,49 +267,69 @@ export class FlowCostTracker {
   ): Promise<void> {
     const flowCostRef = db.collection('llm_flow_costs').doc(flowCostId);
     
-    // Get current flow data
-    const flowDoc = await flowCostRef.get();
-    if (!flowDoc.exists) {
-      throw new Error(`Flow cost document not found: ${flowCostId}`);
-    }
+    // Use a transaction to prevent race conditions when multiple requests update the same flow
+    await db.runTransaction(async (transaction) => {
+      const flowDoc = await transaction.get(flowCostRef);
+      
+      if (!flowDoc.exists) {
+        throw new Error(`Flow cost document not found: ${flowCostId}`);
+      }
 
-    const currentFlow = flowDoc.data() as LLMFlowCost;
-    
-    // Update totals
-    const updatedFlow = {
-      totalRequests: currentFlow.totalRequests + 1,
-      totalInputTokens: currentFlow.totalInputTokens + update.usage.inputTokens,
-      totalOutputTokens: currentFlow.totalOutputTokens + update.usage.outputTokens,
-      totalCacheCreationTokens: currentFlow.totalCacheCreationTokens + (update.usage.cacheCreationTokens || 0),
-      totalCacheReadTokens: currentFlow.totalCacheReadTokens + (update.usage.cacheReadTokens || 0),
-      totalEstimatedCost: currentFlow.totalEstimatedCost + costBreakdown.totalCost
-    };
-
-    // Update provider breakdown
-    const providerBreakdown = { ...currentFlow.providerBreakdown };
-    if (!providerBreakdown[update.provider]) {
-      providerBreakdown[update.provider] = {
-        requests: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheCreationTokens: 0,
-        cacheReadTokens: 0,
-        estimatedCost: 0
+      const currentFlow = flowDoc.data() as LLMFlowCost;
+      
+      // Validate current data
+      if (typeof currentFlow.totalRequests !== 'number') {
+        logger.warn('Invalid totalRequests in flow document, resetting to 0', { flowCostId, currentFlow });
+        currentFlow.totalRequests = 0;
+      }
+      
+      // Update totals with validation
+      const updatedFlow = {
+        totalRequests: currentFlow.totalRequests + 1,
+        totalInputTokens: (currentFlow.totalInputTokens || 0) + (update.usage.inputTokens || 0),
+        totalOutputTokens: (currentFlow.totalOutputTokens || 0) + (update.usage.outputTokens || 0),
+        totalCacheCreationTokens: (currentFlow.totalCacheCreationTokens || 0) + (update.usage.cacheCreationTokens || 0),
+        totalCacheReadTokens: (currentFlow.totalCacheReadTokens || 0) + (update.usage.cacheReadTokens || 0),
+        totalEstimatedCost: (currentFlow.totalEstimatedCost || 0) + (costBreakdown.totalCost || 0)
       };
-    }
 
-    const providerData = providerBreakdown[update.provider];
-    providerData.requests += 1;
-    providerData.inputTokens += update.usage.inputTokens;
-    providerData.outputTokens += update.usage.outputTokens;
-    providerData.cacheCreationTokens = (providerData.cacheCreationTokens || 0) + (update.usage.cacheCreationTokens || 0);
-    providerData.cacheReadTokens = (providerData.cacheReadTokens || 0) + (update.usage.cacheReadTokens || 0);
-    providerData.estimatedCost += costBreakdown.totalCost;
+      // Update provider breakdown with validation
+      const providerBreakdown = { ...currentFlow.providerBreakdown };
+      if (!providerBreakdown[update.provider]) {
+        providerBreakdown[update.provider] = {
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          estimatedCost: 0
+        };
+      }
 
-    // Update the document
-    await flowCostRef.update({
-      ...updatedFlow,
-      providerBreakdown
+      const providerData = providerBreakdown[update.provider];
+      providerData.requests = (providerData.requests || 0) + 1;
+      providerData.inputTokens = (providerData.inputTokens || 0) + (update.usage.inputTokens || 0);
+      providerData.outputTokens = (providerData.outputTokens || 0) + (update.usage.outputTokens || 0);
+      providerData.cacheCreationTokens = (providerData.cacheCreationTokens || 0) + (update.usage.cacheCreationTokens || 0);
+      providerData.cacheReadTokens = (providerData.cacheReadTokens || 0) + (update.usage.cacheReadTokens || 0);
+      providerData.estimatedCost = (providerData.estimatedCost || 0) + (costBreakdown.totalCost || 0);
+
+      // Log the update for debugging
+      logger.info('Updating flow totals', {
+        flowCostId,
+        requestSequence: update.requestSequence,
+        provider: update.provider,
+        model: update.model,
+        tokenUsage: update.usage,
+        costBreakdown: costBreakdown.totalCost,
+        newTotals: updatedFlow
+      });
+
+      // Update the document within the transaction
+      transaction.update(flowCostRef, {
+        ...updatedFlow,
+        providerBreakdown
+      });
     });
   }
 

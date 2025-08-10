@@ -309,7 +309,7 @@ export const PricingConfigManager: React.FC<PricingConfigManagerProps> = () => {
                       {formatDate(config.updatedAt)}
                     </Typography>
                     <Typography variant="caption" color="textSecondary">
-                      by {formatUserName(config.updatedBy)}
+                      by {config.updatedByEmail || formatUserName(config.updatedBy)}
                     </Typography>
                   </TableCell>
                   <TableCell>

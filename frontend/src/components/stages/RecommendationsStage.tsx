@@ -68,9 +68,21 @@ export const RecommendationsStage: React.FC = () => {
         
         // Only set a default chat if no chat is currently selected (not coming from deep link)
         if (!currentChat && loadedChats.length > 0) {
-          // Select the most recent chat
-          const mostRecentChat = loadedChats[loadedChats.length - 1];
-          setCurrentChat(mostRecentChat);
+          // Prioritize recommendations chats, then fall back to others
+          const recommendationsChats = loadedChats.filter(chat => 
+            !(chat as any).type || (chat as any).type === 'recommendations'
+          );
+          
+          let chatToSelect;
+          if (recommendationsChats.length > 0) {
+            // Select the most recent recommendations chat
+            chatToSelect = recommendationsChats[recommendationsChats.length - 1];
+          } else {
+            // Fall back to most recent chat of any type
+            chatToSelect = loadedChats[loadedChats.length - 1];
+          }
+          
+          setCurrentChat(chatToSelect);
         }
       });
     }

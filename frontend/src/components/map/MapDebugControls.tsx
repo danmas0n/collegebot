@@ -7,6 +7,8 @@ import {
   LinearProgress,
   Collapse,
   IconButton,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -33,6 +35,9 @@ interface MapDebugControlsProps {
   onProcessingComplete: () => void;
   onProcessingError: (error: string) => void;
   onLoadLocations: () => Promise<void>;
+  // Auto-processing control
+  autoProcessEnabled: boolean;
+  setAutoProcessEnabled: (enabled: boolean) => void;
 }
 
 export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
@@ -54,19 +59,21 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
   onProcessingComplete,
   onProcessingError,
   onLoadLocations,
+  autoProcessEnabled,
+  setAutoProcessEnabled,
 }) => {
   const [isAutoProcessing, setIsAutoProcessing] = useState(false);
   const [isManualProcessing, setIsManualProcessing] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [streamingComplete, setStreamingComplete] = useState(false);
 
-  // Auto-start processing when there are unprocessed chats
+  // Auto-start processing when there are unprocessed chats AND auto-processing is enabled
   useEffect(() => {
-    if (hasUnprocessedChats && !isAutoProcessing && !isProcessing) {
+    if (hasUnprocessedChats && !isAutoProcessing && !isProcessing && autoProcessEnabled) {
       setIsAutoProcessing(true);
       setStreamingComplete(false);
     }
-  }, [hasUnprocessedChats, isAutoProcessing, isProcessing]);
+  }, [hasUnprocessedChats, isAutoProcessing, isProcessing, autoProcessEnabled]);
 
   // Handle processing completion with countdown
   const handleStreamingProcessingComplete = async () => {
@@ -101,6 +108,24 @@ export const MapDebugControls: React.FC<MapDebugControlsProps> = ({
       <Typography variant="h6" gutterBottom>
         Chat Processing
       </Typography>
+      
+      {/* Auto-processing control */}
+      <Box sx={{ mb: 2 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={autoProcessEnabled}
+              onChange={(e) => setAutoProcessEnabled(e.target.checked)}
+              disabled={isProcessing}
+            />
+          }
+          label="Auto-process unprocessed chats when Map loads"
+        />
+        <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mt: 0.5 }}>
+          When enabled, unprocessed chats will be automatically processed when you open the Map stage.
+          This is disabled by default since the Recommendations stage already creates map pins.
+        </Typography>
+      </Box>
       
       {/* Control buttons */}
       <Box sx={{ 

@@ -32,10 +32,11 @@ export class CostCalculator {
   ): Promise<CostBreakdown> {
     const pricing = await this.getPricing('claude', model);
     
-    // Calculate regular input tokens (what's left after cache tokens)
-    const regularInputTokens = usage.inputTokens - 
-      (usage.cacheCreationTokens || 0) - 
-      (usage.cacheReadTokens || 0);
+    // FIXED: Claude's cache tokens are reported separately, not subtracted from inputTokens
+    // inputTokens = regular input tokens that are processed normally
+    // cacheCreationTokens = additional tokens used to create cache entries
+    // cacheReadTokens = additional tokens read from existing cache entries
+    const regularInputTokens = usage.inputTokens; // These are already the regular input tokens
 
     let regularInputCost = 0;
     let outputCost = 0;
@@ -43,9 +44,7 @@ export class CostCalculator {
     let cacheReadCost = 0;
 
     // Regular input tokens at standard rate
-    if (regularInputTokens > 0) {
-      regularInputCost = (regularInputTokens / 1_000_000) * pricing.pricing.input;
-    }
+    regularInputCost = (regularInputTokens / 1_000_000) * pricing.pricing.input;
 
     // Output tokens at standard rate  
     outputCost = (usage.outputTokens / 1_000_000) * pricing.pricing.output;
@@ -62,18 +61,7 @@ export class CostCalculator {
 
     const totalCost = regularInputCost + outputCost + cacheCreationCost + cacheReadCost;
 
-    logger.info('Claude cost calculation', {
-      model,
-      usage,
-      regularInputTokens,
-      breakdown: {
-        regularInputCost,
-        outputCost,
-        cacheCreationCost,
-        cacheReadCost,
-        totalCost
-      }
-    });
+    // Cost details logged by flow-cost-tracker.ts, no need to duplicate here
 
     return {
       regularInputCost,
@@ -238,6 +226,12 @@ export class CostCalculator {
           output: 1.25,
           cacheCreation: 0.3125,
           cacheRead: 0.025
+        },
+        'claude-sonnet-4-20250514': {
+          input: 3.00,
+          output: 15.00,
+          cacheCreation: 3.75,
+          cacheRead: 0.30
         }
       },
       gemini: {
@@ -302,6 +296,11 @@ export class CostCalculator {
         provider: 'claude',
         model: 'claude-3-5-haiku-20241022',
         pricing: { input: 0.25, output: 1.25, cacheCreation: 0.3125, cacheRead: 0.025 }
+      },
+      {
+        provider: 'claude',
+        model: 'claude-sonnet-4-20250514',
+        pricing: { input: 3.00, output: 15.00, cacheCreation: 3.75, cacheRead: 0.30 }
       },
       {
         provider: 'gemini',
