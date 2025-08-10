@@ -1,4 +1,4 @@
-import { db } from '../config/firebase.js';
+import { db, auth } from '../config/firebase.js';
 import { WhitelistedUser, Student, Chat, ChatDTO, MapLocation, AdminUser } from '../types/firestore.js';
 import { Timestamp, DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
@@ -36,6 +36,17 @@ const safeToISOString = (value: any): string | null => {
   if (value instanceof Timestamp) return value.toDate().toISOString();
   if (typeof value === 'string') return value;
   return null;
+};
+
+// Helper function to get user email from Firebase Auth UID
+const getUserEmailFromUID = async (uid: string): Promise<string | null> => {
+  try {
+    const userRecord = await auth.getUser(uid);
+    return userRecord.email || null;
+  } catch (error) {
+    console.error('Error getting user email from UID:', error);
+    return null;
+  }
 };
 
 // Whitelist operations
@@ -80,6 +91,8 @@ export const removeSharedAccess = async (email: string, parentUserId: string): P
 
 // Student operations
 export const getStudents = async (userId: string): Promise<Student[]> => {
+  console.log('getStudents called with userId:', userId);
+  
   // Get all users in the family group (including the current user)
   const familyUsers = new Set<string>([userId]);
   
@@ -92,22 +105,33 @@ export const getStudents = async (userId: string): Promise<Student[]> => {
     if (invitedUserId) familyUsers.add(invitedUserId);
   });
 
-  // Get the user who invited this user (if any)
-  const userDoc = await whitelistedUsersRef.doc(userId).get();
-  if (userDoc.exists) {
-    const parentId = userDoc.data()?.parentUserId;
-    if (parentId) {
-      familyUsers.add(parentId);
-      // Also get other users invited by the same parent
-      const siblingsSnapshot = await whitelistedUsersRef
-        .where('parentUserId', '==', parentId)
-        .get();
-      siblingsSnapshot.forEach(doc => {
-        const siblingUserId = doc.data().userId;
-        if (siblingUserId) familyUsers.add(siblingUserId);
-      });
+  // Get the user who invited this user (if any) - need to look up by email
+  const userEmail = await getUserEmailFromUID(userId);
+  console.log('User email from UID:', userEmail);
+  
+  if (userEmail) {
+    const userDoc = await whitelistedUsersRef.doc(userEmail).get();
+    console.log('User whitelisted document exists:', userDoc.exists);
+    
+    if (userDoc.exists) {
+      const parentId = userDoc.data()?.parentUserId;
+      console.log('Parent ID found:', parentId);
+      
+      if (parentId) {
+        familyUsers.add(parentId);
+        // Also get other users invited by the same parent
+        const siblingsSnapshot = await whitelistedUsersRef
+          .where('parentUserId', '==', parentId)
+          .get();
+        siblingsSnapshot.forEach(doc => {
+          const siblingUserId = doc.data().userId;
+          if (siblingUserId) familyUsers.add(siblingUserId);
+        });
+      }
     }
   }
+
+  console.log('Family users found:', Array.from(familyUsers));
 
   // Get all students owned by any user in the family group
   const studentsPromises = Array.from(familyUsers).map(async familyUserId => {
@@ -116,7 +140,10 @@ export const getStudents = async (userId: string): Promise<Student[]> => {
   });
 
   const allStudents = await Promise.all(studentsPromises);
-  return allStudents.flat();
+  const flatStudents = allStudents.flat();
+  console.log('Total students found:', flatStudents.length);
+  
+  return flatStudents;
 };
 
 // Helper function to get all users in a family group
@@ -132,20 +159,23 @@ const getFamilyGroupUsers = async (userId: string): Promise<Set<string>> => {
     if (invitedUserId) familyUsers.add(invitedUserId);
   });
 
-  // Get the user who invited this user (if any)
-  const userDoc = await whitelistedUsersRef.doc(userId).get();
-  if (userDoc.exists) {
-    const parentId = userDoc.data()?.parentUserId;
-    if (parentId) {
-      familyUsers.add(parentId);
-      // Also get other users invited by the same parent
-      const siblingsSnapshot = await whitelistedUsersRef
-        .where('parentUserId', '==', parentId)
-        .get();
-      siblingsSnapshot.forEach(doc => {
-        const siblingUserId = doc.data().userId;
-        if (siblingUserId) familyUsers.add(siblingUserId);
-      });
+  // Get the user who invited this user (if any) - need to look up by email
+  const userEmail = await getUserEmailFromUID(userId);
+  if (userEmail) {
+    const userDoc = await whitelistedUsersRef.doc(userEmail).get();
+    if (userDoc.exists) {
+      const parentId = userDoc.data()?.parentUserId;
+      if (parentId) {
+        familyUsers.add(parentId);
+        // Also get other users invited by the same parent
+        const siblingsSnapshot = await whitelistedUsersRef
+          .where('parentUserId', '==', parentId)
+          .get();
+        siblingsSnapshot.forEach(doc => {
+          const siblingUserId = doc.data().userId;
+          if (siblingUserId) familyUsers.add(siblingUserId);
+        });
+      }
     }
   }
 

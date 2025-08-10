@@ -18,11 +18,33 @@ if (!email) {
 
 async function whitelistUser(email) {
   try {
-    await admin.firestore().collection('whitelisted_users').doc(email).set({
+    // First, try to get the user from Firebase Auth to get their UID
+    let userId = null;
+    try {
+      const userRecord = await admin.auth().getUserByEmail(email);
+      userId = userRecord.uid;
+      console.log('Found existing user with UID:', userId);
+    } catch (authError) {
+      console.log('User not found in Firebase Auth, they will need to sign in first');
+      console.log('Creating whitelist entry without userId - it will be updated when they first sign in');
+    }
+
+    const whitelistData = {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: 'system'
-    });
+    };
+
+    // Only add userId if we found the user in Firebase Auth
+    if (userId) {
+      whitelistData.userId = userId;
+    }
+
+    await admin.firestore().collection('whitelisted_users').doc(email).set(whitelistData);
     console.log('Successfully whitelisted user:', email);
+    
+    if (!userId) {
+      console.log('Note: User will need to sign in once to complete the setup');
+    }
   } catch (error) {
     console.error('Error whitelisting user:', error);
     process.exit(1);
@@ -30,4 +52,4 @@ async function whitelistUser(email) {
 }
 
 // Execute the function
-whitelistUser(email); 
+whitelistUser(email);
