@@ -105,6 +105,7 @@ export const MapStage = (): JSX.Element => {
   
   // State for auto-processing in debug pane
   const [hasUnprocessedChats, setHasUnprocessedChats] = useState<boolean>(false);
+  const [autoProcessEnabled, setAutoProcessEnabled] = useState<boolean>(false);
 
   // Google Maps setup
   const { isLoaded, loadError } = useLoadScript({
@@ -651,10 +652,12 @@ export const MapStage = (): JSX.Element => {
           currentStudent={currentStudent}
           locationsLength={locations.length}
           hasUnprocessedChats={hasUnprocessedChats}
-          onProcessingComplete={handleDebugProcessingComplete}
-          onProcessingError={handleProcessingError}
-          onLoadLocations={loadLocations}
-        />
+            onProcessingComplete={handleDebugProcessingComplete}
+            onProcessingError={handleProcessingError}
+            onLoadLocations={loadLocations}
+            autoProcessEnabled={autoProcessEnabled}
+            setAutoProcessEnabled={setAutoProcessEnabled}
+          />
       </Collapse>
 
       {error && (

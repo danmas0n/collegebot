@@ -3,7 +3,9 @@ import { detectToolCall, executeToolCall } from '../utils/tool-executor.js';
 import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
-import { claudeLogger } from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
+import { flowCostTracker } from './flow-cost-tracker.js';
+import { costCalculator } from './cost-calculator.js';
 
 // Timeout constants - per individual Claude API call, not entire process
 const CLAUDE_API_TIMEOUT = 180000; // 3 minutes per individual Claude API call
@@ -37,6 +39,10 @@ export class ClaudeService {
   private responseProcessor: ResponseProcessor;
   private stepCounter: number = 0;
   private readonly MAX_STEPS = 50;
+  private currentChatId?: string;
+  private currentStage?: 'recommendations' | 'map' | 'plan' | 'research' | 'other';
+  private currentUsage?: CacheUsage; // Track usage for current request
+  private cumulativeInputTokens: number = 0; // Track cumulative input tokens for cache calculation
 
   constructor(apiKey: string, userId?: string) {
     this.client = new Anthropic({
@@ -45,6 +51,72 @@ export class ClaudeService {
     });
     this.userId = userId;
     this.responseProcessor = new ResponseProcessor();
+  }
+
+  /**
+   * Set the current chat context for cost tracking
+   */
+  setChatContext(chatId: string, stage: 'recommendations' | 'map' | 'plan' | 'research' | 'other') {
+    this.currentChatId = chatId;
+    this.currentStage = stage;
+    
+    // Reset cumulative input tokens for new chat/flow
+    this.cumulativeInputTokens = 0;
+    
+    logger.info('Claude: Chat context set, reset cumulative input tokens', {
+      chatId,
+      stage,
+      cumulativeInputTokens: this.cumulativeInputTokens
+    });
+  }
+
+  /**
+   * Set the student context for proper cost tracking
+   */
+  setStudentContext(studentId: string) {
+    // For now, we'll store the studentId but the cost tracking still uses userId
+    // This is a placeholder for future enhancement where we properly separate user and student tracking
+    // The current implementation in trackRequestCost uses userId as studentId
+  }
+
+  /**
+   * Track request cost for the current chat flow
+   */
+  private async trackRequestCost(usage: CacheUsage, model: string): Promise<void> {
+    if (!this.currentChatId || !this.currentStage || !this.userId) {
+      return;
+    }
+
+    try {
+      // Start flow if not already active
+      if (!flowCostTracker.isFlowActive(this.currentChatId)) {
+        // We need studentId - for now we'll use userId as studentId
+        // In a real implementation, you'd get the actual studentId from the chat context
+        await flowCostTracker.startFlow(
+          this.currentChatId,
+          this.userId, // Using userId as studentId for now
+          this.userId,
+          this.currentStage
+        );
+      }
+
+      // Add this request to the flow
+      await flowCostTracker.addRequestToFlow(this.currentChatId, {
+        provider: 'claude',
+        model,
+        usage: {
+          inputTokens: usage.input_tokens,
+          outputTokens: usage.output_tokens,
+          cacheCreationTokens: usage.cache_creation_input_tokens,
+          cacheReadTokens: usage.cache_read_input_tokens
+        },
+        requestSequence: this.stepCounter
+      });
+
+      // Cost tracking logged in flow-cost-tracker.ts, no need to duplicate here
+    } catch (error) {
+      logger.error('Claude: Error tracking request cost', { error, chatId: this.currentChatId });
+    }
   }
 
   /**
@@ -106,22 +178,19 @@ export class ClaudeService {
   }
 
   /**
-   * Log cache performance metrics
+   * Log token usage only (simplified)
    */
-  private logCachePerformance(usage: any) {
+  private logTokenUsage(usage: any, model: string) {
     if (usage) {
-      const cacheCreated = usage.cache_creation_input_tokens || 0;
-      const cacheRead = usage.cache_read_input_tokens || 0;
-      const regularInput = usage.input_tokens || 0;
-      const output = usage.output_tokens || 0;
-
-      claudeLogger.info('Cache Performance', {
-        cache_creation_tokens: cacheCreated,
-        cache_read_tokens: cacheRead,
-        regular_input_tokens: regularInput,
-        output_tokens: output,
-        cache_hit_rate: cacheRead > 0 ? (cacheRead / (cacheRead + regularInput)) * 100 : 0,
-        estimated_savings: cacheRead > 0 ? `${(cacheRead * 0.9).toFixed(0)} tokens saved` : 'No cache hits'
+      logger.info('Claude: Token Usage', {
+        model,
+        tokens: {
+          input: usage.input_tokens || 0,
+          output: usage.output_tokens || 0,
+          cache_creation: usage.cache_creation_input_tokens || 0,
+          cache_read: usage.cache_read_input_tokens || 0,
+          total: (usage.input_tokens || 0) + (usage.output_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0)
+        }
       });
     }
   }
@@ -188,7 +257,7 @@ Please respond with a simple message confirming that you received this prompt. K
       while (continueProcessing && this.stepCounter < this.MAX_STEPS) {
         this.stepCounter++;
         
-        console.info('Processing message with current state', {
+        logger.info('Claude: Processing message with current state', {
           messageCount: messages.length,
           continueProcessing,
           stepCounter: this.stepCounter,
@@ -197,7 +266,7 @@ Please respond with a simple message confirming that you received this prompt. K
 
         // Check circuit breaker before processing
         if (this.stepCounter >= this.MAX_STEPS) {
-          console.warn('Circuit breaker activated: Maximum steps reached', {
+          logger.warn('Claude: Circuit breaker activated: Maximum steps reached', {
             stepCounter: this.stepCounter,
             maxSteps: this.MAX_STEPS
           });
@@ -224,6 +293,16 @@ Please respond with a simple message confirming that you received this prompt. K
         continueProcessing = result.continueProcessing;
       }
 
+      // Complete the flow when processing is finished
+      if (this.currentChatId) {
+        try {
+          await flowCostTracker.completeFlow(this.currentChatId);
+          logger.info('Claude: Flow completed', { chatId: this.currentChatId, totalSteps: this.stepCounter });
+        } catch (error) {
+          logger.error('Claude: Error completing flow', { error, chatId: this.currentChatId });
+        }
+      }
+
       // Send complete event when processing is finished
       console.info('Claude processing complete, sending complete event');
       sendSSE({ type: 'complete' });
@@ -238,13 +317,14 @@ Please respond with a simple message confirming that you received this prompt. K
   }
 
   async processSingleStream(messages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
-    claudeLogger.info('Starting Claude stream');
+    logger.info('Claude: Starting Claude stream');
     let toolBuffer = '';
     let messageContent = '';
     let hasToolCalls = false;
     let continueProcessing = true;
     let rawMessage = ''; // Track complete raw message
     let hasProcessedContent = false; // Track if any content was processed during streaming
+    let timeoutId: NodeJS.Timeout | null = null; // Declare timeout variable in proper scope
 
     try {
       // Consolidate messages into proper conversation structure
@@ -259,10 +339,10 @@ Please respond with a simple message confirming that you received this prompt. K
       // Apply incremental caching to conversation history
       claudeMessages = this.applyIncrementalCaching(claudeMessages);
 
-      console.info('System prompt', {
-        preview: systemPrompt.slice(0, 200),
-        totalLength: systemPrompt.length
-      });
+          logger.info('Claude: System prompt', {
+            preview: systemPrompt.slice(0, 200),
+            totalLength: systemPrompt.length
+          });
 
       const model = await settingsService.getCurrentModel();
       
@@ -278,8 +358,15 @@ Please respond with a simple message confirming that you received this prompt. K
       });
 
       // Set up timeout for the entire stream processing
-      const timeoutId = setTimeout(() => {
-        claudeLogger.warn('Claude stream timeout reached, aborting stream');
+      timeoutId = setTimeout(() => {
+        logger.warn('Claude: Stream timeout reached - stream is taking longer than expected', {
+          stepCounter: this.stepCounter,
+          currentChatId: this.currentChatId,
+          currentStage: this.currentStage,
+          messageCount: claudeMessages.length,
+          lastMessagePreview: claudeMessages[claudeMessages.length - 1]?.content?.toString().substring(0, 100)
+        });
+        // Still abort for now, but with more context
         stream.abort();
       }, CLAUDE_API_TIMEOUT);
 
@@ -291,9 +378,32 @@ Please respond with a simple message confirming that you received this prompt. K
           rawMessage = ''; // Reset raw message buffer
           hasProcessedContent = false; // Reset processed content flag
           
-          // Log cache performance if available
-          if (streamEvent.message?.usage) {
-            this.logCachePerformance(streamEvent.message.usage);
+          // Save all usage fields from message_start
+          const usage = streamEvent.message.usage as any;
+          this.currentUsage = {
+            input_tokens: usage.input_tokens || 0,
+            output_tokens: usage.output_tokens || 0,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
+            cache_read_input_tokens: usage.cache_read_input_tokens || 0
+          };
+          
+          logger.info('Claude: Usage data saved from message_start', { usage: this.currentUsage });
+        }
+        else if (streamEvent.type === 'message_delta') {
+          // Save all usage fields from message_delta events
+          if (this.currentUsage && streamEvent.usage) {
+            const usage = streamEvent.usage as any;
+            
+            // Update all available fields
+            if (usage.input_tokens !== undefined) this.currentUsage.input_tokens = usage.input_tokens;
+            if (usage.output_tokens !== undefined) this.currentUsage.output_tokens = usage.output_tokens;
+            if (usage.cache_creation_input_tokens !== undefined) this.currentUsage.cache_creation_input_tokens = usage.cache_creation_input_tokens;
+            if (usage.cache_read_input_tokens !== undefined) this.currentUsage.cache_read_input_tokens = usage.cache_read_input_tokens;
+            
+            logger.info('Claude: Usage data updated from message_delta', { 
+              usage: this.currentUsage,
+              deltaUsage: streamEvent.usage
+            });
           }
         }
         else if (streamEvent.type === 'content_block_start') {
@@ -304,18 +414,53 @@ Please respond with a simple message confirming that you received this prompt. K
           toolBuffer += text;
           rawMessage += text; // Accumulate raw message
 
-          // Check for complete tool call first - if found, terminate the stream
+          // Check for complete tool call - if found, immediately terminate stream
           const { found, toolResult } = detectToolCall(toolBuffer);
           if (found && toolResult) {
             console.info('Found complete tool call, terminating stream', { toolCall: toolResult.fullMatch });
             
-            // Cancel the stream
+            // Clear timeout before aborting
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+            
+            // Estimate output tokens from accumulated text since we're aborting mid-stream
+            if (this.currentUsage && this.currentChatId && this.currentStage) {
+              try {
+                // Use word count of accumulated text as proxy for output tokens
+                // Rough approximation: 1 token ≈ 0.50 words for English text
+                const wordCount = rawMessage.trim().split(/\s+/).length;
+                const estimatedOutputTokens = Math.ceil(wordCount / 0.50);
+                
+                const finalUsage = {
+                  input_tokens: this.currentUsage.input_tokens,
+                  output_tokens: estimatedOutputTokens,
+                  cache_creation_input_tokens: this.currentUsage.cache_creation_input_tokens,
+                  cache_read_input_tokens: this.currentUsage.cache_read_input_tokens
+                };
+                
+                logger.info('Claude: Estimating output tokens from accumulated text before tool call', { 
+                  rawMessageLength: rawMessage.length,
+                  wordCount,
+                  estimatedOutputTokens,
+                  originalOutputTokens: this.currentUsage.output_tokens,
+                  finalUsage
+                });
+                
+                await this.trackRequestCost(finalUsage, model);
+              } catch (error) {
+                logger.error('Claude: Error tracking cost before tool execution', { error, chatId: this.currentChatId });
+              }
+            }
+            
+            // Abort the stream
             stream.abort();
             
             // Process the tool call using the shared utility
             const result = await executeToolCall(toolResult.content, messages, sendSSE, this.userId);
             
-            // Return the result
+            // Return the result immediately
             return result;
           }
 
@@ -339,8 +484,19 @@ Please respond with a simple message confirming that you received this prompt. K
           console.info('Message complete', { 
             hasContent: !!(toolBuffer.trim() || messageContent.trim()),
             hasProcessedContent,
-            hasSavedAnswer: !!this.responseProcessor.getSavedAnswer()
+            hasSavedAnswer: !!this.responseProcessor.getSavedAnswer(),
+            finalUsage: this.currentUsage
           });
+          
+          // Track cost with accumulated usage data
+          if (this.currentChatId && this.currentStage && this.currentUsage) {
+            try {
+              logger.info('Claude: Tracking cost with accumulated usage data', { usage: this.currentUsage });
+              await this.trackRequestCost(this.currentUsage, model);
+            } catch (error) {
+              logger.error('Claude: Error tracking request cost', { error, chatId: this.currentChatId });
+            }
+          }
           
           // Log complete raw message before processing
           console.info('Complete raw message', { message: rawMessage });
@@ -458,15 +614,27 @@ Please respond with a simple message confirming that you received this prompt. K
         }
       }
 
+      // Usage data is now properly captured from stream events above
+      // No need for the unreliable finalMessage() approach
+
       // Clear timeout and cleanup
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       
       return { hasToolCalls, messages, continueProcessing };
     } catch (error: any) {
-      claudeLogger.error('Error in stream processing', { error: error.message, stack: error.stack });
+      logger.error('Claude: Error in stream processing', { error: error.message, stack: error.stack });
       sendSSE({ type: 'error', content: error.message });
       throw error;
     } finally {
+      // Ensure timeout is always cleared
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
       // Memory cleanup
       toolBuffer = '';
       messageContent = '';

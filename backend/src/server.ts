@@ -18,6 +18,7 @@ import calendarRouter from './routes/calendar.js';
 import pinResearchRouter from './routes/pin-research.js';
 import pinResearchStreamRouter from './routes/pin-research-stream.js';
 import plansRouter from './routes/plans.js';
+import costTrackingRouter from './routes/cost-tracking.js';
 
 // Load environment variables
 config();
@@ -177,6 +178,7 @@ app.use('/api/calendar', authMiddleware, calendarRouter);
 app.use('/api/pin-research', authMiddleware, pinResearchRouter);
 app.use('/api/pin-research-stream', authMiddleware, analysisRateLimit, pinResearchStreamRouter);
 app.use('/api/plans', authMiddleware, plansRouter);
+app.use('/api/costs', authMiddleware, costTrackingRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

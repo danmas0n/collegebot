@@ -188,7 +188,29 @@
 - Updated App.tsx to render the CalendarStage component
 - Updated documentation in cline_docs
 
+## Recent Changes
+- **Fixed Cost Tracking Dashboard Issues**:
+  - **Fixed User Name Display**: Updated user details dialog to show actual user email instead of truncated Firestore ID by storing and displaying `selectedUserEmail` from the user summaries
+  - **Implemented Chat Title Lookup**: Added `getChatTitle()` function in backend to fetch actual chat titles from the `chats` collection instead of hardcoded "Untitled"
+  - **Fixed NaN Cost Calculations**: Added proper validation and error handling for cost calculations, ensuring all numeric fields are validated and NaN values are converted to 0
+  - **Enhanced Token Display with Tooltip**: Added comprehensive token breakdown tooltip showing Input, Output, Cache Creation, and Cache Read tokens with total, displayed on hover with info icon
+  - **Improved Data Validation**: Added validation in both backend routes and flow cost tracker to handle missing or malformed data gracefully
+  - **Better Error Handling**: Enhanced error handling throughout the cost tracking system to prevent display issues and provide fallback values
+- **Consolidated Cost Tracking Logging System**:
+  - **Eliminated Inconsistent Logging**: Replaced all `claudeLogger` instances with the standard Winston `logger` to consolidate logging
+  - **Standardized Log Prefixes**: Added consistent prefixes ("Claude:", "Cost Calculator:", "Flow Cost Tracker:") to identify log sources
+  - **Replaced Console Logs**: Converted all `console.log/info/error` statements in cost tracking code to use Winston logger
+  - **Single Log Destination**: All cost tracking logs now go to `backend/logs/combined.log` with structured JSON format
+  - **Created Documentation**: Added `backend/docs/cost-tracking-logs.md` with complete guide on log locations and formats
+  - **Improved Debugging**: Cost tracking issues can now be debugged from a single file with consistent formatting
+  - **Log Filtering Commands**: Provided grep commands to filter specific cost tracking logs from the combined log file
+  - **Eliminated Log Scatter**: No more logs appearing in multiple places (console, separate log files, different formats)
+
 ## Next Steps
+- Test the consolidated logging system:
+  - Run cost tracking operations and verify all logs appear in `backend/logs/combined.log`
+  - Confirm log prefixes are working correctly
+  - Test the grep commands for filtering specific log types
 - Test the new deployment scripts:
   - Verify that the backend deployment script works correctly
   - Test the frontend deployment script

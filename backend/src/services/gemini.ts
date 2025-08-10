@@ -4,11 +4,17 @@ import { ResponseProcessor } from '../utils/response-processor.js';
 import { settingsService } from './settings.js';
 import { Message } from '../types/messages.js';
 import { logger } from '../utils/logger.js';
+import { flowCostTracker } from './flow-cost-tracker.js';
+import { costCalculator } from './cost-calculator.js';
 
 export class GeminiService {
   private client: GoogleGenerativeAI;
   private userId?: string;
   private responseProcessor: ResponseProcessor;
+  private stepCounter: number = 0;
+  private readonly MAX_STEPS = 50;
+  private currentChatId?: string;
+  private currentStage?: 'recommendations' | 'map' | 'plan' | 'research' | 'other';
 
   constructor(apiKey: string, userId?: string) {
     this.client = new GoogleGenerativeAI(apiKey);
@@ -16,23 +22,126 @@ export class GeminiService {
     this.responseProcessor = new ResponseProcessor();
   }
 
+  /**
+   * Set the current chat context for cost tracking
+   */
+  setChatContext(chatId: string, stage: 'recommendations' | 'map' | 'plan' | 'research' | 'other') {
+    this.currentChatId = chatId;
+    this.currentStage = stage;
+  }
+
+  /**
+   * Set the student context for proper cost tracking
+   */
+  setStudentContext(studentId: string) {
+    // For now, we'll store the studentId but the cost tracking still uses userId
+    // This is a placeholder for future enhancement where we properly separate user and student tracking
+    // The current implementation in trackRequestCost uses userId as studentId
+  }
+
+  /**
+   * Track request cost for the current chat flow
+   */
+  private async trackRequestCost(inputTokens: number, outputTokens: number, model: string): Promise<void> {
+    if (!this.currentChatId || !this.currentStage || !this.userId) {
+      return;
+    }
+
+    try {
+      // Start flow if not already active
+      if (!flowCostTracker.isFlowActive(this.currentChatId)) {
+        // We need studentId - for now we'll use userId as studentId
+        // In a real implementation, you'd get the actual studentId from the chat context
+        await flowCostTracker.startFlow(
+          this.currentChatId,
+          this.userId, // Using userId as studentId for now
+          this.userId,
+          this.currentStage
+        );
+      }
+
+      // Add this request to the flow
+      await flowCostTracker.addRequestToFlow(this.currentChatId, {
+        provider: 'gemini',
+        model,
+        usage: {
+          inputTokens,
+          outputTokens,
+          cacheCreationTokens: 0, // Gemini doesn't have cache tokens
+          cacheReadTokens: 0
+        },
+        requestSequence: this.stepCounter
+      });
+
+      logger.info('Gemini: Tracked request cost', {
+        chatId: this.currentChatId,
+        stage: this.currentStage,
+        model,
+        inputTokens,
+        outputTokens,
+        requestSequence: this.stepCounter
+      });
+    } catch (error) {
+      logger.error('Gemini: Error tracking request cost', { error, chatId: this.currentChatId });
+    }
+  }
+
   async processStream(initialMessages: Message[], systemPrompt: string, sendSSE: (data: any) => void) {
     let messages = [...initialMessages];
     let continueProcessing = true;
 
-    // Reset processor for new conversation
+    // Reset processor and step counter for new conversation
     this.responseProcessor.reset();
+    this.stepCounter = 0;
 
     try {
-      while (continueProcessing) {
-        console.info('Processing message with current state', {
+      while (continueProcessing && this.stepCounter < this.MAX_STEPS) {
+        this.stepCounter++;
+        
+        console.info('Gemini: Processing message with current state', {
           messageCount: messages.length,
-          continueProcessing
+          continueProcessing,
+          stepCounter: this.stepCounter,
+          maxSteps: this.MAX_STEPS
         });
+
+        // Check circuit breaker before processing
+        if (this.stepCounter >= this.MAX_STEPS) {
+          console.warn('Gemini: Circuit breaker activated: Maximum steps reached', {
+            stepCounter: this.stepCounter,
+            maxSteps: this.MAX_STEPS
+          });
+          
+          // Inject circuit breaker message
+          messages.push({
+            role: 'user',
+            content: 'You have reached the maximum number of processing steps (50). Please stop thinking and provide your final answer now.'
+          });
+          
+          sendSSE({ 
+            type: 'system', 
+            content: `🔄 Circuit breaker activated: Forcing final answer after ${this.MAX_STEPS} steps to prevent runaway loops` 
+          });
+          
+          // Process one final time with the circuit breaker message
+          const result = await this.processSingleStream(messages, systemPrompt, sendSSE);
+          messages = result.messages;
+          break; // Force exit
+        }
 
         const result = await this.processSingleStream(messages, systemPrompt, sendSSE);
         messages = result.messages;
         continueProcessing = result.continueProcessing;
+      }
+
+      // Complete the flow when processing is finished
+      if (this.currentChatId) {
+        try {
+          await flowCostTracker.completeFlow(this.currentChatId);
+          logger.info('Gemini: Flow completed', { chatId: this.currentChatId, totalSteps: this.stepCounter });
+        } catch (error) {
+          logger.error('Gemini: Error completing flow', { error, chatId: this.currentChatId });
+        }
       }
 
       // Send complete event when processing is finished
@@ -85,11 +194,19 @@ export class GeminiService {
 
       const result = await chat.sendMessageStream(systemPrompt);
       let streamController = new AbortController();
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
 
       for await (const chunk of result.stream) {
         const text = chunk.text();
         toolBuffer += text;
         rawMessage += text;
+
+        // Track token usage if available
+        if (chunk.usageMetadata) {
+          totalInputTokens = chunk.usageMetadata.promptTokenCount || 0;
+          totalOutputTokens = chunk.usageMetadata.candidatesTokenCount || 0;
+        }
 
         // Check for complete tool call first - if found, terminate the stream
         const { found, toolResult } = detectToolCall(toolBuffer);
@@ -128,11 +245,21 @@ export class GeminiService {
         }
       }
 
+      // Track cost if we have chat context and usage data
+      if (this.currentChatId && this.currentStage && (totalInputTokens > 0 || totalOutputTokens > 0)) {
+        try {
+          await this.trackRequestCost(totalInputTokens, totalOutputTokens, model);
+        } catch (error) {
+          logger.error('Gemini: Error tracking request cost', { error, chatId: this.currentChatId });
+        }
+      }
+
       // Process any remaining content at stream end
       logger.info('Gemini: Message complete', { 
         hasContent: !!(toolBuffer.trim() || messageContent.trim()),
         hasProcessedContent,
-        hasSavedAnswer: !!this.responseProcessor.getSavedAnswer()
+        hasSavedAnswer: !!this.responseProcessor.getSavedAnswer(),
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
       });
       
       // Log complete raw message before processing

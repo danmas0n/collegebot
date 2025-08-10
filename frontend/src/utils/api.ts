@@ -130,3 +130,60 @@ export const api = {
     });
   }
 };
+
+// Cost Tracking API functions
+export const costTrackingApi = {
+  // Get cost summaries for all users (admin only)
+  getUsersSummary: async () => {
+    const response = await api.get('/api/costs/users/summary');
+    return response.json();
+  },
+
+  // Get all flows for a specific user
+  getUserFlows: async (userId: string) => {
+    const response = await api.get(`/api/costs/user/${userId}/flows`);
+    return response.json();
+  },
+
+  // Get cost breakdown by stage for a specific user
+  getUserBreakdown: async (userId: string) => {
+    const response = await api.get(`/api/costs/user/${userId}/breakdown`);
+    return response.json();
+  },
+
+  // Get cost summary for a specific user
+  getUserSummary: async (userId: string) => {
+    const response = await api.get(`/api/costs/user/${userId}/summary`);
+    return response.json();
+  },
+
+  // Get detailed cost information for a specific flow
+  getFlowDetails: async (chatId: string) => {
+    const response = await api.get(`/api/costs/flow/${chatId}`);
+    return response.json();
+  },
+
+  // Get current pricing configuration (admin only)
+  getPricingConfig: async () => {
+    const response = await api.get('/api/costs/admin/pricing');
+    return response.json();
+  },
+
+  // Update pricing configuration (admin only)
+  updatePricingConfig: async (configs: any[]) => {
+    const response = await api.put('/api/costs/admin/pricing', { configs });
+    return response.json();
+  },
+
+  // Initialize default pricing configurations (admin only)
+  initializeDefaultPricing: async () => {
+    const response = await api.post('/api/costs/admin/pricing/initialize');
+    return response.json();
+  },
+
+  // Complete a flow (mark as finished)
+  completeFlow: async (chatId: string) => {
+    const response = await api.post(`/api/costs/flow/${chatId}/complete`);
+    return response.json();
+  }
+};
