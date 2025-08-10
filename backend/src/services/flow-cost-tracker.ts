@@ -178,10 +178,11 @@ export class FlowCostTracker {
       
       const byStage: { [stage: string]: LLMFlowCost[] } = {};
       for (const flow of flowCosts) {
-        if (!byStage[flow.stage]) {
-          byStage[flow.stage] = [];
+        const stage = flow.stage || 'other';
+        if (!byStage[stage]) {
+          byStage[stage] = [];
         }
-        byStage[flow.stage].push(flow);
+        byStage[stage].push(flow);
       }
 
       return byStage;
@@ -207,13 +208,18 @@ export class FlowCostTracker {
       const stageBreakdown: { [stage: string]: { cost: number; flows: number } } = {};
 
       for (const flow of flowCosts) {
-        totalCost += flow.totalEstimatedCost;
+        // Ensure cost is a valid number
+        const flowCost = Number(flow.totalEstimatedCost);
+        const validCost = isNaN(flowCost) ? 0 : flowCost;
         
-        if (!stageBreakdown[flow.stage]) {
-          stageBreakdown[flow.stage] = { cost: 0, flows: 0 };
+        totalCost += validCost;
+        
+        const stage = flow.stage || 'other';
+        if (!stageBreakdown[stage]) {
+          stageBreakdown[stage] = { cost: 0, flows: 0 };
         }
-        stageBreakdown[flow.stage].cost += flow.totalEstimatedCost;
-        stageBreakdown[flow.stage].flows += 1;
+        stageBreakdown[stage].cost += validCost;
+        stageBreakdown[stage].flows += 1;
       }
 
       return {

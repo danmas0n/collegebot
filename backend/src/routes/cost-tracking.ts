@@ -22,6 +22,23 @@ async function getUserEmail(userId: string): Promise<string> {
 }
 
 /**
+ * Helper function to get chat title from chats collection
+ */
+async function getChatTitle(chatId: string): Promise<string> {
+  try {
+    const chatDoc = await db.collection('chats').doc(chatId).get();
+    if (chatDoc.exists) {
+      const chatData = chatDoc.data();
+      return chatData?.title || 'Untitled';
+    }
+    return 'Untitled';
+  } catch (error: any) {
+    logger.warn('Could not resolve chat title', { chatId, error: error.message });
+    return 'Untitled';
+  }
+}
+
+/**
  * Helper function to normalize Firestore timestamps to JavaScript dates
  */
 function normalizeDate(firestoreDate: any): Date | null {
@@ -90,7 +107,11 @@ router.get('/users/summary', async (req, res) => {
         };
       }
 
-      userSummaries[userId].totalCost += flow.totalEstimatedCost || 0;
+      // Ensure cost is a valid number
+      const flowCost = Number(flow.totalEstimatedCost);
+      const validCost = isNaN(flowCost) ? 0 : flowCost;
+
+      userSummaries[userId].totalCost += validCost;
       userSummaries[userId].totalFlows += 1;
       
       // Track last activity
@@ -100,11 +121,11 @@ router.get('/users/summary', async (req, res) => {
       }
 
       // Stage breakdown
-      const stage = flow.stage;
+      const stage = flow.stage || 'other';
       if (!userSummaries[userId].stageBreakdown[stage]) {
         userSummaries[userId].stageBreakdown[stage] = { cost: 0, flows: 0 };
       }
-      userSummaries[userId].stageBreakdown[stage].cost += flow.totalEstimatedCost || 0;
+      userSummaries[userId].stageBreakdown[stage].cost += validCost;
       userSummaries[userId].stageBreakdown[stage].flows += 1;
     }
 
@@ -138,25 +159,35 @@ router.get('/user/:userId/flows', async (req, res) => {
     const flows = await flowCostTracker.getUserFlowCosts(userId);
     
     // Transform and normalize Firestore data to frontend-expected format
-    const transformedFlows = flows.map((flow: any) => {
+    const transformedFlows = await Promise.all(flows.map(async (flow: any) => {
       const normalized = normalizeFlowData(flow);
+      
+      // Get actual chat title if chatId exists
+      let chatTitle = 'Untitled';
+      if (normalized.chatId) {
+        chatTitle = await getChatTitle(normalized.chatId);
+      }
+      
+      // Ensure all cost values are valid numbers
+      const totalEstimatedCost = isNaN(normalized.totalEstimatedCost) ? 0 : normalized.totalEstimatedCost;
+      
       return {
         id: normalized.id,
         userId: normalized.userId,
         stage: normalized.stage,
         chatId: normalized.chatId,
-        chatTitle: 'Untitled', // TODO: Get actual chat title from chats collection
+        chatTitle,
         createdAt: normalized.createdAt,
         completedAt: normalized.completedAt,
         totalInputTokens: normalized.totalInputTokens,
         totalOutputTokens: normalized.totalOutputTokens,
         totalCacheCreationInputTokens: normalized.totalCacheCreationTokens,
         totalCacheReadInputTokens: normalized.totalCacheReadTokens,
-        totalEstimatedCost: normalized.totalEstimatedCost,
+        totalEstimatedCost,
         requestCount: normalized.totalRequests,
         isCompleted: !!normalized.completedAt
       };
-    });
+    }));
     
     res.json(transformedFlows);
   } catch (error) {
@@ -171,7 +202,28 @@ router.get('/user/:userId/flows', async (req, res) => {
 router.get('/user/:userId/breakdown', async (req, res) => {
   try {
     const { userId } = req.params;
-    const breakdown = await flowCostTracker.getUserFlowCostsByStage(userId);
+    const flowsByStage = await flowCostTracker.getUserFlowCostsByStage(userId);
+    
+    // Transform to the expected format with cost calculations
+    const breakdown: { [stage: string]: { totalCost: number; flowCount: number; averageCostPerFlow: number; flows: any[] } } = {};
+    
+    for (const [stage, flows] of Object.entries(flowsByStage)) {
+      let totalCost = 0;
+      const validFlows = flows.map(flow => {
+        const flowCost = Number(flow.totalEstimatedCost);
+        const validCost = isNaN(flowCost) ? 0 : flowCost;
+        totalCost += validCost;
+        return { ...flow, totalEstimatedCost: validCost };
+      });
+      
+      breakdown[stage] = {
+        totalCost,
+        flowCount: validFlows.length,
+        averageCostPerFlow: validFlows.length > 0 ? totalCost / validFlows.length : 0,
+        flows: validFlows
+      };
+    }
+    
     res.json(breakdown);
   } catch (error) {
     logger.error('Error getting user cost breakdown', { error, userId: req.params.userId });

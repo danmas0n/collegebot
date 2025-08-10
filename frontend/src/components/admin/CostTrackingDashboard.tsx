@@ -23,12 +23,14 @@ import {
   DialogActions,
   Collapse,
   IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Refresh as RefreshIcon,
   Settings as SettingsIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { costTrackingApi } from '../../utils/api';
 import { UserCostSummary, LLMFlowCost, UserCostBreakdown } from '../../types/cost-tracking';
@@ -46,6 +48,7 @@ export const CostTrackingDashboard: React.FC<CostTrackingDashboardProps> = () =>
   const [sortField, setSortField] = useState<SortField>('totalCost');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(null);
   const [userDetails, setUserDetails] = useState<UserCostBreakdown | null>(null);
   const [userFlows, setUserFlows] = useState<LLMFlowCost[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -158,14 +161,38 @@ export const CostTrackingDashboard: React.FC<CostTrackingDashboardProps> = () =>
   };
 
   const handleUserClick = async (userId: string) => {
+    const user = userSummaries.find(u => u.userId === userId);
     setSelectedUser(userId);
+    setSelectedUserEmail(user?.userEmail || null);
     await loadUserDetails(userId);
   };
 
   const closeUserDetails = () => {
     setSelectedUser(null);
+    setSelectedUserEmail(null);
     setUserDetails(null);
     setUserFlows([]);
+  };
+
+  const formatTokenBreakdown = (flow: LLMFlowCost) => {
+    const breakdown = [];
+    if (flow.totalInputTokens > 0) {
+      breakdown.push(`Input: ${flow.totalInputTokens.toLocaleString()}`);
+    }
+    if (flow.totalOutputTokens > 0) {
+      breakdown.push(`Output: ${flow.totalOutputTokens.toLocaleString()}`);
+    }
+    if (flow.totalCacheCreationInputTokens > 0) {
+      breakdown.push(`Cache Creation: ${flow.totalCacheCreationInputTokens.toLocaleString()}`);
+    }
+    if (flow.totalCacheReadInputTokens > 0) {
+      breakdown.push(`Cache Read: ${flow.totalCacheReadInputTokens.toLocaleString()}`);
+    }
+    const total = flow.totalInputTokens + flow.totalOutputTokens + 
+                  (flow.totalCacheCreationInputTokens || 0) + 
+                  (flow.totalCacheReadInputTokens || 0);
+    breakdown.push(`Total: ${total.toLocaleString()}`);
+    return breakdown.join('\n');
   };
 
   if (loading) {
@@ -406,7 +433,7 @@ export const CostTrackingDashboard: React.FC<CostTrackingDashboardProps> = () =>
         fullWidth
       >
         <DialogTitle>
-          User Cost Details: {selectedUser?.substring(0, 8)}...
+          User Cost Details: {selectedUserEmail || `${selectedUser?.substring(0, 8)}...`}
         </DialogTitle>
         <DialogContent>
           {detailsLoading ? (
@@ -475,9 +502,20 @@ export const CostTrackingDashboard: React.FC<CostTrackingDashboardProps> = () =>
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
-                            {(flow.totalInputTokens + flow.totalOutputTokens).toLocaleString()}
-                          </Typography>
+                          <Tooltip
+                            title={formatTokenBreakdown(flow)}
+                            placement="top"
+                            arrow
+                          >
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              <Typography variant="body2">
+                                {(flow.totalInputTokens + flow.totalOutputTokens + 
+                                  (flow.totalCacheCreationInputTokens || 0) + 
+                                  (flow.totalCacheReadInputTokens || 0)).toLocaleString()}
+                              </Typography>
+                              <InfoIcon fontSize="small" color="action" />
+                            </Box>
+                          </Tooltip>
                         </TableCell>
                         <TableCell>{flow.requestCount}</TableCell>
                         <TableCell>

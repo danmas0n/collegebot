@@ -189,6 +189,13 @@
 - Updated documentation in cline_docs
 
 ## Recent Changes
+- **Fixed Cost Tracking Dashboard Issues**:
+  - **Fixed User Name Display**: Updated user details dialog to show actual user email instead of truncated Firestore ID by storing and displaying `selectedUserEmail` from the user summaries
+  - **Implemented Chat Title Lookup**: Added `getChatTitle()` function in backend to fetch actual chat titles from the `chats` collection instead of hardcoded "Untitled"
+  - **Fixed NaN Cost Calculations**: Added proper validation and error handling for cost calculations, ensuring all numeric fields are validated and NaN values are converted to 0
+  - **Enhanced Token Display with Tooltip**: Added comprehensive token breakdown tooltip showing Input, Output, Cache Creation, and Cache Read tokens with total, displayed on hover with info icon
+  - **Improved Data Validation**: Added validation in both backend routes and flow cost tracker to handle missing or malformed data gracefully
+  - **Better Error Handling**: Enhanced error handling throughout the cost tracking system to prevent display issues and provide fallback values
 - **Consolidated Cost Tracking Logging System**:
   - **Eliminated Inconsistent Logging**: Replaced all `claudeLogger` instances with the standard Winston `logger` to consolidate logging
   - **Standardized Log Prefixes**: Added consistent prefixes ("Claude:", "Cost Calculator:", "Flow Cost Tracker:") to identify log sources
