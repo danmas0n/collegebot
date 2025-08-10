@@ -1,4 +1,4 @@
-import React, { useState, useContext, createContext } from 'react';
+import React, { useState, useContext, createContext, useEffect } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -32,6 +32,7 @@ import { MapStage } from './components/stages/MapStage';
 import { PlanStage } from './components/stages/PlanStage';
 import { CollaborationStage } from './components/stages/CollaborationStage';
 import { AdminPanel } from './components/admin/AdminPanel';
+import { initGA, trackPageView, trackWizardStageEntered, trackUserLogin, trackUserLogout } from './utils/analytics';
 
 // Sidebar width constants (must match NavigationSidebar.tsx)
 const DRAWER_WIDTH = 280;
@@ -82,6 +83,14 @@ const WizardContent: React.FC = () => {
       document.body.classList.remove('sidebar-collapsed');
     };
   }, [isCollapsed]);
+
+  // Track stage changes
+  React.useEffect(() => {
+    if (currentStage && currentUser && isWhitelisted) {
+      trackWizardStageEntered(currentStage, currentStudent?.id);
+      trackPageView(`/${currentStage}`, `${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)} Stage`);
+    }
+  }, [currentStage, currentStudent?.id, currentUser, isWhitelisted]);
 
   if (!currentUser || !isWhitelisted) {
     return <Login />;
@@ -265,6 +274,11 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  // Initialize Google Analytics
+  useEffect(() => {
+    initGA();
+  }, []);
+
   return (
     <NotificationProvider>
       <AuthProvider>

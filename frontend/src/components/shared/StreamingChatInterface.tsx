@@ -25,6 +25,7 @@ import { AiChatMessage } from '../../types/college';
 import { CollapsibleMessage } from '../CollapsibleMessage';
 import { api } from '../../utils/api';
 import { WizardStage } from '../../types/wizard';
+import { trackAIChatMessage } from '../../utils/analytics';
 
 interface Message extends AiChatMessage {
   timestamp: string;
@@ -317,6 +318,9 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
       setMessages(updatedMessages);
       setCurrentMessage('');
 
+      // Track user message
+      trackAIChatMessage('user', operationType, currentStudent?.id);
+
       // Send to backend
       const response = await api.post('/api/chat/message', {
         message: message,
@@ -460,6 +464,9 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
                   timestamp: new Date().toISOString()
                 };
                 setMessages(prev => [...prev, answerMessage]);
+                
+                // Track AI response
+                trackAIChatMessage('assistant', operationType, currentStudent?.id);
                 break;
 
               case 'title':

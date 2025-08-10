@@ -2,6 +2,7 @@ import { Button, Typography, Box, Alert, Stack } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import GoogleIcon from '@mui/icons-material/Google';
 import LogoutIcon from '@mui/icons-material/Logout';
+import { trackUserLogin, trackUserLogout } from '../utils/analytics';
 
 export const Login = () => {
   const { currentUser, isWhitelisted, isAdmin, signInWithGoogle, logout } = useAuth();
@@ -9,6 +10,7 @@ export const Login = () => {
   const handleLogin = async () => {
     try {
       await signInWithGoogle();
+      trackUserLogin(currentUser?.uid);
     } catch (error) {
       console.error('Error signing in:', error);
     }
@@ -16,6 +18,7 @@ export const Login = () => {
 
   const handleLogout = async () => {
     try {
+      trackUserLogout(currentUser?.uid);
       await logout();
     } catch (error) {
       console.error('Error signing out:', error);
@@ -72,4 +75,4 @@ export const Login = () => {
       )}
     </Box>
   );
-}; 
+};
