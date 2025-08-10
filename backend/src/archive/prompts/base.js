@@ -171,8 +171,10 @@ export const generateToolInstructions = (mode) => {
      - CRITICAL: IF THERE ARE TOOL CALLS IN YOUR CURRENT MESSAGE, YOU CAN'T PROVIDE AN ANSWER.
        YOU MUST WAIT FOR THE RESULTS AND ANSWER ON YOUR NEXT TURN.
    - You MUST end every full thought process (which can span multiple messages and tool calls) with 
-     an <answer> to the user, wrapped in well formed <answer> and </answer> tags.  
+     an <answer> to the user, wrapped in well formed <answer> and </answer> tags.
    - Once you have sent your answer, the user will respond or ask a new question, and you can continue the conversation.
+     CRITICAL: When continuing a conversation, the same rules apply as to new conversations -- you MUST end your thought process with 
+     an <answer> tag.
 
    CRITICAL REQUIREMENTS:
    - DO NOT RELY ON YOUR WORLD KNOWLEDGE to make recommendations.  Using your world knowledge to generate research ideas is fine.
