@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import InfoIcon from '@mui/icons-material/Info';
+import FeedbackIcon from '@mui/icons-material/Feedback';
 import { WizardProvider, useWizard } from './contexts/WizardContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -176,6 +177,15 @@ const AppContent: React.FC = () => {
                 sx={{ mr: 2 }}
               >
                 About
+              </Button>
+              <Button
+                color="inherit"
+                startIcon={<FeedbackIcon />}
+                component="a"
+                href="mailto:sorghum.twerp_4z@icloud.com?subject=Feedback on Counseled"
+                sx={{ mr: 2 }}
+              >
+                Feedback
               </Button>
               <Button
                 color="inherit"
