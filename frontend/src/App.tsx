@@ -22,6 +22,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { CalendarProvider } from './contexts/CalendarContext';
 import { Login } from './components/Login';
+import { LandingPage } from './components/LandingPage';
 import { NavigationSidebar } from './components/NavigationSidebar';
 import { StudentSelectionStage } from './components/stages/StudentSelectionStage';
 import { StudentProfileStage } from './components/stages/StudentProfileStage';
@@ -94,7 +95,7 @@ const WizardContent: React.FC = () => {
   }, [currentStage, currentStudent?.id, currentUser, isWhitelisted]);
 
   if (!currentUser || !isWhitelisted) {
-    return <Login />;
+    return <LandingPage />;
   }
 
   const renderStage = () => {

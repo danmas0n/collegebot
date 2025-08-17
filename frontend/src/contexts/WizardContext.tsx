@@ -38,20 +38,28 @@ export const WizardProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [data, setData] = useState<WizardData>(initialData);
   const [activeLLMOperations, setActiveLLMOperations] = useState<LLMOperation[]>([]);
 
-  // Load students on mount
+  // Load students when user logs in or on mount
   useEffect(() => {
     const loadStudents = async () => {
+      // Only load students if user is authenticated
+      if (!currentUser) {
+        setStudents([]);
+        return;
+      }
+
       try {
         const response = await api.get('/api/students');
         const loadedStudents = await response.json();
         setStudents(loadedStudents);
       } catch (error) {
         console.error('Error loading students:', error);
+        // Clear students on error to prevent stale data
+        setStudents([]);
       }
     };
 
     loadStudents();
-  }, []);
+  }, [currentUser]); // Add currentUser as dependency to reload when auth state changes
 
   // LLM operation management
   const startLLMOperation = useCallback((operation: Omit<LLMOperation, 'id' | 'startTime'>) => {

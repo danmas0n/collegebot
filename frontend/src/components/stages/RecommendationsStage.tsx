@@ -212,15 +212,59 @@ export const RecommendationsStage: React.FC = () => {
       // Reload chats to update the context
       await loadChats(currentStudent.id);
       
-      // Clear current chat if it was the deleted one
+      // If the deleted chat was the current one, select the next available chat
       if (currentChat?.id === chatId) {
-        setCurrentChat(null);
+        // Find the index of the deleted chat in the filtered list
+        const deletedChatIndex = filteredChats.findIndex(chat => chat.id === chatId);
+        
+        if (filteredChats.length > 1) {
+          // Select the next chat, or the previous one if it was the last
+          let nextChatIndex;
+          if (deletedChatIndex < filteredChats.length - 1) {
+            // Select the next chat
+            nextChatIndex = deletedChatIndex;
+          } else {
+            // Select the previous chat (since we're deleting the last one)
+            nextChatIndex = deletedChatIndex - 1;
+          }
+          
+          // Find the chat to select from the updated list (after reload)
+          // We need to wait a bit for the reload to complete and then select
+          setTimeout(async () => {
+            const updatedChats = await loadChats(currentStudent.id);
+            const updatedFilteredChats = updatedChats.filter(chat => {
+              switch (chatFilter) {
+                case 'recommendations':
+                  return !(chat as any).type || (chat as any).type === 'recommendations';
+                case 'strategic-planning':
+                  return (chat as any).type === 'strategic-planning';
+                case 'map-processing':
+                  return (chat as any).type === 'map-processing';
+                case 'all':
+                  return true;
+                default:
+                  return !(chat as any).type || (chat as any).type === 'recommendations';
+              }
+            });
+            
+            if (updatedFilteredChats.length > 0) {
+              // Select the chat at the calculated index, bounded by array length
+              const safeIndex = Math.min(nextChatIndex, updatedFilteredChats.length - 1);
+              setCurrentChat(updatedFilteredChats[safeIndex]);
+            } else {
+              setCurrentChat(null);
+            }
+          }, 100);
+        } else {
+          // No more chats available, clear current chat
+          setCurrentChat(null);
+        }
       }
     } catch (error) {
       console.error('Error deleting chat:', error);
       setError(error instanceof Error ? error.message : 'Failed to delete chat');
     }
-  }, [currentStudent?.id, currentChat, loadChats, setCurrentChat]);
+  }, [currentStudent?.id, currentChat, loadChats, setCurrentChat, filteredChats, chatFilter]);
 
   const { showNotification } = useNotification();
   const [showExamples, setShowExamples] = useState(true);

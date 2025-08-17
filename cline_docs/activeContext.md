@@ -206,7 +206,45 @@
   - **Log Filtering Commands**: Provided grep commands to filter specific cost tracking logs from the combined log file
   - **Eliminated Log Scatter**: No more logs appearing in multiple places (console, separate log files, different formats)
 
+## Recent Bug Fixes
+- **Fixed Chat Delete Auto-Selection in Recommendations View**:
+  - **Root Cause**: When deleting a chat in RecommendationsStage, the view didn't automatically select the next available chat
+  - **Solution**: Enhanced `handleDeleteChat` function to automatically select the next chat in the filtered list after deletion
+  - **Implementation**: Added logic to find the deleted chat's index, calculate the next appropriate chat (next in list, or previous if it was the last), and automatically select it after the reload completes
+  - **User Experience**: Users now see immediate refresh with the next chat selected instead of an empty view
+
+- **Fixed Google Login Student Loading Issue**:
+  - **Root Cause**: Students were only loaded once on component mount, not when authentication state changed
+  - **Solution**: Updated WizardContext to reload students whenever `currentUser` changes
+  - **Implementation**: Modified the students loading `useEffect` to depend on `currentUser` and added null check to clear students when user logs out
+  - **User Experience**: Students now appear immediately after Google login without requiring a page reload
+
+- **Fixed Map View Debug Pane Auto-Opening**:
+  - **Root Cause**: Debug controls automatically opened when unprocessed chats were detected
+  - **Solution**: Removed automatic opening logic while preserving unprocessed chat detection
+  - **Implementation**: Kept the `hasUnprocessedChats` state tracking but removed the `setShowDebugControls(true)` call, requiring manual gear icon click
+  - **User Experience**: Debug pane now only opens when explicitly requested by clicking the gear icon, with unprocessed chats still being detected for potential future UI indicators
+
+## Recent Enhancements
+- **Enhanced Landing Page for Logged-Out Users**:
+  - **Problem**: Previous logged-out view was just a poorly formatted "Sign in with Google" button
+  - **Solution**: Created comprehensive `LandingPage` component that replaces the simple login view
+  - **Key Features**:
+    - **Hero Section**: Compelling headline with cost comparison ($10K/year vs $39/month)
+    - **Feature Grid**: Six key features (AI Recommendations, Interactive Maps, Family Collaboration, Professional Support, Timeline Management, Financial Planning)
+    - **Collaboration Highlights**: Detailed section on family sharing (up to 6 members) and counselor network
+    - **Value Proposition**: Clear messaging about comprehensive platform, data-driven insights, and massive savings
+    - **Trust & Security**: Three pillars (Secure Authentication, Privacy First, Built by Experts)
+    - **Multiple CTAs**: Prominent Google sign-in buttons throughout the page
+  - **Design**: Fully responsive, Material-UI components, hover effects, professional styling
+  - **Content Strategy**: Leverages existing About modal content while emphasizing collaboration features and cost savings
+  - **User Experience**: Transforms first impression from basic login to compelling product showcase
+
 ## Next Steps
+- Test all three bug fixes:
+  - Verify chat deletion now automatically selects the next chat in Recommendations view
+  - Confirm Google login immediately shows assigned students without page reload
+  - Ensure Map view debug pane only opens when gear icon is clicked
 - Test the consolidated logging system:
   - Run cost tracking operations and verify all logs appear in `backend/logs/combined.log`
   - Confirm log prefixes are working correctly

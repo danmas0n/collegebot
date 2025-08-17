@@ -550,10 +550,10 @@ export const MapStage = (): JSX.Element => {
         const hasUnprocessed = loadedChats.some(chat => !chat.processed);
         setHasUnprocessedChats(hasUnprocessed);
         
-        // Auto-show debug controls if there are unprocessed chats
+        // Note: Removed auto-show debug controls - user must manually click gear icon
+        // The hasUnprocessedChats state is still tracked for potential UI indicators
         if (hasUnprocessed && !processedRef.current) {
-          console.log('Found unprocessed chats, showing debug controls');
-          setShowDebugControls(true);
+          console.log('Found unprocessed chats - debug controls available via gear icon');
           processedRef.current = true; // Mark as processed for this session
         }
       } catch (err) {
