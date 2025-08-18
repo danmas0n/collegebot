@@ -11,6 +11,7 @@ import {
   addAdmin, 
   isAdmin 
 } from '../services/firestore';
+import StripeService from '../services/stripe.js';
 
 const router = express.Router();
 
@@ -177,6 +178,181 @@ router.post('/ai-settings', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating AI settings:', error);
     res.status(500).json({ error: 'Failed to update AI settings' });
+  }
+});
+
+// Subscription User Management Routes
+
+// Get all subscription users
+router.get('/subscription-users', async (req: Request, res: Response) => {
+  try {
+    const usersSnapshot = await db.collection('subscription_users').get();
+
+    const users = usersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    res.json(users);
+  } catch (error) {
+    console.error('Error getting subscription users:', error);
+    res.status(500).json({ error: 'Failed to get subscription users' });
+  }
+});
+
+// Get detailed subscription info for a user
+router.get('/subscription-users/:email/details', async (req: Request, res: Response) => {
+  try {
+    const email = req.params.email;
+    const status = await StripeService.getSubscriptionStatus(email);
+    
+    res.json({
+      ...status,
+      email
+    });
+  } catch (error) {
+    console.error('Error getting subscription details:', error);
+    res.status(500).json({ error: 'Failed to get subscription details' });
+  }
+});
+
+// Delete a subscription user (cancel subscription and remove from Firestore)
+router.delete('/subscription-users/:email', async (req: Request, res: Response) => {
+  try {
+    const email = req.params.email;
+    
+    // Get user data first
+    const userDoc = await db.collection('subscription_users').doc(email).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userData = userDoc.data();
+    
+    // Cancel Stripe subscription if it exists
+    if (userData?.stripeCustomerId && userData?.subscriptionId) {
+      try {
+        const stripe = await import('stripe');
+        const stripeClient = new stripe.default(process.env.STRIPE_SECRET_KEY!, {
+          apiVersion: '2025-07-30.basil',
+        });
+        
+        await stripeClient.subscriptions.cancel(userData.subscriptionId);
+        console.log(`Cancelled Stripe subscription: ${userData.subscriptionId}`);
+      } catch (stripeError) {
+        console.error('Error cancelling Stripe subscription:', stripeError);
+        // Continue with Firestore deletion even if Stripe cancellation fails
+      }
+    }
+
+    // Handle family members - remove them and reset their trial eligibility
+    if (userData?.familyMemberEmails && userData.familyMemberEmails.length > 0) {
+      const batch = db.batch();
+      
+      for (const familyEmail of userData.familyMemberEmails) {
+        const familyRef = db.collection('subscription_users').doc(familyEmail);
+        // Delete family member records - they can sign up for their own trials
+        batch.delete(familyRef);
+      }
+      
+      await batch.commit();
+    }
+
+    // Remove main user from subscription_users
+    await db.collection('subscription_users').doc(email).delete();
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting subscription user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Suspend a subscription user
+router.put('/subscription-users/:email/suspend', async (req: Request, res: Response) => {
+  try {
+    const email = req.params.email;
+    
+    await db.collection('subscription_users').doc(email).update({
+      accessSuspended: true,
+      suspendedAt: Timestamp.now(),
+      // @ts-ignore - user is added by middleware
+      suspendedBy: req.user.email,
+      updatedAt: Timestamp.now()
+    });
+
+    res.json({ message: 'User suspended successfully' });
+  } catch (error) {
+    console.error('Error suspending user:', error);
+    res.status(500).json({ error: 'Failed to suspend user' });
+  }
+});
+
+// Restore a suspended subscription user
+router.put('/subscription-users/:email/restore', async (req: Request, res: Response) => {
+  try {
+    const email = req.params.email;
+    
+    await db.collection('subscription_users').doc(email).update({
+      accessSuspended: false,
+      suspendedAt: null,
+      suspendedBy: null,
+      restoredAt: Timestamp.now(),
+      // @ts-ignore - user is added by middleware
+      restoredBy: req.user.email,
+      updatedAt: Timestamp.now()
+    });
+
+    res.json({ message: 'User restored successfully' });
+  } catch (error) {
+    console.error('Error restoring user:', error);
+    res.status(500).json({ error: 'Failed to restore user' });
+  }
+});
+
+// Admin User Management Routes
+
+// Add a new admin user
+router.post('/admin-users', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    await addAdmin(email);
+    res.json({ message: 'Admin user added successfully' });
+  } catch (error) {
+    console.error('Error adding admin user:', error);
+    res.status(500).json({ error: 'Failed to add admin user' });
+  }
+});
+
+// Get all admin users
+router.get('/admin-users', async (req: Request, res: Response) => {
+  try {
+    const adminsSnapshot = await db.collection('admin_users').get();
+    const admins = adminsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    res.json(admins);
+  } catch (error) {
+    console.error('Error getting admin users:', error);
+    res.status(500).json({ error: 'Failed to get admin users' });
+  }
+});
+
+// Remove an admin user
+router.delete('/admin-users/:email', async (req: Request, res: Response) => {
+  try {
+    const email = req.params.email;
+    await db.collection('admin_users').doc(email).delete();
+    res.json({ message: 'Admin user removed successfully' });
+  } catch (error) {
+    console.error('Error removing admin user:', error);
+    res.status(500).json({ error: 'Failed to remove admin user' });
   }
 });
 

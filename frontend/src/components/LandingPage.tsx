@@ -142,7 +142,7 @@ export const LandingPage: React.FC = () => {
           </Button>
           
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Free to start • No credit card required • Secure Google authentication
+            7-day free trial • Then $39/month • Secure Google authentication
           </Typography>
         </Box>
       </Container>
@@ -172,7 +172,7 @@ export const LandingPage: React.FC = () => {
             <FeatureCard
               icon={<FamilyIcon sx={{ fontSize: 48 }} />}
               title="Family Collaboration"
-              description="Share your college planning journey with up to 6 family members. Everyone stays informed as plans evolve."
+              description="Share your college planning journey with up to 5 additional family members. Everyone stays informed as plans evolve."
             />
           </Grid>
           <Grid item xs={12} md={4}>
@@ -213,7 +213,7 @@ export const LandingPage: React.FC = () => {
               </Typography>
               <Stack spacing={2}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Chip icon={<FamilyIcon />} label="Up to 6 Family Members" color="primary" />
+                  <Chip icon={<FamilyIcon />} label="Up to 5 Additional Family Members" color="primary" />
                 </Box>
                 <Typography variant="body1">
                   Share progress and collaborate with parents, siblings, and extended family. 
@@ -320,7 +320,7 @@ export const LandingPage: React.FC = () => {
               Ready to Transform Your College Planning?
             </Typography>
             <Typography variant="h6" sx={{ mb: 4, opacity: 0.9 }}>
-              Join thousands of families who are making smarter college decisions with Counseled
+              Join thousands of families who are making smarter college decisions with Counseled Pro
             </Typography>
             <Button
               variant="contained"
@@ -344,7 +344,7 @@ export const LandingPage: React.FC = () => {
               Get Started Free with Google
             </Button>
             <Typography variant="body2" sx={{ mt: 2, opacity: 0.8 }}>
-              Start your personalized college planning journey today
+              Start your 7-day free trial today
             </Typography>
           </Box>
         </Container>

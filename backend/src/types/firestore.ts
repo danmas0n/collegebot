@@ -1,17 +1,51 @@
 import { Timestamp } from 'firebase-admin/firestore';
 
+// Clean separation of user types
+
 export interface WhitelistedUser {
   email: string;
-  createdAt: Timestamp | null;
-  createdBy: string;
   userId: string;  // The Firebase auth UID of this user
-  parentUserId?: string;  // The user who shared access
+  createdAt: Timestamp;
+  createdBy: string; // Admin who granted access
+  reason?: string; // Optional reason for whitelist access
+}
+
+export interface SubscriptionUser {
+  email: string;
+  userId: string;  // The Firebase auth UID of this user (set when they first sign in)
+  
+  // Stripe integration
+  stripeCustomerId: string;
+  subscriptionId: string;
+  subscriptionStatus: 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid';
+  
+  // Account management
+  isMainAccount: boolean;
+  trialUsed: boolean;
+  familyMemberEmails?: string[]; // Only for main accounts
+  parentAccountEmail?: string; // Only for family members
+  
+  // Access control
+  accessSuspended?: boolean;
+  suspendedAt?: Timestamp;
+  suspendedBy?: string; // Admin who suspended
+  restoredAt?: Timestamp;
+  restoredBy?: string; // Admin who restored
+  
+  // Grace period tracking
+  gracePeriodStarted?: Timestamp;
+  
+  // Timestamps
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface Student {
   id: string;
   name: string;
   email: string;
+  createdBy: string; // Email of user who created this student
+  subscriptionOwner: string; // Email of the subscription holder
   data: {
     studentProfile: {
       gpa: number;
@@ -152,6 +186,7 @@ export interface ResearchTask {
 export interface Task {
   id: string;
   studentId: string;
+  planId?: string; // Links task to parent plan (for strategic planning tasks)
   title: string;
   description?: string;
   dueDate?: string;
@@ -168,6 +203,7 @@ export interface Task {
 export interface CalendarItem {
   id: string;
   studentId: string;
+  planId?: string; // Links item to parent plan (for strategic planning items)
   title: string;
   description?: string;
   date: string; // ISO date string

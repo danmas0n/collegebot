@@ -25,24 +25,6 @@ export const Login = () => {
     }
   };
 
-  if (currentUser && !isWhitelisted) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Your account ({currentUser.email}) is not whitelisted.
-          Please contact the administrator for access.
-        </Alert>
-        <Button 
-          variant="outlined" 
-          onClick={handleLogout}
-          startIcon={<LogoutIcon />}
-          color="inherit"
-        >
-          Sign Out
-        </Button>
-      </Box>
-    );
-  }
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

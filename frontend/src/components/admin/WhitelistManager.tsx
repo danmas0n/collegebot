@@ -13,34 +13,29 @@ import {
   Alert,
   Snackbar,
   Divider,
-  Tooltip
+  Tooltip,
+  Tabs,
+  Tab
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import ShareIcon from '@mui/icons-material/Share';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
-  doc, 
-  getDoc,
-  setDoc, 
-  deleteDoc,
-  where,
-  serverTimestamp,
-  FieldValue,
-  Timestamp,
-  getDocs
-} from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { getAuthHeaders } from '../../utils/auth';
 
 interface WhitelistedUser {
   email: string;
-  createdAt: Timestamp | FieldValue | null;
-  createdBy?: string;
-  userId?: string;
-  parentUserId?: string;
+  userId: string;
+  createdAt: any;
+  createdBy: string;
+  reason?: string;
+}
+
+interface AdminUser {
+  email: string;
+  role: string;
+  createdAt: any;
 }
 
 interface WhitelistManagerProps {
@@ -49,165 +44,277 @@ interface WhitelistManagerProps {
 
 export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
   const { isAdmin, currentUser } = useAuth();
-  const [users, setUsers] = useState<WhitelistedUser[]>([]);
+  const [activeTab, setActiveTab] = useState(0);
+  
+  // Whitelist state
+  const [whitelistedUsers, setWhitelistedUsers] = useState<WhitelistedUser[]>([]);
   const [sharedUsers, setSharedUsers] = useState<WhitelistedUser[]>([]);
-  const [newEmail, setNewEmail] = useState('');
+  const [newWhitelistEmail, setNewWhitelistEmail] = useState('');
+  const [whitelistReason, setWhitelistReason] = useState('');
+  
+  // Admin state
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  
+  // Family sharing state
+  const [newFamilyEmail, setNewFamilyEmail] = useState('');
+  
+  // UI state
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Fetch whitelisted users (admin view)
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const q = query(collection(db, 'whitelisted_users'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const whitelistedUsers: WhitelistedUser[] = [];
-      snapshot.forEach((doc) => {
-        whitelistedUsers.push({
-          email: doc.id,
-          ...doc.data()
-        } as WhitelistedUser);
-      });
-      setUsers(whitelistedUsers.sort((a, b) => a.email.localeCompare(b.email)));
-    }, (error) => {
-      console.error('Error fetching whitelist:', error);
-      setError('Failed to load whitelisted users');
-    });
-
-    return () => unsubscribe();
-  }, [isAdmin]);
-
-  // Fetch shared users (regular user view)
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const q = query(
-      collection(db, 'whitelisted_users'), 
-      where('parentUserId', '==', currentUser.uid)
-    );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const shared: WhitelistedUser[] = [];
-      snapshot.forEach((doc) => {
-        shared.push({
-          email: doc.id,
-          ...doc.data()
-        } as WhitelistedUser);
-      });
-      setSharedUsers(shared.sort((a, b) => a.email.localeCompare(b.email)));
-    }, (error) => {
-      console.error('Error fetching shared users:', error);
-      setError('Failed to load shared users');
-    });
-
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEmail.trim() || !isAdmin || !currentUser) return;
-
+  // Fetch whitelisted users
+  const fetchWhitelistedUsers = async () => {
     try {
-      const email = newEmail.trim().toLowerCase();
-      
-      // Generate a userId from the email (they'll get this UID when they sign up)
-      const userId = email.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-      
-      // Add to whitelist with userId
-      await setDoc(doc(db, 'whitelisted_users', email), {
-        createdAt: serverTimestamp(),
-        createdBy: currentUser.email,
-        userId
-      });
-      
-      setNewEmail('');
-      setSuccess(`Added ${email} to whitelist`);
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/admin/whitelisted-users', { headers });
+      if (!response.ok) throw new Error('Failed to fetch whitelisted users');
+      const users = await response.json();
+      setWhitelistedUsers(users);
     } catch (err) {
-      console.error('Error adding user:', err);
-      setError('Failed to add user to whitelist');
+      console.error('Error fetching whitelisted users:', err);
+      setError('Failed to load whitelisted users');
+    }
+  };
+
+  // Fetch admin users
+  const fetchAdminUsers = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/admin/admin-users', { headers });
+      if (!response.ok) throw new Error('Failed to fetch admin users');
+      const users = await response.json();
+      setAdminUsers(users);
+    } catch (err) {
+      console.error('Error fetching admin users:', err);
+      setError('Failed to load admin users');
+    }
+  };
+
+  // Fetch shared users
+  const fetchSharedUsers = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/admin/shared-users', { headers });
+      if (!response.ok) throw new Error('Failed to fetch shared users');
+      const users = await response.json();
+      setSharedUsers(users);
+    } catch (err) {
+      console.error('Error fetching shared users:', err);
+      setError('Failed to load shared users');
+    }
+  };
+
+  useEffect(() => {
+    if (adminView && isAdmin) {
+      fetchWhitelistedUsers();
+      fetchAdminUsers();
+    }
+    if (currentUser) {
+      fetchSharedUsers();
+    }
+  }, [adminView, isAdmin, currentUser]);
+
+  const handleAddWhitelistedUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWhitelistEmail.trim() || !isAdmin || !currentUser) return;
+
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/admin/whitelist', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          email: newWhitelistEmail.trim().toLowerCase(),
+          userId: '', // Will be set when they first sign in
+          reason: whitelistReason.trim() || undefined
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add user');
+      }
+
+      setNewWhitelistEmail('');
+      setWhitelistReason('');
+      setSuccess(`Added ${newWhitelistEmail} to whitelist`);
+      await fetchWhitelistedUsers();
+    } catch (err) {
+      console.error('Error adding whitelisted user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add user to whitelist');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddAdminUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminEmail.trim() || !isAdmin || !currentUser) return;
+
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/admin/admin-users', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          email: newAdminEmail.trim().toLowerCase()
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add admin');
+      }
+
+      setNewAdminEmail('');
+      setSuccess(`Added ${newAdminEmail} as admin`);
+      await fetchAdminUsers();
+    } catch (err) {
+      console.error('Error adding admin user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add admin user');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleShareAccess = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail.trim() || !currentUser) return;
+    if (!newFamilyEmail.trim() || !currentUser) return;
 
+    if (sharedUsers.length >= 5) {
+      setError('Maximum number of shared users (5) reached');
+      return;
+    }
+
+    setLoading(true);
     try {
-      // Check if already at limit
-      if (sharedUsers.length >= 5) {
-        setError('Maximum number of shared users (5) reached');
-        return;
-      }
-
-      const email = newEmail.trim().toLowerCase();
-      
-      // Check if user is trying to share with themselves
-      if (email === currentUser.email) {
-        setError('You cannot share access with yourself');
-        return;
-      }
-
-      // Check if user is already shared with
-      if (sharedUsers.some(user => user.email === email)) {
-        setError('You have already shared access with this user');
-        return;
-      }
-      
-      // Generate a userId from the email (they'll get this UID when they sign up)
-      const userId = email.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
-      // Check if user is already whitelisted by someone else
-      const whitelistDoc = await getDoc(doc(db, 'whitelisted_users', email));
-      if (whitelistDoc.exists() && whitelistDoc.data().parentUserId && whitelistDoc.data().parentUserId !== currentUser.uid) {
-        setError('This user already has shared access from another user');
-        return;
-      }
-      
-      // Add to whitelist with userId and parentUserId
-      await setDoc(doc(db, 'whitelisted_users', email), {
-        createdAt: serverTimestamp(),
-        createdBy: currentUser.email,
-        userId,
-        parentUserId: currentUser.uid
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/admin/share', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          email: newFamilyEmail.trim().toLowerCase(),
+          userId: '' // Will be set when they first sign in
+        })
       });
-      
-      setNewEmail('');
-      setSuccess(`Shared access with ${email}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to share access');
+      }
+
+      setNewFamilyEmail('');
+      setSuccess(`Shared access with ${newFamilyEmail}`);
+      await fetchSharedUsers();
     } catch (err) {
       console.error('Error sharing access:', err);
-      setError('Failed to share access');
+      setError(err instanceof Error ? err.message : 'Failed to share access');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRemoveUser = async (email: string) => {
+  const handleRemoveWhitelistedUser = async (email: string) => {
     if (!isAdmin) return;
 
+    setLoading(true);
     try {
-      await deleteDoc(doc(db, 'whitelisted_users', email));
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/whitelist/${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove user');
+      }
+
       setSuccess(`Removed ${email} from whitelist`);
+      await fetchWhitelistedUsers();
     } catch (err) {
-      console.error('Error removing user:', err);
-      setError('Failed to remove user from whitelist');
+      console.error('Error removing whitelisted user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove user from whitelist');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveAdminUser = async (email: string) => {
+    if (!isAdmin) return;
+
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/admin-users/${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove admin');
+      }
+
+      setSuccess(`Removed ${email} from admins`);
+      await fetchAdminUsers();
+    } catch (err) {
+      console.error('Error removing admin user:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove admin user');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleRemoveSharedAccess = async (email: string) => {
     if (!currentUser) return;
 
+    setLoading(true);
     try {
-      await deleteDoc(doc(db, 'whitelisted_users', email));
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/share/${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to remove shared access');
+      }
+
       setSuccess(`Removed shared access for ${email}`);
+      await fetchSharedUsers();
     } catch (err) {
       console.error('Error removing shared access:', err);
-      setError('Failed to remove shared access');
+      setError(err instanceof Error ? err.message : 'Failed to remove shared access');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const formatDate = (timestamp: Timestamp | FieldValue | null) => {
-    if (!timestamp || !(timestamp instanceof Timestamp)) {
-      return 'Date not available';
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return 'Date not available';
+    
+    // Handle Firestore Timestamp
+    if (timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000).toLocaleDateString();
     }
-    return timestamp.toDate().toLocaleDateString();
+    
+    // Handle regular Date
+    if (timestamp instanceof Date) {
+      return timestamp.toLocaleDateString();
+    }
+    
+    // Handle ISO string
+    if (typeof timestamp === 'string') {
+      return new Date(timestamp).toLocaleDateString();
+    }
+    
+    return 'Date not available';
   };
 
   if (!currentUser) {
@@ -219,117 +326,305 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
   }
 
   return (
-    <Box sx={{ maxWidth: 600, mx: 'auto', p: 3 }}>
-      {adminView && (
+    <Box sx={{ maxWidth: 800, mx: 'auto', p: 3 }}>
+      {adminView && isAdmin && (
         <>
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Add User to Whitelist (Admin)
-            </Typography>
-            <form onSubmit={handleAddUser}>
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField
-                  fullWidth
-                  label="Email Address"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  type="email"
-                  required
-                  size="small"
-                />
-                <Button
-                  type="submit"
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                >
-                  Add
-                </Button>
-              </Box>
-            </form>
+          <Paper sx={{ mb: 3 }}>
+            <Tabs
+              value={activeTab}
+              onChange={(_, newValue) => setActiveTab(newValue)}
+              indicatorColor="primary"
+              textColor="primary"
+            >
+              <Tab label="Free Access Users" />
+              <Tab label="Admin Users" />
+              <Tab label="Family Access" />
+            </Tabs>
           </Paper>
 
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Whitelisted Users ({users.length})
-            </Typography>
-            <List>
-              {users.map((user) => (
-                <ListItem key={user.email} divider>
-                  <ListItemText
-                    primary={user.email}
-                    secondary={
-                      <>
-                        Added: {formatDate(user.createdAt)}
-                        {user.parentUserId && ' (Shared Access)'}
-                      </>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      onClick={() => handleRemoveUser(user.email)}
+          {activeTab === 0 && (
+            <>
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Add Free Access User
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Grant free access to users without requiring a subscription
+                </Typography>
+                <form onSubmit={handleAddWhitelistedUser}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Email Address"
+                      value={newWhitelistEmail}
+                      onChange={(e) => setNewWhitelistEmail(e.target.value)}
+                      type="email"
+                      required
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Reason (optional)"
+                      value={whitelistReason}
+                      onChange={(e) => setWhitelistReason(e.target.value)}
+                      placeholder="e.g., Beta tester, Partner, Special access"
+                      size="small"
+                    />
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      disabled={loading}
+                      sx={{ alignSelf: 'flex-start' }}
                     >
-                      <DeleteIcon />
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
+                      Add Free Access
+                    </Button>
+                  </Box>
+                </form>
+              </Paper>
+
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Free Access Users ({whitelistedUsers.length})
+                </Typography>
+                <List>
+                  {whitelistedUsers.map((user) => (
+                    <ListItem key={user.email} divider>
+                      <ListItemText
+                        primary={user.email}
+                        secondary={
+                          <>
+                            Added: {formatDate(user.createdAt)} by {user.createdBy}
+                            {user.reason && (
+                              <><br />Reason: {user.reason}</>
+                            )}
+                          </>
+                        }
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton
+                          edge="end"
+                          aria-label="delete"
+                          onClick={() => handleRemoveWhitelistedUser(user.email)}
+                          disabled={loading}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                  {whitelistedUsers.length === 0 && (
+                    <ListItem>
+                      <ListItemText
+                        primary="No free access users"
+                        secondary="Users added here will have free access without needing a subscription"
+                      />
+                    </ListItem>
+                  )}
+                </List>
+              </Paper>
+            </>
+          )}
+
+          {activeTab === 1 && (
+            <>
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Add Admin User
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Grant admin privileges to users
+                </Typography>
+                <form onSubmit={handleAddAdminUser}>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Email Address"
+                      value={newAdminEmail}
+                      onChange={(e) => setNewAdminEmail(e.target.value)}
+                      type="email"
+                      required
+                      size="small"
+                    />
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      startIcon={<AdminPanelSettingsIcon />}
+                      disabled={loading}
+                    >
+                      Add Admin
+                    </Button>
+                  </Box>
+                </form>
+              </Paper>
+
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Admin Users ({adminUsers.length})
+                </Typography>
+                <List>
+                  {adminUsers.map((user) => (
+                    <ListItem key={user.email} divider>
+                      <ListItemText
+                        primary={user.email}
+                        secondary={`Added: ${formatDate(user.createdAt)}`}
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton
+                          edge="end"
+                          aria-label="delete"
+                          onClick={() => handleRemoveAdminUser(user.email)}
+                          disabled={loading || user.email === currentUser?.email}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                  {adminUsers.length === 0 && (
+                    <ListItem>
+                      <ListItemText
+                        primary="No admin users"
+                        secondary="Users added here will have full admin access"
+                      />
+                    </ListItem>
+                  )}
+                </List>
+              </Paper>
+            </>
+          )}
+
+          {activeTab === 2 && (
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Family Sharing ({sharedUsers.length}/5)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Share your subscription access with family members
+              </Typography>
+              <form onSubmit={handleShareAccess}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                  <TextField
+                    fullWidth
+                    label="Family Member Email"
+                    value={newFamilyEmail}
+                    onChange={(e) => setNewFamilyEmail(e.target.value)}
+                    type="email"
+                    required
+                    size="small"
+                  />
+                  <Tooltip title={sharedUsers.length >= 5 ? "Maximum limit reached" : "Share access"}>
+                    <span>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        startIcon={<ShareIcon />}
+                        disabled={sharedUsers.length >= 5 || loading}
+                      >
+                        Share
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </Box>
+              </form>
+
+              <List>
+                {sharedUsers.map((user) => (
+                  <ListItem key={user.email} divider>
+                    <ListItemText
+                      primary={user.email}
+                      secondary={`Shared: ${formatDate(user.createdAt)}`}
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        aria-label="delete"
+                        onClick={() => handleRemoveSharedAccess(user.email)}
+                        disabled={loading}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+                {sharedUsers.length === 0 && (
+                  <ListItem>
+                    <ListItemText
+                      primary="No family members"
+                      secondary="Share your subscription with up to 5 family members"
+                    />
+                  </ListItem>
+                )}
+              </List>
+            </Paper>
+          )}
         </>
       )}
 
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          {adminView ? "Share Access" : "Family Sharing"} ({sharedUsers.length}/5)
-        </Typography>
-        <form onSubmit={handleShareAccess}>
-          <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-            <TextField
-              fullWidth
-              label="Email Address"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              type="email"
-              required
-              size="small"
-            />
-            <Tooltip title={sharedUsers.length >= 5 ? "Maximum limit reached" : "Share access"}>
-              <span>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  startIcon={<ShareIcon />}
-                  disabled={sharedUsers.length >= 5}
-                >
-                  Share
-                </Button>
-              </span>
-            </Tooltip>
-          </Box>
-        </form>
-
-        <List>
-          {sharedUsers.map((user) => (
-            <ListItem key={user.email} divider>
-              <ListItemText
-                primary={user.email}
-                secondary={`Shared: ${formatDate(user.createdAt)}`}
+      {!adminView && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Family Sharing ({sharedUsers.length}/5)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Share your subscription access with family members
+          </Typography>
+          <form onSubmit={handleShareAccess}>
+            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+              <TextField
+                fullWidth
+                label="Family Member Email"
+                value={newFamilyEmail}
+                onChange={(e) => setNewFamilyEmail(e.target.value)}
+                type="email"
+                required
+                size="small"
               />
-              <ListItemSecondaryAction>
-                <IconButton
-                  edge="end"
-                  aria-label="delete"
-                  onClick={() => handleRemoveSharedAccess(user.email)}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
-      </Paper>
+              <Tooltip title={sharedUsers.length >= 5 ? "Maximum limit reached" : "Share access"}>
+                <span>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    startIcon={<ShareIcon />}
+                    disabled={sharedUsers.length >= 5 || loading}
+                  >
+                    Share
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
+          </form>
+
+          <List>
+            {sharedUsers.map((user) => (
+              <ListItem key={user.email} divider>
+                <ListItemText
+                  primary={user.email}
+                  secondary={`Shared: ${formatDate(user.createdAt)}`}
+                />
+                <ListItemSecondaryAction>
+                  <IconButton
+                    edge="end"
+                    aria-label="delete"
+                    onClick={() => handleRemoveSharedAccess(user.email)}
+                    disabled={loading}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+            {sharedUsers.length === 0 && (
+              <ListItem>
+                <ListItemText
+                  primary="No family members"
+                  secondary="Share your subscription with up to 5 family members"
+                />
+              </ListItem>
+            )}
+          </List>
+        </Paper>
+      )}
 
       <Snackbar
         open={!!error}

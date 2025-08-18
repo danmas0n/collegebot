@@ -60,7 +60,7 @@ export const getSharedUsers = async (userId: string): Promise<WhitelistedUser[]>
   return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({ ...doc.data(), email: doc.id } as WhitelistedUser));
 };
 
-export const addWhitelistedUser = async (email: string, userId: string, createdBy: string, parentUserId?: string): Promise<void> => {
+export const addWhitelistedUser = async (email: string, userId: string, createdBy: string, parentUserId?: string, reason?: string): Promise<void> => {
   // Check sharing limit if this is a shared user
   if (parentUserId) {
     const sharedUsers = await getSharedUsers(parentUserId);
@@ -70,10 +70,11 @@ export const addWhitelistedUser = async (email: string, userId: string, createdB
   }
 
   await whitelistedUsersRef.doc(email).set({
+    email,
+    userId,
     createdAt: Timestamp.now(),
     createdBy,
-    userId,
-    ...(parentUserId && { parentUserId })
+    ...(reason && { reason })
   });
 };
 

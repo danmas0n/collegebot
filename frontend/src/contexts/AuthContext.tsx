@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { 
   GoogleAuthProvider, 
   signInWithPopup, 
@@ -14,8 +14,17 @@ interface AuthContextType {
   isWhitelisted: boolean;
   isAdmin: boolean;
   loading: boolean;
+  subscriptionStatus: {
+    hasAccess: boolean;
+    accessType: 'admin' | 'manual' | 'subscription' | 'family' | 'none';
+    subscriptionStatus?: string;
+    trialDaysRemaining?: number;
+    isMainAccount?: boolean;
+    familyMemberCount?: number;
+  } | null;
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  checkSubscriptionStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -33,6 +42,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isWhitelisted, setIsWhitelisted] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<{
+    hasAccess: boolean;
+    accessType: 'admin' | 'manual' | 'subscription' | 'family' | 'none';
+    subscriptionStatus?: string;
+    trialDaysRemaining?: number;
+    isMainAccount?: boolean;
+    familyMemberCount?: number;
+  } | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -47,9 +64,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const adminRef = doc(db, 'admin_users', user.email || '');
         const adminDoc = await getDoc(adminRef);
         setIsAdmin(adminDoc.exists());
+
+        // Check subscription status
+        await checkSubscriptionStatusInternal(user);
       } else {
         setIsWhitelisted(false);
         setIsAdmin(false);
+        setSubscriptionStatus(null);
       }
       setLoading(false);
     });
@@ -64,13 +85,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => signOut(auth);
 
+  const checkSubscriptionStatusInternal = async (user: User) => {
+    if (!user?.email) {
+      setSubscriptionStatus(null);
+      return;
+    }
+
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/billing/status?email=${encodeURIComponent(user.email)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const status = await response.json();
+        setSubscriptionStatus(status);
+      } else {
+        console.error('Failed to fetch subscription status');
+        setSubscriptionStatus(null);
+      }
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+      setSubscriptionStatus(null);
+    }
+  };
+
+  const checkSubscriptionStatus = useCallback(async () => {
+    if (currentUser) {
+      await checkSubscriptionStatusInternal(currentUser);
+    }
+  }, [currentUser?.uid]); // Only recreate when user ID changes
+
   const value = {
     currentUser,
     isWhitelisted,
     isAdmin,
     loading,
+    subscriptionStatus,
     signInWithGoogle,
-    logout
+    logout,
+    checkSubscriptionStatus
   };
 
   return (
@@ -78,4 +135,4 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       {!loading && children}
     </AuthContext.Provider>
   );
-}; 
+};

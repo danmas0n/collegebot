@@ -16,6 +16,7 @@
     "@mui/material": "^5.15.3",
     "@mui/x-date-pickers": "^6.19.7",
     "@react-google-maps/api": "^2.20.5",
+    "@stripe/stripe-js": "^7.8.0",
     "@types/d3": "^7.4.3",
     "@types/d3-cloud": "^1.2.9",
     "@types/d3-scale": "^4.0.8",

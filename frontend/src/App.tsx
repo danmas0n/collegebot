@@ -23,6 +23,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { CalendarProvider } from './contexts/CalendarContext';
 import { Login } from './components/Login';
 import { LandingPage } from './components/LandingPage';
+import { SubscriptionGate } from './components/SubscriptionGate';
 import { NavigationSidebar } from './components/NavigationSidebar';
 import { StudentSelectionStage } from './components/stages/StudentSelectionStage';
 import { StudentProfileStage } from './components/stages/StudentProfileStage';
@@ -70,7 +71,7 @@ const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
 const WizardContent: React.FC = () => {
   const { currentStage, currentStudent } = useWizard();
-  const { currentUser, isWhitelisted } = useAuth();
+  const { currentUser, isWhitelisted, subscriptionStatus } = useAuth();
   const { isCollapsed } = useSidebar();
   
   // Add/remove CSS class based on sidebar state
@@ -86,15 +87,19 @@ const WizardContent: React.FC = () => {
     };
   }, [isCollapsed]);
 
+  // Determine if user has access
+  const hasAccess = currentUser && (isWhitelisted || (subscriptionStatus && subscriptionStatus.hasAccess));
+
   // Track stage changes
   React.useEffect(() => {
-    if (currentStage && currentUser && isWhitelisted) {
+    if (currentStage && currentUser && hasAccess) {
       trackWizardStageEntered(currentStage, currentStudent?.id);
       trackPageView(`/${currentStage}`, `${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)} Stage`);
     }
-  }, [currentStage, currentStudent?.id, currentUser, isWhitelisted]);
+  }, [currentStage, currentStudent?.id, currentUser, hasAccess]);
 
-  if (!currentUser || !isWhitelisted) {
+  // Show landing page if not logged in
+  if (!currentUser) {
     return <LandingPage />;
   }
 
@@ -123,33 +128,42 @@ const WizardContent: React.FC = () => {
     }
   };
 
-  // Hide sidebar entirely on student selection page
-  if (currentStage === 'student-selection') {
-    return (
-      <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
-        {renderStage()}
-      </Container>
-    );
-  }
+  const renderMainContent = () => {
+    // Hide sidebar entirely on student selection page
+    if (currentStage === 'student-selection') {
+      return (
+        <Container component="main" sx={{ flexGrow: 1, py: 4 }}>
+          {renderStage()}
+        </Container>
+      );
+    }
 
-  return (
-    <div style={{ display: 'flex', height: '100%' }}>
-      <NavigationSidebar />
-      <div 
-        style={{ 
-          flexGrow: 1, 
-          width: '100%',
-          maxWidth: 'none',
-          minWidth: 0,
-          flex: '1 1 auto',
-          padding: 0,
-          height: '100%',
-          overflow: 'auto'
-        }}
-      >
-        {renderStage()}
+    return (
+      <div style={{ display: 'flex', height: '100%' }}>
+        <NavigationSidebar />
+        <div 
+          style={{ 
+            flexGrow: 1, 
+            width: '100%',
+            maxWidth: 'none',
+            minWidth: 0,
+            flex: '1 1 auto',
+            padding: 0,
+            height: '100%',
+            overflow: 'auto'
+          }}
+        >
+          {renderStage()}
+        </div>
       </div>
-    </div>
+    );
+  };
+
+  // Wrap main content in SubscriptionGate for access control
+  return (
+    <SubscriptionGate>
+      {renderMainContent()}
+    </SubscriptionGate>
   );
 };
 

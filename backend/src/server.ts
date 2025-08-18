@@ -1,8 +1,11 @@
+// Load environment variables FIRST before any other imports
+import { config } from 'dotenv';
+config();
+
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
-import { config } from 'dotenv';
 import { auth } from './config/firebase.js';
 import { isAdmin } from './services/firestore.js';
 import { logger } from './utils/logger.js';
@@ -19,9 +22,8 @@ import pinResearchRouter from './routes/pin-research.js';
 import pinResearchStreamRouter from './routes/pin-research-stream.js';
 import plansRouter from './routes/plans.js';
 import costTrackingRouter from './routes/cost-tracking.js';
-
-// Load environment variables
-config();
+import billingRouter from './routes/billing.js';
+import StripeService from './services/stripe.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -72,6 +74,8 @@ const analysisRateLimit = rateLimit({
 });
 
 // Set up body parsing with increased limits
+// Special handling for Stripe webhook - needs raw body for signature verification
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: false, limit: '5mb' }));
 app.use(morgan('dev'));
@@ -164,6 +168,33 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
+// Webhook endpoint - handle directly without any middleware
+app.post('/api/billing/webhook', async (req: Request, res: Response) => {
+  const sig = req.headers['stripe-signature'] as string;
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+
+  let event: any;
+
+  try {
+    const Stripe = (await import('stripe')).default;
+    event = Stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err);
+    return res.status(400).send(`Webhook Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+
+  try {
+    await StripeService.handleWebhook(event);
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Error handling webhook:', error);
+    res.status(500).json({ 
+      error: 'Failed to handle webhook',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Protected routes with rate limiting
 app.use('/api/chat/message', authMiddleware, chatRateLimit, chatRouter);
 app.use('/api/chat/analyze', authMiddleware, analysisRateLimit, chatRouter);
@@ -179,6 +210,8 @@ app.use('/api/pin-research', authMiddleware, pinResearchRouter);
 app.use('/api/pin-research-stream', authMiddleware, analysisRateLimit, pinResearchStreamRouter);
 app.use('/api/plans', authMiddleware, plansRouter);
 app.use('/api/costs', authMiddleware, costTrackingRouter);
+// Other billing routes (protected) - this will handle all non-webhook billing routes
+app.use('/api/billing', authMiddleware, billingRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
