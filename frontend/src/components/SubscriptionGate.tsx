@@ -21,7 +21,7 @@ interface SubscriptionGateProps {
 }
 
 export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ children }) => {
-  const { currentUser, subscriptionStatus, checkSubscriptionStatus } = useAuth();
+  const { currentUser, subscriptionStatus, checkSubscriptionStatus, isWhitelisted, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +99,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ children }) 
     );
   }
 
-  // If user has access, render children
-  if (subscriptionStatus?.hasAccess) {
+  // If user has access (admin, whitelisted, or subscription), render children
+  if (isAdmin || isWhitelisted || subscriptionStatus?.hasAccess) {
     return <>{children}</>;
   }
 
