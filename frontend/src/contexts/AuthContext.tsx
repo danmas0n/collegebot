@@ -87,28 +87,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const checkSubscriptionStatusInternal = async (user: User) => {
     if (!user?.email) {
+      console.log('AuthContext: No user email, setting subscription status to null');
       setSubscriptionStatus(null);
       return;
     }
 
     try {
       const token = await user.getIdToken();
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/billing/status?email=${encodeURIComponent(user.email)}`, {
+      const url = `${import.meta.env.VITE_API_URL}/api/billing/status?email=${encodeURIComponent(user.email)}`;
+      console.log('AuthContext: Checking subscription status for:', user.email);
+      console.log('AuthContext: API URL:', url);
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
 
+      console.log('AuthContext: Subscription status response:', response.status, response.statusText);
+
       if (response.ok) {
         const status = await response.json();
+        console.log('AuthContext: Subscription status data:', status);
         setSubscriptionStatus(status);
       } else {
-        console.error('Failed to fetch subscription status');
+        const errorText = await response.text();
+        console.error('AuthContext: Failed to fetch subscription status:', response.status, errorText);
         setSubscriptionStatus(null);
       }
     } catch (error) {
-      console.error('Error checking subscription status:', error);
+      console.error('AuthContext: Error checking subscription status:', error);
       setSubscriptionStatus(null);
     }
   };

@@ -99,10 +99,22 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ children }) 
     );
   }
 
+  // Debug logging
+  console.log('SubscriptionGate: Access check values:', {
+    isAdmin,
+    isWhitelisted,
+    subscriptionStatus,
+    hasSubscriptionAccess: subscriptionStatus?.hasAccess,
+    userEmail: currentUser?.email
+  });
+
   // If user has access (admin, whitelisted, or subscription), render children
   if (isAdmin || isWhitelisted || subscriptionStatus?.hasAccess) {
+    console.log('SubscriptionGate: Access granted, rendering children');
     return <>{children}</>;
   }
+
+  console.log('SubscriptionGate: Access denied, showing subscription screen');
 
   // Show subscription required screen
   return (

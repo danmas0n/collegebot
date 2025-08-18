@@ -68,13 +68,26 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
   const fetchWhitelistedUsers = async () => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/admin/whitelisted-users', { headers });
-      if (!response.ok) throw new Error('Failed to fetch whitelisted users');
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/whitelisted-users`;
+      console.log('Fetching whitelisted users from:', url);
+      console.log('Headers:', headers);
+      
+      const response = await fetch(url, { headers });
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Failed to fetch whitelisted users: ${response.status} ${response.statusText}`);
+      }
+      
       const users = await response.json();
+      console.log('Fetched whitelisted users:', users);
       setWhitelistedUsers(users);
     } catch (err) {
       console.error('Error fetching whitelisted users:', err);
-      setError('Failed to load whitelisted users');
+      setError(`Failed to load whitelisted users: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -82,13 +95,24 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
   const fetchAdminUsers = async () => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/admin/admin-users', { headers });
-      if (!response.ok) throw new Error('Failed to fetch admin users');
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/admin-users`;
+      console.log('Fetching admin users from:', url);
+      
+      const response = await fetch(url, { headers });
+      console.log('Admin users response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Admin users error response:', errorText);
+        throw new Error(`Failed to fetch admin users: ${response.status} ${response.statusText}`);
+      }
+      
       const users = await response.json();
+      console.log('Fetched admin users:', users);
       setAdminUsers(users);
     } catch (err) {
       console.error('Error fetching admin users:', err);
-      setError('Failed to load admin users');
+      setError(`Failed to load admin users: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -96,13 +120,24 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
   const fetchSharedUsers = async () => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/admin/shared-users', { headers });
-      if (!response.ok) throw new Error('Failed to fetch shared users');
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/shared-users`;
+      console.log('Fetching shared users from:', url);
+      
+      const response = await fetch(url, { headers });
+      console.log('Shared users response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Shared users error response:', errorText);
+        throw new Error(`Failed to fetch shared users: ${response.status} ${response.statusText}`);
+      }
+      
       const users = await response.json();
+      console.log('Fetched shared users:', users);
       setSharedUsers(users);
     } catch (err) {
       console.error('Error fetching shared users:', err);
-      setError('Failed to load shared users');
+      setError(`Failed to load shared users: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -123,7 +158,7 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/admin/whitelist', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/whitelist`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -157,7 +192,7 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/admin/admin-users', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/admin-users`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -193,7 +228,7 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch('/api/admin/share', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/share`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -224,7 +259,7 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/admin/whitelist/${encodeURIComponent(email)}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/whitelist/${encodeURIComponent(email)}`, {
         method: 'DELETE',
         headers
       });
@@ -250,7 +285,7 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/admin/admin-users/${encodeURIComponent(email)}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/admin-users/${encodeURIComponent(email)}`, {
         method: 'DELETE',
         headers
       });
@@ -276,7 +311,7 @@ export const WhitelistManager = ({ adminView }: WhitelistManagerProps) => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/admin/share/${encodeURIComponent(email)}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/share/${encodeURIComponent(email)}`, {
         method: 'DELETE',
         headers
       });

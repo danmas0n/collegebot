@@ -68,20 +68,29 @@ export const SubscriptionUserManager: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/subscription-users', {
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/subscription-users`;
+      console.log('Fetching subscription users from:', url);
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${await (await import('../../utils/auth')).getIdToken()}`,
         },
       });
 
+      console.log('Subscription users response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch subscription users');
+        const errorText = await response.text();
+        console.error('Subscription users error response:', errorText);
+        throw new Error(`Failed to fetch subscription users: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('Fetched subscription users:', data);
       setUsers(data);
       setError(null);
     } catch (err) {
+      console.error('Error fetching subscription users:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch users');
     } finally {
       setLoading(false);
@@ -90,19 +99,28 @@ export const SubscriptionUserManager: React.FC = () => {
 
   const fetchUserDetails = async (email: string) => {
     try {
-      const response = await fetch(`/api/admin/subscription-users/${encodeURIComponent(email)}/details`, {
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/subscription-users/${encodeURIComponent(email)}/details`;
+      console.log('Fetching user details from:', url);
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${await (await import('../../utils/auth')).getIdToken()}`,
         },
       });
 
+      console.log('User details response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch user details');
+        const errorText = await response.text();
+        console.error('User details error response:', errorText);
+        throw new Error(`Failed to fetch user details: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('Fetched user details:', data);
       setUserDetails(data);
     } catch (err) {
+      console.error('Error fetching user details:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch user details');
     }
   };
@@ -118,15 +136,22 @@ export const SubscriptionUserManager: React.FC = () => {
 
     try {
       setActionLoading(true);
-      const response = await fetch(`/api/admin/subscription-users/${encodeURIComponent(selectedUser.email)}`, {
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/subscription-users/${encodeURIComponent(selectedUser.email)}`;
+      console.log('Deleting user from:', url);
+      
+      const response = await fetch(url, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${await (await import('../../utils/auth')).getIdToken()}`,
         },
       });
 
+      console.log('Delete user response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to delete user');
+        const errorText = await response.text();
+        console.error('Delete user error response:', errorText);
+        throw new Error(`Failed to delete user: ${response.status} ${response.statusText}`);
       }
 
       await fetchUsers();
@@ -134,6 +159,7 @@ export const SubscriptionUserManager: React.FC = () => {
       setSelectedUser(null);
       setError(null);
     } catch (err) {
+      console.error('Error deleting user:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete user');
     } finally {
       setActionLoading(false);
@@ -143,20 +169,28 @@ export const SubscriptionUserManager: React.FC = () => {
   const handleSuspendUser = async (user: SubscriptionUser) => {
     try {
       setActionLoading(true);
-      const response = await fetch(`/api/admin/subscription-users/${encodeURIComponent(user.email)}/suspend`, {
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/subscription-users/${encodeURIComponent(user.email)}/suspend`;
+      console.log('Suspending user from:', url);
+      
+      const response = await fetch(url, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${await (await import('../../utils/auth')).getIdToken()}`,
         },
       });
 
+      console.log('Suspend user response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to suspend user');
+        const errorText = await response.text();
+        console.error('Suspend user error response:', errorText);
+        throw new Error(`Failed to suspend user: ${response.status} ${response.statusText}`);
       }
 
       await fetchUsers();
       setError(null);
     } catch (err) {
+      console.error('Error suspending user:', err);
       setError(err instanceof Error ? err.message : 'Failed to suspend user');
     } finally {
       setActionLoading(false);
@@ -166,20 +200,28 @@ export const SubscriptionUserManager: React.FC = () => {
   const handleRestoreUser = async (user: SubscriptionUser) => {
     try {
       setActionLoading(true);
-      const response = await fetch(`/api/admin/subscription-users/${encodeURIComponent(user.email)}/restore`, {
+      const url = `${import.meta.env.VITE_API_URL}/api/admin/subscription-users/${encodeURIComponent(user.email)}/restore`;
+      console.log('Restoring user from:', url);
+      
+      const response = await fetch(url, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${await (await import('../../utils/auth')).getIdToken()}`,
         },
       });
 
+      console.log('Restore user response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to restore user');
+        const errorText = await response.text();
+        console.error('Restore user error response:', errorText);
+        throw new Error(`Failed to restore user: ${response.status} ${response.statusText}`);
       }
 
       await fetchUsers();
       setError(null);
     } catch (err) {
+      console.error('Error restoring user:', err);
       setError(err instanceof Error ? err.message : 'Failed to restore user');
     } finally {
       setActionLoading(false);
