@@ -26,6 +26,94 @@ export interface StudentProfile {
   actScore?: number;
   extracurriculars?: string[];
   sports?: string[];
+  
+  // Enhanced structured data
+  awards?: {
+    academic?: Array<{
+      name: string;
+      level: 'school' | 'district' | 'state' | 'national' | 'international';
+      year: number;
+      description?: string;
+    }>;
+    extracurricular?: Array<{
+      name: string;
+      organization: string;
+      level: 'local' | 'regional' | 'state' | 'national' | 'international';
+      year: number;
+      description?: string;
+    }>;
+  };
+  
+  publications?: Array<{
+    title: string;
+    type: 'research_paper' | 'article' | 'creative_writing' | 'art' | 'music' | 'other';
+    venue?: string;
+    date: string;
+    url?: string;
+    description?: string;
+    role: 'author' | 'co-author' | 'contributor' | 'creator';
+  }>;
+  
+  volunteerWork?: Array<{
+    organization: string;
+    role: string;
+    startDate: string;
+    endDate?: string;
+    hoursPerWeek?: number;
+    totalHours?: number;
+    description: string;
+    impact?: string;
+    skills?: string[];
+  }>;
+  
+  leadership?: Array<{
+    position: string;
+    organization: string;
+    startDate: string;
+    endDate?: string;
+    description: string;
+    achievements?: string[];
+    teamSize?: number;
+  }>;
+  
+  workExperience?: Array<{
+    company: string;
+    position: string;
+    startDate: string;
+    endDate?: string;
+    hoursPerWeek?: number;
+    description: string;
+    skills?: string[];
+    supervisor?: {
+      name: string;
+      email?: string;
+      phone?: string;
+    };
+  }>;
+  
+  personalNarrative?: {
+    essayAngles?: Array<{
+      theme: string;
+      personalStory: string;
+      strengths: string[];
+      examples: string[];
+      notes?: string;
+    }>;
+    coreValues?: string[];
+    uniquePerspective?: string;
+    overcomingChallenges?: Array<{
+      challenge: string;
+      howOvercome: string;
+      lessonsLearned: string;
+      growth: string;
+    }>;
+    passions?: Array<{
+      area: string;
+      description: string;
+      howPursued: string;
+      futureGoals: string;
+    }>;
+  };
 }
 
 export interface CollegeInterests {
