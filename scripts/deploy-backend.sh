@@ -12,14 +12,19 @@ docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/collegebot-dev
 echo "Pushing Docker image to registry..."
 docker push us-central1-docker.pkg.dev/collegebot-dev-52f43/backend/backend
 
-# Deploy to Cloud Run with environment variables
-echo "Deploying to Cloud Run..."
+# Deploy to Cloud Run with environment variables (without traffic initially)
+echo "Deploying new revision to Cloud Run..."
 gcloud run deploy backend \
   --image us-central1-docker.pkg.dev/collegebot-dev-52f43/backend/backend \
   --platform managed \
   --region us-central1 \
   --project collegebot-dev-52f43 \
+  --no-traffic \
   --set-env-vars NODE_ENV=production,FIREBASE_PROJECT_ID=collegebot-dev-52f43,GOOGLE_CLOUD_PROJECT=collegebot-dev-52f43,FIREBASE_CREDENTIALS_FILE=/workspace/backend/service-account.json
+
+# Route 100% traffic to the new revision
+echo "Routing traffic to new revision..."
+gcloud run services update-traffic backend --to-latest --region us-central1 --project collegebot-dev-52f43
 
 # Configure IAM policy to allow unauthenticated access (required for CORS)
 #echo "Configuring IAM policy..."
