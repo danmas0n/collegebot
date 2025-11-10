@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from 'axios';
-import { addMapLocation, getMapLocations, deleteMapLocation, clearMapLocations, getChats, saveChat } from './firestore.js';
+import { addMapLocation, getMapLocations, deleteMapLocation, clearMapLocations, getChats, saveChat, updateMapLocation } from './firestore.js';
 import { settingsService } from './settings.js';
 
 // Helper function to create MCP client
@@ -302,6 +302,57 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         }
         
         return { content: [{ type: 'text', text: 'Location updated successfully' }] };
+      }
+
+      case 'update_map_location_tier': {
+        if (!userId) throw new Error('User ID is required for map operations');
+        if (typeof args === 'string') {
+          throw new Error('Invalid arguments for update_map_location_tier');
+        }
+        const { studentId, locationId, tier, reasoning, confirmedByUser, meritAidLikelihood, meritAidReasoning } = args;
+        if (!studentId || !locationId || !tier || !reasoning) {
+          throw new Error('Student ID, location ID, tier, and reasoning are required');
+        }
+
+        // Get all locations for this student
+        const locations = await getMapLocations(studentId, userId);
+        const location = locations.find(loc => loc.id === locationId);
+
+        if (!location) {
+          throw new Error(`Location not found with ID: ${locationId}. Available IDs: ${locations.map(loc => `${loc.id} (${loc.name})`).join(', ')}`);
+        }
+
+        // Only allow tier updates for colleges
+        if (location.type !== 'college') {
+          throw new Error('Tier classification only applies to colleges, not scholarships');
+        }
+
+        // Build updates object
+        const updates: any = {
+          tier: tier,
+          tierReasoning: reasoning,
+          tierConfirmedByUser: confirmedByUser !== undefined ? confirmedByUser : false,
+          tierLastUpdated: new Date().toISOString()
+        };
+
+        // Add merit aid fields if provided
+        // Note: These are stored as custom fields on the location, not in metadata
+        if (meritAidLikelihood) {
+          updates.meritAidLikelihood = meritAidLikelihood;
+        }
+        if (meritAidReasoning) {
+          updates.meritAidReasoning = meritAidReasoning;
+        }
+
+        // Use the existing updateMapLocation function from firestore.ts
+        await updateMapLocation(studentId, locationId, updates, userId);
+
+        let responseText = `Tier updated to "${tier}" for ${location.name}`;
+        if (meritAidLikelihood) {
+          responseText += ` with ${meritAidLikelihood} merit aid likelihood`;
+        }
+
+        return { content: [{ type: 'text', text: responseText }] };
       }
 
       case 'create_calendar_item': {

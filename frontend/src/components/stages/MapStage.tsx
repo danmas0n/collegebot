@@ -73,8 +73,8 @@ const getMarkerIcon = (location: MapLocation): string => {
         return 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
       case 'uncategorized':
       default:
-        // Gray for uncategorized or no tier assigned yet
-        return 'https://maps.google.com/mapfiles/ms/icons/grey-dot.png';
+        // Blue for uncategorized or no tier assigned yet (gray was too hard to see)
+        return 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
     }
   }
   
@@ -897,6 +897,8 @@ export const MapStage = (): JSX.Element => {
                   }}
                   icon={{
                     url: getMarkerIcon(location),
+                    scaledSize: new google.maps.Size(32, 32),
+                    anchor: new google.maps.Point(16, 32),
                   }}
                 />
               ))}

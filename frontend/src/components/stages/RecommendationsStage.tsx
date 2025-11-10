@@ -42,7 +42,7 @@ interface Chat extends AiChat {
 
 export const RecommendationsStage: React.FC = () => {
   const { currentStudent, data } = useWizard();
-  const { chats, currentChat, loadChats, setCurrentChat } = useChat();
+  const { chats, currentChat, loadChats, setCurrentChat, updateChatLocally } = useChat();
   const { isCollapsed } = useSidebar();
   const [error, setError] = useState<string | null>(null);
   const hasLoadedChats = useRef(false);
@@ -136,7 +136,7 @@ export const RecommendationsStage: React.FC = () => {
     hasLoadedChats.current = false;
   }, [currentStudent?.id]);
 
-  const createNewChat = async (): Promise<Chat | null> => {
+  const createNewChat = async (initialMessage?: string): Promise<Chat | null> => {
     if (!currentStudent?.id) {
       return null;
     }
@@ -144,26 +144,32 @@ export const RecommendationsStage: React.FC = () => {
     const newChat: Chat = {
       id: crypto.randomUUID(),
       title: `Chat ${chats.length + 1}`,
-      messages: [],
+      messages: initialMessage ? [{
+        role: 'user',
+        content: initialMessage,
+        timestamp: new Date().toISOString()
+      }] : [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       studentId: currentStudent.id,
       processed: false,
       processedAt: null
     };
-    
+
     try {
-      // Immediately save the chat to the backend so it has a valid ID
-      await api.post('/api/chat/save-frontend-chat', {
-        studentId: currentStudent.id,
-        chat: newChat
-      });
-      
-      console.log('New chat saved to backend:', newChat.id);
-      
-      // Reload chats to show the new chat in the sidebar
-      await loadChats(currentStudent.id);
-      
+      // Only save if we have an initial message, otherwise just create in memory
+      if (initialMessage) {
+        await api.post('/api/chat/save-frontend-chat', {
+          studentId: currentStudent.id,
+          chat: newChat
+        });
+
+        console.log('New chat with initial message saved to backend:', newChat.id);
+
+        // Reload chats to show the new chat in the sidebar
+        await loadChats(currentStudent.id);
+      }
+
       setCurrentChat(newChat);
       return newChat;
     } catch (error) {
@@ -183,20 +189,10 @@ export const RecommendationsStage: React.FC = () => {
   };
 
   const handleChatUpdate = useCallback(async (updatedChat: Chat) => {
-    // The ChatContext will handle updating the chats array
-    setCurrentChat(updatedChat);
-    
-    // Always reload chats to ensure the list is updated with title changes
-    // This ensures that title updates from streaming responses are reflected in the sidebar
-    if (currentStudent?.id) {
-      console.log('Chat updated, reloading chats list to reflect changes');
-      
-      // Add a small delay to ensure backend save completes before reloading
-      setTimeout(async () => {
-        await loadChats(currentStudent.id);
-      }, 500); // 500ms delay to allow backend save to complete
-    }
-  }, [setCurrentChat, loadChats, currentStudent?.id]);
+    // Update chat directly in local state instead of reloading from backend
+    // This avoids race condition where reload happens before save completes
+    updateChatLocally(updatedChat);
+  }, [updateChatLocally]);
 
   const handleDeleteChat = useCallback(async (chatId: string) => {
     if (!currentStudent?.id) return;
@@ -288,32 +284,41 @@ export const RecommendationsStage: React.FC = () => {
   // Handle floating chat input
   const handleFloatingSendMessage = async () => {
     if (!floatingMessage.trim() || isFloatingLoading) return;
-    
-    // Create a new chat if none exists
+
+    const messageToSend = floatingMessage;
+    setFloatingMessage(''); // Clear immediately to improve UX
+
+    // Create a new chat if none exists - pass the initial message
     let chatToUse = currentChat;
     if (!chatToUse) {
-      chatToUse = await createNewChat();
+      chatToUse = await createNewChat(messageToSend);
       if (!chatToUse) return;
     }
-    
+
     // Switch to chat tab if not already there
     if (activeTab !== 0) {
       setActiveTab(0);
     }
-    
+
     // Use the StreamingChatInterface's send message functionality
-    // We'll trigger this by calling the interface directly
     setIsFloatingLoading(true);
-    
+
     try {
-      // Call the StreamingChatInterface's handleSendMessage through a ref
+      // If we just created a new chat with the initial message, trigger streaming directly
+      // Otherwise, use the normal send message flow
       if (streamingChatRef.current && streamingChatRef.current.handleSendMessage) {
-        await streamingChatRef.current.handleSendMessage(floatingMessage);
+        if (chatToUse.messages.length > 0 && chatToUse.messages[0].content === messageToSend) {
+          // Chat was just created with this message, trigger streaming without adding it again
+          await streamingChatRef.current.handleSendMessage(messageToSend, true);
+        } else {
+          // Normal flow - add message and stream
+          await streamingChatRef.current.handleSendMessage(messageToSend);
+        }
       }
-      setFloatingMessage('');
     } catch (error) {
       console.error('Error sending floating message:', error);
       setError('Failed to send message');
+      setFloatingMessage(messageToSend); // Restore message on error
     } finally {
       setIsFloatingLoading(false);
     }

@@ -9,6 +9,7 @@ interface ChatContextType {
   saveChat: (studentId: string, chat: AiChat) => Promise<void>;
   deleteChat: (studentId: string, chatId: string) => Promise<void>;
   setCurrentChat: (chat: AiChat | null) => void;
+  updateChatLocally: (chat: AiChat) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -30,7 +31,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await api.post('/api/chat/chats', { studentId });
       const { chats: loadedChats } = await response.json();
       setChats(loadedChats);
-      setCurrentChat(null); // Reset current chat when loading new chats
+
+      // Preserve currentChat if it exists in the loaded chats, otherwise reset
+      setCurrentChat(prevChat => {
+        if (prevChat) {
+          const updatedChat = loadedChats.find((c: AiChat) => c.id === prevChat.id);
+          return updatedChat || null;
+        }
+        return null;
+      });
+
       return loadedChats;
     } catch (error) {
       console.error('Error loading chats:', error);
@@ -74,6 +84,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentChat]);
 
+  const updateChatLocally = useCallback((chat: AiChat) => {
+    setChats(prev => {
+      const index = prev.findIndex(c => c.id === chat.id);
+      if (index >= 0) {
+        const newChats = [...prev];
+        newChats[index] = chat;
+        return newChats;
+      }
+      return [...prev, chat];
+    });
+
+    // Update current chat if this is the one being updated
+    if (currentChat?.id === chat.id) {
+      setCurrentChat(chat);
+    }
+  }, [currentChat]);
+
   return (
     <ChatContext.Provider
       value={{
@@ -82,7 +109,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loadChats,
         saveChat,
         deleteChat,
-        setCurrentChat
+        setCurrentChat,
+        updateChatLocally
       }}
     >
       {children}

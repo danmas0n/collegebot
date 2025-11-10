@@ -82,14 +82,20 @@ router.post('/chats', async (req: Request, res: Response) => {
 router.post('/save-frontend-chat', async (req: Request, res: Response) => {
   try {
     const { studentId, chat } = req.body;
-    console.log('Backend - Saving frontend chat:', { 
-      chatId: chat.id, 
-      title: chat.title, 
+    console.log('Backend - Saving frontend chat:', {
+      chatId: chat.id,
+      title: chat.title,
       studentId: chat.studentId,
       messageCount: chat.messages?.length || 0,
       messageRoles: chat.messages?.map((m: any) => m.role) || []
     });
-    
+
+    // Validate that chat has at least one message
+    if (!chat.messages || chat.messages.length === 0) {
+      console.log('Backend - Rejecting chat save: no messages');
+      return res.status(400).json({ error: 'Cannot save chat with no messages' });
+    }
+
     if (!chat.studentId) {
       chat.studentId = studentId;
     }
@@ -102,19 +108,19 @@ router.post('/save-frontend-chat', async (req: Request, res: Response) => {
     // 1. It's a new chat (!existingChat)
     // 2. The number of messages has changed
     // 3. The chat was never processed
-    if (!existingChat || 
-        !chat.processed || 
+    if (!existingChat ||
+        !chat.processed ||
         (existingChat && existingChat.messages.length !== chat.messages.length)) {
       chat.processed = false;
       chat.processedAt = null;
     }
-    
+
     // Filter large tool responses before saving but preserve message roles
     const filteredChat = {
       ...chat,
       messages: filterChatMessages(chat.messages)
     };
-    
+
     // Save the filtered chat
     await saveChat(filteredChat);
     console.log('Backend - Frontend chat saved successfully (with message filtering applied)');

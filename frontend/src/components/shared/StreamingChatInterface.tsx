@@ -63,7 +63,7 @@ interface StreamingChatInterfaceProps {
 }
 
 export interface StreamingChatInterfaceRef {
-  handleSendMessage: (message: string) => Promise<void>;
+  handleSendMessage: (message: string, skipAddMessage?: boolean) => Promise<void>;
 }
 
 export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, StreamingChatInterfaceProps>(({
@@ -168,23 +168,34 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     }
   }, [mode, currentChat]);
 
+  // Ref to track if we should skip auto-save (e.g., when streaming is handling the save)
+  const skipAutoSave = useRef(false);
+
+  // Ref to track the latest messages for use in complete handler
+  const latestMessagesRef = useRef<Message[]>([]);
+
+  // Sync ref with messages state
+  useEffect(() => {
+    latestMessagesRef.current = messages;
+  }, [messages]);
+
   // Save chat when messages change (chat mode only)
   useEffect(() => {
-    if (mode === 'chat' && currentChat && messages.length > 0 && !isLoading && !isJustSwitchingChats.current) {
+    if (mode === 'chat' && currentChat && messages.length > 0 && !isLoading && !isJustSwitchingChats.current && !skipAutoSave.current) {
       // Check if messages have actually changed to prevent infinite loops
       const currentMessages = currentChat.messages || [];
       const messagesChanged = JSON.stringify(currentMessages) !== JSON.stringify(messages);
-      
+
       if (messagesChanged) {
         const updatedChat = {
           ...currentChat,
           messages: messages,
           updatedAt: new Date().toISOString()
         };
-        
+
         // Update parent component state
         onChatUpdate?.(updatedChat);
-        
+
         // Save to backend
         saveChatToBackend(updatedChat);
       }
@@ -286,9 +297,9 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     }
   };
 
-  const handleSendMessage = async (messageContent?: string) => {
+  const handleSendMessage = async (messageContent?: string, skipAddMessage: boolean = false) => {
     if (!currentStudent?.id || mode !== 'chat') return;
-    
+
     const message = messageContent || currentMessage;
     if (!message.trim()) return;
 
@@ -299,7 +310,7 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
       description: `Chat conversation: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`
     });
     setOperationId(opId);
-    
+
     const currentOperationId = opId;
 
     setIsLoading(true);
@@ -307,26 +318,38 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
     setError(null);
 
     try {
-      // Add user message immediately
-      const userMessage: Message = {
-        role: 'user',
-        content: message,
-        timestamp: new Date().toISOString()
-      };
+      let updatedMessages = messages;
 
-      const updatedMessages = [...messages, userMessage];
-      setMessages(updatedMessages);
+      // Only add the user message if it's not already in the messages (skipAddMessage = false)
+      if (!skipAddMessage) {
+        const userMessage: Message = {
+          role: 'user',
+          content: message,
+          timestamp: new Date().toISOString()
+        };
+
+        updatedMessages = [...messages, userMessage];
+        setMessages(updatedMessages);
+      }
+
       setCurrentMessage('');
 
       // Track user message
       trackAIChatMessage('user', operationType, currentStudent?.id);
+
+      // Build history - always include current message for API call
+      // When skipAddMessage=true, the message wasn't added to updatedMessages (for UI),
+      // but we still need to include it in the history sent to the backend
+      const historyForAPI = skipAddMessage
+        ? [...updatedMessages, { role: 'user', content: message, timestamp: new Date().toISOString() }]
+        : updatedMessages;
 
       // Send to backend
       const response = await api.post('/api/chat/message', {
         message: message,
         studentData: wizardData ? { ...wizardData, id: currentStudent?.id } : { ...currentStudent },
         studentName: currentStudent.name || 'Student',
-        history: updatedMessages.slice(-10).map(msg => ({
+        history: historyForAPI.slice(-10).map(msg => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.content
         })),
@@ -474,66 +497,63 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
                 if (mode === 'chat' && data.suggestedTitle && currentChat) {
                   console.log('Setting suggested title:', data.suggestedTitle);
                   suggestedTitle = data.suggestedTitle;
-                  
-                  // Update the current chat with the new title
-                  setMessages(prev => {
-                    const updatedChat = {
-                      ...currentChat,
-                      title: suggestedTitle,
-                      messages: prev,
-                      updatedAt: new Date().toISOString()
-                    };
-                    
-                    // Update parent and save
-                    onChatUpdate?.(updatedChat);
-                    saveChatToBackend(updatedChat);
-                    
-                    return prev; // Don't change messages
-                  });
+
+                  // Don't save yet - wait for complete event to do a single atomic save
+                  // Just update the title variable so it's available when complete fires
                 }
                 break;
 
               case 'complete':
                 console.log('Received complete event');
+
                 setIsLoading(false);
                 setProcessingComplete(true);
-                
+
                 // Handle suggested title for chat mode (fallback if not handled in title event)
-                if (mode === 'chat' && data.suggestedTitle && currentChat && !suggestedTitle) {
-                  console.log('Setting suggested title from complete event:', data.suggestedTitle);
-                  suggestedTitle = data.suggestedTitle;
-                  
-                  // Update the current chat with the new title
-                  setMessages(prev => {
-                    const updatedChat = {
-                      ...currentChat,
-                      title: suggestedTitle,
-                      messages: prev,
-                      updatedAt: new Date().toISOString()
-                    };
-                    
-                    // Update parent and save
-                    onChatUpdate?.(updatedChat);
-                    saveChatToBackend(updatedChat);
-                    
-                    return prev; // Don't change messages
+                if (mode === 'chat' && currentChat) {
+                  console.log('Complete event - saving chat with final state');
+
+                  // Get the current title (use suggested if available)
+                  const finalTitle = data.suggestedTitle || suggestedTitle || currentChat.title;
+
+                  // Set skipAutoSave briefly to prevent auto-save effect from running during our save
+                  skipAutoSave.current = true;
+
+                  // Use the ref to get the latest messages (includes all streamed messages)
+                  const updatedChat = {
+                    ...currentChat,
+                    title: finalTitle,
+                    messages: latestMessagesRef.current,
+                    updatedAt: new Date().toISOString()
+                  };
+
+                  console.log('Saving chat with', latestMessagesRef.current.length, 'messages');
+
+                  // Single save operation
+                  onChatUpdate?.(updatedChat);
+                  saveChatToBackend(updatedChat).then(() => {
+                    // Reset skipAutoSave after save completes
+                    skipAutoSave.current = false;
+                  }).catch(() => {
+                    // Reset even on error
+                    skipAutoSave.current = false;
                   });
                 }
-                
+
                 // End the LLM operation immediately when processing completes
                 if (currentOperationId) {
                   console.log('Processing complete, ending LLM operation:', currentOperationId);
                   endLLMOperation(currentOperationId);
                   setOperationId(null);
                 }
-                
+
                 // For processing mode, notify completion
                 if (mode === 'processing') {
                   console.log('Processing mode complete, notifying parent');
                   // Call onProcessingComplete to notify MapDebugControls
                   onProcessingComplete?.();
                 }
-                
+
                 streamComplete = true;
                 clearTimeout(streamTimeoutId);
                 break;
