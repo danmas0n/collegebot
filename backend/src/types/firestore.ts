@@ -220,6 +220,13 @@ export interface MapLocation {
   longitude: number;
   createdAt: Timestamp;
   sourceChats?: string[]; // IDs of chats that mentioned this location
+  
+  // Tier classification (for colleges)
+  tier?: 'reach' | 'target' | 'safety' | 'likely' | 'uncategorized';
+  tierReasoning?: string; // AI's explanation for tier assignment
+  tierConfirmedByUser?: boolean; // Whether user has reviewed/confirmed the tier
+  tierLastUpdated?: Timestamp; // When tier was last changed
+  
   metadata?: {
     website?: string;
     description?: string;
@@ -243,6 +250,9 @@ export interface MapLocation {
       dateFound: string;
     }>;
     showLinks?: boolean;
+    
+    // Acceptance rate for tier calculation
+    acceptanceRate?: number;
   };
 }
 
@@ -338,6 +348,7 @@ export interface AISettings {
   claudeApiKey?: string;
   geminiApiKey?: string;
   openaiApiKey?: string;
+  webSearchProvider?: 'mcp' | 'claude-native'; // Web search provider selection
   updatedAt: Timestamp;
   updatedBy: string;
 }

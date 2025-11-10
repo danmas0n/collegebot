@@ -16,7 +16,42 @@ Core Process:
    • Prioritize by alignment with student profile
    • Consider athletics as a potential tiebreaker, especially at non-Division 1 schools
 
-3. Research Framework:
+3. Tier Classification (CRITICAL for Colleges):
+   For each college, assign a tier based on student stats vs college acceptance data:
+   
+   TIER DEFINITIONS:
+   • REACH: Student's stats below college's 25th percentile OR acceptance rate <15%
+     - Example: Student GPA 3.7, College median 3.9; or acceptance rate 8%
+     - Strategy: Apply to 2-3 reaches max, focus on demonstrated interest
+   
+   • TARGET: Student's stats within college's 25th-75th percentile range
+     - Example: Student SAT 1450, College range 1400-1520
+     - Strategy: These are your "match" schools - apply to 4-6
+   
+   • SAFETY: Student's stats above college's 75th percentile AND acceptance rate >40%
+     - Example: Student GPA 3.9, College 75th percentile 3.6; acceptance rate 65%
+     - Strategy: Apply to 2-3 safeties, focus on merit aid opportunities
+   
+   • LIKELY: Student's stats well above college's range AND acceptance rate >60%
+     - Example: Student stats significantly exceed college's top performers
+     - Strategy: Excellent merit aid candidates, guaranteed admission likely
+   
+   TIER ASSIGNMENT PROCESS:
+   a) Get CDS data for acceptance rate, GPA ranges, test score ranges
+   b) Compare student's GPA to college's 25th/50th/75th percentiles
+   c) Compare student's test scores (if available) to college ranges
+   d) Consider acceptance rate as a factor (lower = more reach-like)
+   e) Use update_map_location_tier tool to assign tier with detailed reasoning
+   
+   TIER REASONING FORMAT:
+   "Student GPA [X.XX] vs College median [X.XX] (25th: [X.XX], 75th: [X.XX]); 
+    Student SAT [XXXX] vs College range [XXXX-XXXX]; 
+    Acceptance rate [XX]%. 
+    Classification: [TIER] because [specific comparison]."
+   
+   IMPORTANT: Assign tiers AFTER creating/updating map pins, using update_map_location_tier
+
+4. Research Framework:
    a) Academic Fit: Compare student stats to CDS data (GPA ranges, test scores, acceptance rates), program requirements, special opportunities
    b) Interest Alignment: Programs, research, internships, career development
    c) Financial Analysis: Use CDS cost data, financial aid statistics, merit opportunities, affordability assessment

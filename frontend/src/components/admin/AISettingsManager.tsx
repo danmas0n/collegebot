@@ -25,6 +25,7 @@ interface AISettings {
   claudeApiKey?: string;
   geminiApiKey?: string;
   openaiApiKey?: string;
+  webSearchProvider?: 'mcp' | 'claude-native';
   updatedAt: string;
   updatedBy: string;
 }
@@ -189,6 +190,35 @@ export const AISettingsManager = () => {
                 : 'e.g., gpt-4o'
           }
         />
+
+        <FormControl fullWidth>
+          <InputLabel>Web Search Provider</InputLabel>
+          <Select
+            value={settings.webSearchProvider || 'mcp'}
+            label="Web Search Provider"
+            onChange={(e) => setSettings({
+              ...settings,
+              webSearchProvider: e.target.value as 'mcp' | 'claude-native'
+            })}
+          >
+            <MenuItem value="mcp">
+              <Box>
+                <Typography variant="body2">MCP/Google Search</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Uses Google Custom Search via MCP server
+                </Typography>
+              </Box>
+            </MenuItem>
+            <MenuItem value="claude-native">
+              <Box>
+                <Typography variant="body2">Claude Native Search</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Uses Claude's built-in web search ($10 per 1,000 searches)
+                </Typography>
+              </Box>
+            </MenuItem>
+          </Select>
+        </FormControl>
 
         <TextField
           fullWidth

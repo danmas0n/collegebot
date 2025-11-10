@@ -122,6 +122,12 @@ export class SettingsService {
       apiKey
     };
   }
+
+  async getWebSearchProvider(): Promise<'mcp' | 'claude-native'> {
+    const settings = await this.getAISettings();
+    // Default to MCP for backward compatibility
+    return settings.webSearchProvider || 'mcp';
+  }
 }
 
 export const settingsService = SettingsService.getInstance();

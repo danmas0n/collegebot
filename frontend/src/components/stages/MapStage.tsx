@@ -23,6 +23,8 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import SettingsIcon from '@mui/icons-material/Settings';
 import MapIcon from '@mui/icons-material/Map';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { GoogleMap, useLoadScript, MarkerF, InfoWindowF } from '@react-google-maps/api';
 import { useChat } from '../../contexts/ChatContext';
 import { useWizard } from '../../contexts/WizardContext';
@@ -32,6 +34,9 @@ import TourPlanningDialog from './TourPlanningDialog';
 import { MapLocationList } from '../map/MapLocationList';
 import { MapLocationInfoWindow } from '../map/MapLocationInfoWindow';
 import { MapDebugControls } from '../map/MapDebugControls';
+import { CollegeTableView } from '../map/CollegeTableView';
+import { FinancialDataDialog } from '../map/FinancialDataDialog';
+import { CollegeEditDialog } from '../map/CollegeEditDialog';
 import { StageContainer, StageHeader } from './StageContainer';
 
 const mapContainerStyle = {
@@ -47,6 +52,35 @@ const defaultCenter = {
 };
 
 const libraries: ("places" | "geometry" | "drawing" | "visualization")[] = ["places"];
+
+// Utility function to get marker color based on tier
+const getMarkerIcon = (location: MapLocation): string => {
+  // Scholarships always use green
+  if (location.type === 'scholarship') {
+    return 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
+  }
+  
+  // Colleges use tier-based colors
+  if (location.type === 'college') {
+    switch (location.tier) {
+      case 'reach':
+        return 'https://maps.google.com/mapfiles/ms/icons/red-dot.png';
+      case 'target':
+        return 'https://maps.google.com/mapfiles/ms/icons/orange-dot.png';
+      case 'safety':
+        return 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
+      case 'likely':
+        return 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+      case 'uncategorized':
+      default:
+        // Gray for uncategorized or no tier assigned yet
+        return 'https://maps.google.com/mapfiles/ms/icons/grey-dot.png';
+    }
+  }
+  
+  // Default fallback
+  return 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+};
 
 // Utility function to handle overlapping markers by adding small offsets
 const getMarkerPosition = (location: MapLocation, allLocations: MapLocation[]) => {
@@ -106,6 +140,13 @@ export const MapStage = (): JSX.Element => {
   // State for auto-processing in debug pane
   const [hasUnprocessedChats, setHasUnprocessedChats] = useState<boolean>(false);
   const [autoProcessEnabled, setAutoProcessEnabled] = useState<boolean>(false);
+  
+  // Table view state
+  const [viewMode, setViewMode] = useState<'map' | 'table'>('map');
+  const [financialDialogOpen, setFinancialDialogOpen] = useState<boolean>(false);
+  const [financialDialogLocation, setFinancialDialogLocation] = useState<MapLocation | null>(null);
+  const [collegeEditDialogOpen, setCollegeEditDialogOpen] = useState<boolean>(false);
+  const [collegeEditDialogLocation, setCollegeEditDialogLocation] = useState<MapLocation | null>(null);
 
   // Google Maps setup
   const { isLoaded, loadError } = useLoadScript({
@@ -494,6 +535,120 @@ export const MapStage = (): JSX.Element => {
     setError(error);
   }, []);
 
+  // Table view handlers
+  const handleNotesUpdate = useCallback(async (locationId: string, notes: string) => {
+    if (!currentStudent?.id) return;
+    try {
+      const response = await api.post('/api/students/map-locations/update', {
+        studentId: currentStudent.id,
+        locationId,
+        metadata: { notes }
+      });
+      if (response.ok) {
+        setLocations(prev => prev.map(loc => 
+          loc.id === locationId 
+            ? { ...loc, metadata: { ...loc.metadata, notes } }
+            : loc
+        ));
+      }
+    } catch (err) {
+      console.error('Error updating notes:', err);
+      setError('Failed to update notes');
+    }
+  }, [currentStudent?.id]);
+
+  const handleFinancialSave = useCallback(async (locationId: string, financialData: any, notes: string) => {
+    if (!currentStudent?.id) return;
+    try {
+      const response = await api.post('/api/students/map-locations/update', {
+        studentId: currentStudent.id,
+        locationId,
+        metadata: { financial: financialData, notes }
+      });
+      if (response.ok) {
+        await loadLocations();
+        setFinancialDialogOpen(false);
+      }
+    } catch (err) {
+      console.error('Error saving financial data:', err);
+      setError('Failed to save financial data');
+    }
+  }, [currentStudent?.id, loadLocations]);
+
+  const handleLocationSelectFromTable = useCallback((locationId: string) => {
+    const location = locations.find(loc => loc.id === locationId);
+    if (location) {
+      setSelectedLocation(location);
+      if (viewMode === 'map') {
+        centerMapOnLocation(location);
+      } else {
+        setViewMode('map');
+        setTimeout(() => centerMapOnLocation(location), 100);
+      }
+    }
+  }, [locations, viewMode, centerMapOnLocation]);
+
+  const handleEditFinancial = useCallback((location: MapLocation) => {
+    setFinancialDialogLocation(location);
+    setFinancialDialogOpen(true);
+  }, []);
+
+  // Handle row click in table view - opens edit dialog
+  const handleRowClick = useCallback((location: MapLocation) => {
+    setCollegeEditDialogLocation(location);
+    setCollegeEditDialogOpen(true);
+  }, []);
+
+  // Handle saving college edits
+  const handleCollegeEditSave = useCallback(async (locationId: string, updates: Partial<MapLocation>) => {
+    if (!currentStudent?.id) return;
+    try {
+      const response = await api.post('/api/students/map-locations/update', {
+        studentId: currentStudent.id,
+        locationId,
+        ...updates
+      });
+      if (response.ok) {
+        await loadLocations();
+        setCollegeEditDialogOpen(false);
+      }
+    } catch (err) {
+      console.error('Error saving college edits:', err);
+      setError('Failed to save changes');
+    }
+  }, [currentStudent?.id, loadLocations]);
+
+  // Geocode address for CollegeEditDialog
+  const handleGeocodeForEdit = useCallback(async (address: string) => {
+    if (!address.trim() || !isLoaded) return null;
+    
+    try {
+      const geocoder = new google.maps.Geocoder();
+      const result = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
+        geocoder.geocode({ address }, (results, status) => {
+          if (status === google.maps.GeocoderStatus.OK && results) {
+            resolve(results);
+          } else {
+            reject(new Error(`Geocoding failed: ${status}`));
+          }
+        });
+      });
+      
+      if (result.length > 0) {
+        const location = result[0].geometry.location;
+        return {
+          lat: location.lat(),
+          lng: location.lng(),
+          formattedAddress: result[0].formatted_address
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error('Geocoding error:', err);
+      return null;
+    }
+  }, [isLoaded]);
+
   // Handle viewing a chat from map pin
   const { goToStage } = useWizard();
   const { setCurrentChat } = useChat();
@@ -594,37 +749,57 @@ export const MapStage = (): JSX.Element => {
       <StageHeader>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h5">
-            College & Scholarship Map
+            College & Scholarship Tracker
           </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(e, newMode) => newMode && setViewMode(newMode)}
+            disabled={!currentStudent || isProcessing}
+            size="small"
+          >
+            <ToggleButton value="map">
+              <MapIcon sx={{ mr: 0.5 }} fontSize="small" />
+              Map
+            </ToggleButton>
+            <ToggleButton value="table">
+              <TableChartIcon sx={{ mr: 0.5 }} fontSize="small" />
+              Table
+            </ToggleButton>
+          </ToggleButtonGroup>
           <Button
             variant="outlined"
             startIcon={<MapIcon />}
             onClick={() => setIsTourPlanningOpen(true)}
             disabled={!currentStudent || isProcessing || locations.length === 0}
+            size="small"
           >
             Plan Tour
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setEditingLocation({
-                id: `custom-${Date.now()}`,
-                type: 'college',
-                name: '',
-                latitude: 0,
-                longitude: 0,
-                metadata: {}
-              } as MapLocation);
-              setLocationAddress('');
-              setLocationFormErrors({});
-              setIsEditDialogOpen(true);
-            }}
-            disabled={!currentStudent || isProcessing}
-          >
-            Add Location
-          </Button>
+          {viewMode === 'map' && (
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setEditingLocation({
+                  id: `custom-${Date.now()}`,
+                  type: 'college',
+                  name: '',
+                  latitude: 0,
+                  longitude: 0,
+                  metadata: {}
+                } as MapLocation);
+                setLocationAddress('');
+                setLocationFormErrors({});
+                setIsEditDialogOpen(true);
+              }}
+              disabled={!currentStudent || isProcessing}
+              size="small"
+            >
+              Add Location
+            </Button>
+          )}
           <IconButton
             onClick={() => setShowDebugControls(!showDebugControls)}
             size="small"
@@ -672,6 +847,15 @@ export const MapStage = (): JSX.Element => {
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
         </Box>
+      ) : viewMode === 'table' ? (
+        <Box sx={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+          <CollegeTableView
+            locations={locations}
+            selectedLocationId={selectedLocation?.id}
+            onLocationSelect={handleLocationSelectFromTable}
+            onRowClick={handleRowClick}
+          />
+        </Box>
       ) : (
         <Box sx={{ 
           display: 'flex', 
@@ -685,7 +869,7 @@ export const MapStage = (): JSX.Element => {
         }}>
           {/* Map View */}
           <Box sx={{ 
-            flex: showDebugControls && (isProcessing || hasUnprocessedChats) ? '0 0 70vh' : 1, // Fixed height when debug panel is open
+            flex: showDebugControls && (isProcessing || hasUnprocessedChats) ? '0 0 70vh' : 1,
             minWidth: 0,
             maxWidth: '100%',
             height: showDebugControls && (isProcessing || hasUnprocessedChats) ? '70vh' : '100%',
@@ -712,9 +896,7 @@ export const MapStage = (): JSX.Element => {
                     centerMapOnLocation(location);
                   }}
                   icon={{
-                    url: location.type === 'college' 
-                      ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' 
-                      : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+                    url: getMarkerIcon(location),
                   }}
                 />
               ))}
@@ -859,6 +1041,23 @@ export const MapStage = (): JSX.Element => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Financial Data Dialog */}
+      <FinancialDataDialog
+        open={financialDialogOpen}
+        location={financialDialogLocation}
+        onClose={() => setFinancialDialogOpen(false)}
+        onSave={handleFinancialSave}
+      />
+
+      {/* College Edit Dialog */}
+      <CollegeEditDialog
+        open={collegeEditDialogOpen}
+        location={collegeEditDialogLocation}
+        onClose={() => setCollegeEditDialogOpen(false)}
+        onSave={handleCollegeEditSave}
+        onGeocodeAddress={handleGeocodeForEdit}
+      />
     </StageContainer>
   );
 };

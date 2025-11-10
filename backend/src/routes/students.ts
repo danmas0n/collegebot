@@ -6,6 +6,7 @@ import {
   deleteStudent,
   getMapLocations,
   addMapLocation,
+  updateMapLocation,
   deleteMapLocation,
   clearMapLocations,
   getUserEmails
@@ -103,6 +104,22 @@ router.post('/map-locations/delete', async (req, res) => {
   } catch (error) {
     console.error('Error deleting map location:', error);
     res.status(500).json({ error: 'Failed to delete map location' });
+  }
+});
+
+router.post('/map-locations/update', async (req, res) => {
+  try {
+    // @ts-ignore - user is added by middleware
+    const userId = req.user.uid;
+    const { studentId, locationId, ...updates } = req.body;
+    if (!studentId || !locationId) {
+      return res.status(400).json({ error: 'Student ID and Location ID are required' });
+    }
+    await updateMapLocation(studentId, locationId, updates, userId);
+    res.json({ message: 'Map location updated successfully' });
+  } catch (error) {
+    console.error('Error updating map location:', error);
+    res.status(500).json({ error: 'Failed to update map location' });
   }
 });
 

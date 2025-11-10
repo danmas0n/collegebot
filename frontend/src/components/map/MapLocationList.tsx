@@ -9,6 +9,7 @@ import {
   ListItemText,
   Button,
   Badge,
+  Chip,
 } from '@mui/material';
 import SortByAlphaIcon from '@mui/icons-material/SortByAlpha';
 import SchoolIcon from '@mui/icons-material/School';
@@ -24,6 +25,23 @@ interface MapLocationListProps {
   sortBy: 'name' | 'type';
   setSortBy: (sortBy: 'name' | 'type') => void;
 }
+
+// Helper function to get tier badge color and label
+const getTierBadge = (tier?: string) => {
+  switch (tier) {
+    case 'reach':
+      return { color: 'error' as const, label: 'Reach' };
+    case 'target':
+      return { color: 'warning' as const, label: 'Target' };
+    case 'safety':
+      return { color: 'success' as const, label: 'Safety' };
+    case 'likely':
+      return { color: 'info' as const, label: 'Likely' };
+    case 'uncategorized':
+    default:
+      return { color: 'default' as const, label: 'Uncategorized' };
+  }
+};
 
 export const MapLocationList: React.FC<MapLocationListProps> = ({
   locations,
@@ -115,7 +133,19 @@ export const MapLocationList: React.FC<MapLocationListProps> = ({
                 )}
               </ListItemIcon>
               <ListItemText 
-                primary={location.name}
+                primary={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1">{location.name}</Typography>
+                    {location.type === 'college' && location.tier && (
+                      <Chip 
+                        label={getTierBadge(location.tier).label} 
+                        color={getTierBadge(location.tier).color} 
+                        size="small"
+                        sx={{ height: 20, fontSize: '0.7rem' }}
+                      />
+                    )}
+                  </Box>
+                }
                 secondary={
                   <>
                     {location.metadata.address || 'No address available'}

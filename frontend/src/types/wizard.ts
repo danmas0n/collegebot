@@ -152,6 +152,13 @@ export interface MapLocation {
   latitude: number;
   longitude: number;
   sourceChats?: string[]; // IDs of chats that mentioned this location
+  
+  // Tier classification (for colleges)
+  tier?: 'reach' | 'target' | 'safety' | 'likely' | 'uncategorized';
+  tierReasoning?: string;
+  tierConfirmedByUser?: boolean;
+  tierLastUpdated?: string;
+  
   metadata: {
     website?: string;
     description?: string;
@@ -224,6 +231,24 @@ export interface MapLocation {
       maxAmount: number;
       percentReceiving: number;
     };
+    
+    // User-entered financial data
+    financial?: {
+      costOfAttendance?: number;  // User-entered or from CDS
+      meritScholarships?: Array<{
+        name: string;
+        amount: number;
+        requirements?: string;
+        automatic?: boolean;
+      }>;
+      netPriceEstimate?: number;  // From NPC or user estimate
+      netPriceSource?: 'npc' | 'estimate' | 'cds';
+      netPriceNotes?: string;
+      // AI-assessed merit aid likelihood
+      meritAidLikelihood?: 'high' | 'medium' | 'low' | 'none';
+      meritAidReasoning?: string;
+    };
+    notes?: string;  // User-editable notes
     
     // Scholarship-specific fields
     amount?: number;

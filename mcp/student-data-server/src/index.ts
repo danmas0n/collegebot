@@ -35,6 +35,13 @@ interface MapLocation {
   latitude: number;
   longitude: number;
   sourceChats?: string[]; // IDs of chats that mentioned this location
+  
+  // Tier classification (for colleges)
+  tier?: 'reach' | 'target' | 'safety' | 'likely' | 'uncategorized';
+  tierReasoning?: string;
+  tierConfirmedByUser?: boolean;
+  tierLastUpdated?: string;
+  
   metadata: {
     website?: string;
     description?: string;
@@ -42,6 +49,22 @@ interface MapLocation {
     // College-specific metadata
     fitScore?: number;
     reason?: string;
+    acceptanceRate?: number;
+    // User-entered financial data
+    financial?: {
+      costOfAttendance?: number;
+      meritScholarships?: Array<{
+        name: string;
+        amount: number;
+        requirements?: string;
+        automatic?: boolean;
+      }>;
+      netPriceEstimate?: number;
+      netPriceSource?: 'npc' | 'estimate' | 'cds';
+      netPriceNotes?: string;
+      meritAidLikelihood?: 'high' | 'medium' | 'low' | 'none';
+      meritAidReasoning?: string;
+    };
     // Scholarship-specific metadata
     amount?: number;
     deadline?: string;
@@ -332,6 +355,45 @@ class StudentDataServer {
                   }
                 },
                 required: ['studentId', 'locationId', 'updates']
+              }
+            },
+            update_map_location_tier: {
+              description: 'Update the tier classification and merit aid likelihood for a college location. Use this to assign or change a college\'s tier (reach/target/safety/likely) and assess merit aid likelihood based on student stats vs college data.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  studentId: {
+                    type: 'string',
+                    description: 'Student ID'
+                  },
+                  locationId: {
+                    type: 'string',
+                    description: 'Location ID to update'
+                  },
+                  tier: {
+                    type: 'string',
+                    enum: ['reach', 'target', 'safety', 'likely', 'uncategorized'],
+                    description: 'The tier classification for this college'
+                  },
+                  reasoning: {
+                    type: 'string',
+                    description: 'Explanation for why this tier was assigned (e.g., "Student GPA 3.95 vs college median 3.7, SAT 1550 vs 75th percentile 1520")'
+                  },
+                  confirmedByUser: {
+                    type: 'boolean',
+                    description: 'Whether this tier assignment has been confirmed by the user (default: false for AI assignments)'
+                  },
+                  meritAidLikelihood: {
+                    type: 'string',
+                    enum: ['high', 'medium', 'low', 'none'],
+                    description: 'Likelihood of receiving merit aid at this college'
+                  },
+                  meritAidReasoning: {
+                    type: 'string',
+                    description: 'Explanation for the merit aid likelihood assessment (e.g., "High likelihood: Student SAT in top 25% for this school, which offers competitive merit scholarships to attract top students")'
+                  }
+                },
+                required: ['studentId', 'locationId', 'tier', 'reasoning']
               }
             },
             create_calendar_item: {
@@ -954,6 +1016,81 @@ class StudentDataServer {
           } catch (error) {
             console.error('Error updating map location:', error);
             throw new McpError(ErrorCode.InternalError, 'Failed to update map location');
+          }
+        }
+
+        case 'update_map_location_tier': {
+          const args = request.params.arguments;
+          if (!args?.studentId || !args?.locationId || !args?.tier || !args?.reasoning) {
+            throw new McpError(ErrorCode.InvalidParams, 'Student ID, location ID, tier, and reasoning are required');
+          }
+
+          try {
+            const studentData = await this.readStudents();
+            const studentIndex = studentData.students.findIndex(s => s.id === args.studentId);
+            if (studentIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Student not found');
+            }
+
+            // Initialize map data if it doesn't exist
+            if (!studentData.students[studentIndex].data.map) {
+              studentData.students[studentIndex].data.map = { locations: [] };
+            }
+
+            const locations = studentData.students[studentIndex].data.map!.locations;
+            const locationIndex = locations.findIndex(loc => loc.id === args.locationId);
+            
+            if (locationIndex === -1) {
+              throw new McpError(ErrorCode.InvalidParams, 'Location not found');
+            }
+
+            const currentLocation = locations[locationIndex];
+            
+            // Only allow tier updates for colleges
+            if (currentLocation.type !== 'college') {
+              throw new McpError(ErrorCode.InvalidParams, 'Tier classification only applies to colleges');
+            }
+
+            // Update tier fields and merit aid assessment
+            const updatedLocation = {
+              ...currentLocation,
+              tier: args.tier as 'reach' | 'target' | 'safety' | 'likely' | 'uncategorized',
+              tierReasoning: args.reasoning as string,
+              tierConfirmedByUser: args.confirmedByUser !== undefined ? args.confirmedByUser as boolean : false,
+              tierLastUpdated: new Date().toISOString()
+            };
+
+            // Add merit aid fields if provided
+            if (args.meritAidLikelihood || args.meritAidReasoning) {
+              if (!updatedLocation.metadata.financial) {
+                updatedLocation.metadata.financial = {};
+              }
+              if (args.meritAidLikelihood) {
+                updatedLocation.metadata.financial.meritAidLikelihood = args.meritAidLikelihood as 'high' | 'medium' | 'low' | 'none';
+              }
+              if (args.meritAidReasoning) {
+                updatedLocation.metadata.financial.meritAidReasoning = args.meritAidReasoning as string;
+              }
+            }
+
+            locations[locationIndex] = updatedLocation;
+
+            await this.writeStudents(studentData);
+            
+            let responseText = `Tier updated to "${args.tier}" for ${currentLocation.name}`;
+            if (args.meritAidLikelihood) {
+              responseText += ` with ${args.meritAidLikelihood} merit aid likelihood`;
+            }
+            
+            return {
+              content: [{ 
+                type: 'text', 
+                text: responseText
+              }],
+            };
+          } catch (error) {
+            console.error('Error updating map location tier:', error);
+            throw new McpError(ErrorCode.InternalError, 'Failed to update map location tier');
           }
         }
 

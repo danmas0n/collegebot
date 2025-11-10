@@ -443,6 +443,35 @@ export const addMapLocationsBatch = async (locations: Omit<MapLocation, 'id' | '
   return { successCount, errors };
 };
 
+export const updateMapLocation = async (studentId: string, locationId: string, updates: Partial<MapLocation>, userId: string): Promise<void> => {
+  console.log('Updating map location:', locationId, 'for student:', studentId);
+  
+  // First verify the student exists and belongs to this user
+  const student = await getStudent(studentId, userId);
+  if (!student) {
+    throw new Error('Student not found');
+  }
+
+  // Verify the location exists and belongs to this student
+  const locationDoc = await mapLocationsRef.doc(locationId).get();
+  if (!locationDoc.exists) {
+    throw new Error('Location not found');
+  }
+
+  const locationData = locationDoc.data() as MapLocation;
+  if (locationData.studentId !== studentId) {
+    throw new Error('Location does not belong to this student');
+  }
+
+  // Update the location document
+  await mapLocationsRef.doc(locationId).update({
+    ...updates,
+    updatedAt: Timestamp.now()
+  });
+  
+  console.log('Location updated successfully');
+};
+
 export const deleteMapLocation = async (studentId: string, locationId: string, userId: string): Promise<void> => {
   // First verify the student exists and belongs to this user
   const student = await getStudent(studentId, userId);

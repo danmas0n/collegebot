@@ -349,12 +349,29 @@ Please respond with a simple message confirming that you received this prompt. K
       // Use cached system message for better performance
       const cachedSystemMessage = this.createCachedSystemMessage(systemPrompt);
       
+      // Get web search provider setting and build tools array
+      const webSearchProvider = await settingsService.getWebSearchProvider();
+      const tools: any[] = [];
+      
+      if (webSearchProvider === 'claude-native') {
+        // Add Claude native web search tool
+        tools.push({
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 5  // Limit searches per request to control costs
+        });
+        logger.info('Claude: Using Claude native web search');
+      } else {
+        logger.info('Claude: Using MCP/Google web search');
+      }
+      
       const stream = await this.client.messages.stream({
         model,
         max_tokens: 4096,
         messages: claudeMessages,
         system: cachedSystemMessage as any, // Anthropic SDK types may not be up to date with caching
-        temperature: 0
+        temperature: 0,
+        ...(tools.length > 0 && { tools })  // Only add tools if array is not empty
       });
 
       // Set up timeout for the entire stream processing
