@@ -47,3 +47,6 @@ mcp/college-data-server/cache
 backend/service-account.json
 scripts/service-account.json
 backend/.firebase-export
+
+# Production setup scripts with secrets (one-time use)
+update-backend-env-prod.sh
