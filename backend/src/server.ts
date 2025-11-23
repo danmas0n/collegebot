@@ -31,9 +31,10 @@ const port = process.env.PORT || 3001;
 // CORS configuration
 const corsOptions = {
   origin: [
-    'https://collegebot-dev-52f43.web.app',
-    'https://collegebot-dev-52f43.firebaseapp.com',
-    'http://localhost:3000'
+    'https://counseled.app',                         // Production custom domain
+    'https://collegebot-dev-52f43.web.app',         // Firebase default domain
+    'https://collegebot-dev-52f43.firebaseapp.com', // Firebase default domain
+    'http://localhost:3000'                          // Local development
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
