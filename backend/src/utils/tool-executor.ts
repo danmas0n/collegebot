@@ -11,13 +11,15 @@ type ToolName = keyof typeof toolServerMap;
  * @param messages The current message history
  * @param sendSSE Function to send server-sent events
  * @param userId Optional user ID for tool execution
+ * @param chatId Optional chat ID for tool execution (for associating tool results with chats)
  * @returns Object containing updated messages and flags
  */
 export async function executeToolCall(
   toolContent: string,
   messages: Message[],
   sendSSE: (data: any) => void,
-  userId?: string
+  userId?: string,
+  chatId?: string
 ): Promise<{ messages: Message[]; hasToolCalls: boolean; continueProcessing: boolean }> {
   try {
     console.info('Parsing tool call content:', {
@@ -56,8 +58,8 @@ export async function executeToolCall(
       });
 
       // Execute tool
-      console.info('Starting tool execution', { server, toolName, params });
-      const toolResult = await executeMcpTool(server, toolName, params, userId);
+      console.info('Starting tool execution', { server, toolName, params, chatId });
+      const toolResult = await executeMcpTool(server, toolName, params, userId, chatId);
       
       // Log tool result preview
       const textContent = toolResult?.content?.[0]?.text;

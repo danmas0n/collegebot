@@ -217,7 +217,7 @@ export class GeminiService {
           streamController.abort();
           
           // Process the tool call using the shared utility
-          const result = await executeToolCall(toolResult.content, messages, sendSSE, this.userId);
+          const result = await executeToolCall(toolResult.content, messages, sendSSE, this.userId, this.currentChatId);
           
           // Return the result
           return result;
@@ -305,7 +305,7 @@ export class GeminiService {
           logger.info('Gemini: Processing tool call', { toolCall });
           
           // Process the tool call using the shared utility
-          const result = await executeToolCall(toolContent, messages, sendSSE, this.userId);
+          const result = await executeToolCall(toolContent, messages, sendSSE, this.userId, this.currentChatId);
           
           // Update messages and flags
           messages = result.messages;
