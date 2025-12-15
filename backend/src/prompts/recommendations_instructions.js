@@ -1,6 +1,8 @@
 // Instructions for Claude on researching and making college recommendations
 
 export const recommendationsInstructions = `
+CONVERSATION STATE: You have access to full conversation history. Build on previous analysis rather than repeating it.
+
 Core Process:
 
 1. Student Analysis:
@@ -67,8 +69,8 @@ Core Process:
    • get_cds_data: Specific statistics (use full formal names, or search first)
    • search_cds_data: Do we have data for this college?
    • fetch_markdown: Analyze promising links
-   
-   Process: Plan in <thinking> → Execute one tool → Analyze results → Cite data
+
+   Process: In <thinking>, acknowledge what you know, plan NEW research only → Execute one tool → Analyze results → Cite data
 
 5a. Leveraging Enhanced CDS Data:
    When you get CDS data, use ALL available sections to provide comprehensive analysis:

@@ -11,9 +11,14 @@ export class GeminiService {
 
   constructor(apiKey: string, modelName?: string) {
     this.client = new GoogleGenerativeAI(apiKey);
-    const model = modelName || process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const model = modelName || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     console.error('Using Gemini model:', model);
-    this.model = this.client.getGenerativeModel({ model });
+    this.model = this.client.getGenerativeModel({
+      model,
+      generationConfig: {
+        maxOutputTokens: 65536  // Gemini 2.5 Flash max for comprehensive CDS extraction
+      }
+    });
   }
 
   /**

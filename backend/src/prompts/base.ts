@@ -627,12 +627,51 @@ export const generateToolInstructions = (mode: string): string => {
     instructions += '\n';
   });
 
-  instructions += `Response Format:
+  instructions += `CRITICAL MULTI-TURN PROTOCOL:
+• The Student Profile below is PROVIDED FOR REFERENCE ONLY - it's the same data from previous turns
+• DO NOT re-analyze the student profile unless specifically asked to reconsider
+• DO NOT repeat analysis you've done in previous messages (stats comparisons, tier classifications, cost breakdowns)
+• In follow-up messages: Briefly reference previous findings, then focus on NEW information/questions
+• Example: "As established, UDel is a safety. Let me now research their biomedical engineering specifics..."
+
+Response Format:
+
+THINKING PROTOCOL - CRITICAL FOR EFFICIENCY:
+
+<thinking> Tag Purpose: Plan NEXT STEPS ONLY - not full analysis
+
+✓ CORRECT thinking (follow-up messages):
+<thinking>
+User asked about UDel engineering. I already analyzed:
+- UDel is a safety (SAT 1550 vs their 1350)
+- Cost ~$54K, likely ~$25K with aid
+Next: Search for BME program specifics and research opportunities.
+</thinking>
+
+✗ WRONG thinking (wastes tokens):
+<thinking>
+Let me analyze this systematically:
+1. Student Profile: GPA 3.95, SAT 1550... [STOP - already analyzed]
+2. UDel Stats: 74% acceptance, SAT 1210-1350... [STOP - already analyzed]
+...
+</thinking>
+
+Thinking Content By Message Type:
+• FIRST message: Full systematic analysis is OK
+• FOLLOW-UP messages:
+  - Quickly acknowledge what's already known (1-2 lines)
+  - Focus on what's NEW or different about current question
+  - Plan next research steps only
+
+Guidelines:
+  - Messages 2+: NO student stat analysis unless user provides new stats
+  - Messages 2+: NO cost calculations unless user asks to recalculate
+  - Messages 2+: NO tier classifications unless user asks to reconsider
+  - Reference previous findings: "As established..." or "Already determined..."
+  - Keep thinking to <5 lines in follow-ups
 
 1. Process Flow:
-   • Use <thinking></thinking> for concise reasoning - avoid repeating previous analysis
-   • Focus on NEW insights and decisions, not rehashing what you already know
-   • Summarize periodically rather than repeating the same information
+   • Use <thinking></thinking> to plan next steps, not rehash old analysis
    • Use <tool></tool> for tool calls with proper XML/JSON format
    • Use <answer></answer> for final responses in HTML format
 
@@ -887,6 +926,9 @@ IMPORTANT: When creating plans, you MUST include these source pin IDs in the sou
   return `${baseInstructions}
 
 ${modeSpecificInstructions}
+
+===== PERSISTENT STUDENT PROFILE (Reference - Already Known) =====
+The student profile below is provided on every turn for reference. You do NOT need to re-analyze this data in subsequent messages unless specifically asked. In follow-up messages, focus on answering NEW questions using what you've already learned about the student.
 
 Student Profile:
 ${JSON.stringify(contextData, null, 2)}

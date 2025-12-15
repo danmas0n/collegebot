@@ -187,7 +187,7 @@ export class GeminiService {
       const chat = generativeModel.startChat({
         history: geminiMessages,
         generationConfig: {
-          maxOutputTokens: 4096,
+          maxOutputTokens: 16384,
           temperature: 0
         }
       });

@@ -367,7 +367,7 @@ Please respond with a simple message confirming that you received this prompt. K
       
       const stream = await this.client.messages.stream({
         model,
-        max_tokens: 4096,
+        max_tokens: 16384,
         messages: claudeMessages,
         system: cachedSystemMessage as any, // Anthropic SDK types may not be up to date with caching
         temperature: 0,
