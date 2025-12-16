@@ -128,7 +128,7 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
           sourceChats: currentChatId ? [currentChatId] : (location.sourceChats || [])
         };
 
-        await addMapLocation(locationWithChat, userId);
+        const newLocationId = await addMapLocation(locationWithChat, userId);
 
         // Auto-mark current chat as processed since we're creating map pins
         if (currentChatId) {
@@ -150,7 +150,17 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
           }
         }
 
-        return { content: [{ type: 'text', text: 'Location added successfully' }] };
+        // Return the new location ID so the AI can reference it for subsequent operations
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: 'Location added successfully',
+              locationId: newLocationId
+            })
+          }]
+        };
       }
 
       case 'get_map_locations': {
@@ -271,31 +281,43 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
         };
         
         console.log('update_map_location: Updating location with sourceChats:', updatedLocation.sourceChats);
-        
+
         await deleteMapLocation(studentId, locationId, userId);
-        await addMapLocation(updatedLocation, userId);
-        
+        const newLocationId = await addMapLocation(updatedLocation, userId);
+
         // Auto-mark current chat as processed since we're updating map pins
         try {
           const chats = await getChats(studentId);
           const currentChat = chats
             .filter(c => !c.processed)
             .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-          
+
           if (currentChat) {
             console.log('update_map_location: Auto-marking chat as processed:', currentChat.title);
-            await saveChat({ 
-              ...currentChat, 
-              processed: true, 
-              processedAt: new Date().toISOString() 
+            await saveChat({
+              ...currentChat,
+              processed: true,
+              processedAt: new Date().toISOString()
             });
           }
         } catch (error) {
           console.warn('update_map_location: Failed to auto-mark chat as processed:', error);
           // Don't fail the location update if chat marking fails
         }
-        
-        return { content: [{ type: 'text', text: 'Location updated successfully' }] };
+
+        // IMPORTANT: Return the new location ID so the AI can use it for subsequent updates.
+        // The update uses a delete-and-recreate pattern, so the ID changes each time.
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: 'Location updated successfully',
+              newLocationId: newLocationId,
+              previousLocationId: locationId
+            })
+          }]
+        };
       }
 
       case 'update_map_location_tier': {
@@ -822,7 +844,11 @@ export const executeMcpTool = async (serverName: string, toolName: string, args:
     };
     console.log('Backend - Sending MCP request:', request);
 
-    const result = await client.request(request, CallToolResultSchema);
+    // Use extended timeout for MCP requests (5 minutes instead of default 60 seconds)
+    // This is needed because get_cds_data calls Gemini API to parse large CDS files,
+    // which can take several minutes for complex PDFs
+    const MCP_REQUEST_TIMEOUT = 300000; // 5 minutes
+    const result = await client.request(request, CallToolResultSchema, { timeout: MCP_REQUEST_TIMEOUT });
     console.log('Backend - Raw MCP response type:', typeof result);
     console.log('Backend - Raw MCP response keys:', result ? Object.keys(result) : 'null');
     const rawResponse = JSON.stringify(result, null, 2);

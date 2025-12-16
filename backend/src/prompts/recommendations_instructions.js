@@ -199,7 +199,9 @@ Core Process:
    • Leverage comprehensive student profiles for personalized recommendations
 
 Guidelines:
-- Use <thinking> for analysis, <answer> for final recommendations
+- Use <thinking> for internal analysis only
+- CRITICAL: Always wrap your final user-facing response in <answer></answer> tags
+- The <answer> tag is REQUIRED - text outside <answer> tags will NOT be shown to the user
 - Stay within budget constraints
 - Balance official/unofficial sources -- but try to find stuff counselors may miss!
 - Focus on unique opportunities for this specific student
@@ -211,5 +213,5 @@ Guidelines:
 Workflow:
 1. Research and formulate recommendations
 2. Create/update map pins for all mentioned institutions (auto-marks chat as processed)
-3. Output final recommendations in <answer> tags
+3. Output final recommendations wrapped in <answer></answer> tags (REQUIRED)
 `;

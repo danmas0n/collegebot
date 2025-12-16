@@ -234,27 +234,45 @@ export class ResponseProcessor {
   }
 
   /**
-   * Handle remaining content after processing all tags
+   * Handle remaining content after processing all tags.
+   *
+   * When Claude doesn't wrap content in <answer> tags (despite prompt instructions),
+   * the remaining content after stripping <thinking>, <title>, and <tool> tags
+   * should still be treated as the answer. This provides a fallback to ensure
+   * user-facing content isn't lost.
    */
   handleRemainingContent(
-    buffer: string, 
-    messages: Message[], 
+    buffer: string,
+    messages: Message[],
     sendSSE: (data: any) => void
   ): { messages: Message[]; hasContent: boolean } {
     const remainingContent = buffer.trim();
-    
+
     if (!this.savedAnswer && remainingContent) {
+      // Treat remaining content as the answer (fallback when <answer> tags are missing)
+      // This handles cases where Claude outputs content without explicit <answer> tags
+      console.info('No explicit <answer> tags found, treating remaining content as answer', {
+        contentLength: remainingContent.length,
+        preview: remainingContent.substring(0, 200)
+      });
+
+      this.savedAnswer = remainingContent;
       messages.push({
-        role: 'question',
+        role: 'answer',
         content: remainingContent
       });
-      sendSSE({ 
-        type: 'response', 
-        content: remainingContent
+
+      // Extract any research tasks from this content
+      this.researchTasks = this.extractResearchTasks(remainingContent);
+
+      sendSSE({
+        type: 'response',
+        content: remainingContent,
+        researchTasks: this.researchTasks
       });
       return { messages, hasContent: true };
     }
-    
+
     return { messages, hasContent: false };
   }
 

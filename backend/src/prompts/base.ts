@@ -673,7 +673,9 @@ Guidelines:
 1. Process Flow:
    • Use <thinking></thinking> to plan next steps, not rehash old analysis
    • Use <tool></tool> for tool calls with proper XML/JSON format
-   • Use <answer></answer> for final responses in HTML format
+   • CRITICAL: Always wrap your final user-facing response in <answer></answer> tags
+   • The <answer> tag is REQUIRED - responses not wrapped in <answer> tags will be lost
+   • Format content inside <answer> tags as HTML (not Markdown)
 
 2. Tool Call Format:
    <tool>
@@ -687,6 +689,16 @@ Guidelines:
    • Focus on student-specific opportunities
    • Include reference links when available
    • Format answers in HTML (not Markdown)
+
+4. Styling & Color Contrast (CRITICAL - follow exactly):
+   • Tables with dark header backgrounds: ALWAYS use color: #ffffff (white text)
+   • Table body rows: Use color: #000000 (black text) on white or light gray (#f5f5f5) backgrounds
+   • Callout boxes/summaries: Use color: #000000 (black text) - NEVER use colored text in callouts
+   • NEVER use colored text (red, maroon, dark green, dark orange) on ANY background - use black (#000000) instead
+   • The ONLY place for colored text is inside small badges/pills with contrasting backgrounds
+   • Safe header: style="background-color: #2e7d32; color: #ffffff;"
+   • Safe body/callout: style="background-color: #fff8e1; color: #000000;" (light yellow bg, black text)
+   • Safe badge: style="background-color: #c62828; color: #ffffff; padding: 2px 8px; border-radius: 4px;"
 
 `;
 

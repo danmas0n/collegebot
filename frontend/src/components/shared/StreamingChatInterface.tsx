@@ -400,7 +400,7 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
         endLLMOperation(currentOperationId);
         setOperationId(null);
       }
-    }, 300000); // 5 minute timeout
+    }, 900000); // 15 minute timeout
 
     try {
       while (true && !streamComplete) {
@@ -519,25 +519,32 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
                   // Set skipAutoSave briefly to prevent auto-save effect from running during our save
                   skipAutoSave.current = true;
 
-                  // Use the ref to get the latest messages (includes all streamed messages)
-                  const updatedChat = {
-                    ...currentChat,
-                    title: finalTitle,
-                    messages: latestMessagesRef.current,
-                    updatedAt: new Date().toISOString()
-                  };
+                  // IMPORTANT: Use setTimeout to allow React state updates to flush before reading the ref.
+                  // The 'response' event that arrives just before 'complete' triggers setMessages(),
+                  // but the useEffect that syncs latestMessagesRef.current may not have run yet.
+                  // This delay ensures the ref has the complete message history including the final answer.
+                  setTimeout(() => {
+                    // Use the ref to get the latest messages (includes all streamed messages)
+                    const updatedChat = {
+                      ...currentChat,
+                      title: finalTitle,
+                      messages: latestMessagesRef.current,
+                      updatedAt: new Date().toISOString()
+                    };
 
-                  console.log('Saving chat with', latestMessagesRef.current.length, 'messages');
+                    console.log('Saving chat with', latestMessagesRef.current.length, 'messages');
 
-                  // Single save operation
-                  onChatUpdate?.(updatedChat);
-                  saveChatToBackend(updatedChat).then(() => {
-                    // Reset skipAutoSave after save completes
-                    skipAutoSave.current = false;
-                  }).catch(() => {
-                    // Reset even on error
-                    skipAutoSave.current = false;
-                  });
+                    // Single save operation
+                    onChatUpdate?.(updatedChat);
+                    saveChatToBackend(updatedChat).then(() => {
+                      // Reset skipAutoSave after save completes
+                      skipAutoSave.current = false;
+                    }).catch((error) => {
+                      console.error('Failed to save chat:', error);
+                      // Reset even on error
+                      skipAutoSave.current = false;
+                    });
+                  }, 50);  // 50ms is enough for React to flush state updates
                 }
 
                 // End the LLM operation immediately when processing completes

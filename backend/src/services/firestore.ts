@@ -332,9 +332,9 @@ export const getMapLocations = async (studentId: string, userId: string): Promis
   return locations;
 };
 
-export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'createdAt'>, userId: string): Promise<void> => {
+export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'createdAt'>, userId: string): Promise<string> => {
   console.log('Adding map location:', JSON.stringify(location, null, 2));
-  
+
   if (!location.studentId || typeof location.studentId !== 'string') {
     console.error('Invalid student ID in location:', location.studentId);
     throw new Error('Invalid student ID');
@@ -343,7 +343,7 @@ export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'created
   // First verify the student exists and belongs to this user
   const student = await getStudent(location.studentId, userId);
   console.log('Found student:', student ? 'yes' : 'no');
-  
+
   if (!student) {
     console.error('No student found with ID:', location.studentId);
     throw new Error('Student not found');
@@ -354,11 +354,12 @@ export const addMapLocation = async (location: Omit<MapLocation, 'id' | 'created
     ...location,
     createdAt: Timestamp.now()
   };
-  
+
   console.log('Creating new location document:', JSON.stringify(newLocation, null, 2));
   const docRef = mapLocationsRef.doc();
   await docRef.set(newLocation);
   console.log('Location document created with ID:', docRef.id);
+  return docRef.id;
 };
 
 export const addMapLocationsBatch = async (locations: Omit<MapLocation, 'id' | 'createdAt'>[], userId: string): Promise<{ successCount: number; errors: string[] }> => {

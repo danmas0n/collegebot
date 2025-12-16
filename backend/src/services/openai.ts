@@ -13,7 +13,7 @@ export class OpenAIService {
   private responseIds: Map<string, string> = new Map(); // To track conversation state
   private responseProcessor: ResponseProcessor;
   private stepCounter: number = 0;
-  private readonly MAX_STEPS = 50;
+  private readonly MAX_STEPS = 150;
   private currentChatId?: string;
   private currentStage?: 'recommendations' | 'map' | 'plan' | 'research' | 'other';
 
@@ -336,15 +336,36 @@ export class OpenAIService {
       // Check for any remaining tool calls
       const remainingToolCalls = toolBuffer.match(/<tool>[\s\S]*?<\/tool>/g);
 
-      // If we have tool calls, process them and continue
-      if (remainingToolCalls || toolCallMatches.length > 0) {
-        logger.info('OpenAI: Message analysis', {
-          remainingToolCalls: remainingToolCalls?.length || 0,
-          toolCallMatches: toolCallMatches.length,
+      // If we have remaining tool calls that weren't processed, continue
+      if (remainingToolCalls) {
+        logger.info('OpenAI: Message analysis - remaining tool calls to process', {
+          remainingToolCalls: remainingToolCalls.length,
           hasCompleteAnswer: !!this.responseProcessor.getSavedAnswer()
         });
         continueProcessing = true;
-        hasToolCalls = !!remainingToolCalls;
+        hasToolCalls = true;
+        return { hasToolCalls, messages, continueProcessing, responseId };
+      }
+
+      // If we processed tool calls but also have a complete answer, we're done
+      if (toolCallMatches.length > 0 && this.responseProcessor.getSavedAnswer()) {
+        logger.info('OpenAI: Message analysis - tool calls processed and answer received, stopping', {
+          toolCallMatches: toolCallMatches.length,
+          hasCompleteAnswer: true
+        });
+        continueProcessing = false;
+        hasToolCalls = false;
+        return { hasToolCalls, messages, continueProcessing, responseId };
+      }
+
+      // If we processed tool calls but no answer yet, continue for more processing
+      if (toolCallMatches.length > 0) {
+        logger.info('OpenAI: Message analysis - tool calls processed, continuing for answer', {
+          toolCallMatches: toolCallMatches.length,
+          hasCompleteAnswer: false
+        });
+        continueProcessing = true;
+        hasToolCalls = false;
         return { hasToolCalls, messages, continueProcessing, responseId };
       }
 

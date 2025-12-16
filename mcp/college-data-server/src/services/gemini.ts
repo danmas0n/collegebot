@@ -2,8 +2,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as xlsx from 'xlsx';
-import * as ExcelJS from 'exceljs';
+import { createRequire } from 'module';
 import PDFDocument from 'pdfkit';
+
+// ExcelJS doesn't have proper ESM exports, so we need to use createRequire
+const require = createRequire(import.meta.url);
+const ExcelJS = require('exceljs');
 
 export class GeminiService {
   private client: GoogleGenerativeAI;
@@ -50,7 +54,7 @@ export class GeminiService {
       
       // Process each worksheet
       let firstSheet = true;
-      workbook.eachSheet((worksheet, sheetId) => {
+      workbook.eachSheet((worksheet: any, sheetId: number) => {
         if (!firstSheet) {
           doc.addPage();
         }
@@ -67,9 +71,9 @@ export class GeminiService {
         const columnWidths: number[] = [];
         
         // Get all rows
-        worksheet.eachRow((row, rowNumber) => {
+        worksheet.eachRow((row: any, rowNumber: number) => {
           const rowData: string[] = [];
-          row.eachCell((cell, colNumber) => {
+          row.eachCell((cell: any, colNumber: number) => {
             const value = cell.text || cell.value?.toString() || '';
             rowData[colNumber - 1] = value;
             
