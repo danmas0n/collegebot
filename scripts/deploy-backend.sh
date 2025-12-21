@@ -20,6 +20,7 @@ gcloud run deploy backend \
   --region us-central1 \
   --project collegebot-dev-52f43 \
   --no-traffic \
+  --timeout=1800 \
   --set-env-vars NODE_ENV=production,FIREBASE_PROJECT_ID=collegebot-dev-52f43,GOOGLE_CLOUD_PROJECT=collegebot-dev-52f43,FIREBASE_CREDENTIALS_FILE=/workspace/backend/service-account.json
 
 # Route 100% traffic to the new revision

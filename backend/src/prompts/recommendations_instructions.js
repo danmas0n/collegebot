@@ -106,11 +106,14 @@ Core Process:
 
 6. Map Pin Creation (CRITICAL - Do this BEFORE delivering final answer):
    BEFORE providing your final recommendations, you MUST create map pins for all colleges and scholarships mentioned:
-   
-   a) Check existing pins: Use list_map_location_names to see what's already on the map
+
+   a) Check existing pins:
+      • To get a quick overview of what exists: Use list_map_location_names
+      • To review the FULL map with all details: Use get_map_locations (returns everything in ONE call)
+      • PREFER get_map_locations when you need to understand or review the student's college list
    b) For each college/scholarship in your recommendations:
       • CRITICAL: Do NOT create duplicate locations. If a college/scholarship already exists on the map, use update_map_location instead of create_map_location
-      • If pin exists: Use get_map_location_details, then update_map_location to add new information
+      • If pin exists: You can call get_map_location_details or get_map_locations, and then use update_map_location to update
       • If pin is new: Use geocode to get coordinates, then create_map_location with full details
       • Do NOT geocode the same location multiple times - check existing pins first
       • The current chat will be automatically associated with any pins you create or update

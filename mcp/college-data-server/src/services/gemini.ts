@@ -74,7 +74,18 @@ export class GeminiService {
         worksheet.eachRow((row: any, rowNumber: number) => {
           const rowData: string[] = [];
           row.eachCell((cell: any, colNumber: number) => {
-            const value = cell.text || cell.value?.toString() || '';
+            // Handle null/undefined cells and merged cells safely
+            let value = '';
+            try {
+              if (cell.text != null) {
+                value = String(cell.text);
+              } else if (cell.value != null) {
+                value = String(cell.value);
+              }
+            } catch (e) {
+              // Some merged cells throw when accessing .text - ignore them
+              value = '';
+            }
             rowData[colNumber - 1] = value;
             
             // Track column width
@@ -148,24 +159,26 @@ export class GeminiService {
     try {
       let fileToProcess = filePath;
       let fileContent: Buffer;
-      
-      // If the file is XLSX, convert it to PDF first
+      let mimeType: string;
+
+      // If the file is XLSX, try to convert it to PDF first for better parsing
       if (format === 'xlsx') {
         try {
           fileToProcess = await this.convertXlsxToPdf(filePath);
-          format = 'pdf'; // Update format since we've converted
+          mimeType = 'application/pdf';
+          console.error('XLSX successfully converted to PDF');
         } catch (conversionError: unknown) {
-          console.error('XLSX conversion failed:', conversionError);
-          const errorMessage = conversionError instanceof Error 
-            ? conversionError.message 
-            : String(conversionError);
-          throw new Error(`Failed to convert XLSX to PDF: ${errorMessage}`);
+          // If conversion fails, fall back to sending XLSX directly to Gemini
+          console.error('XLSX to PDF conversion failed, sending XLSX directly to Gemini:', conversionError);
+          fileToProcess = filePath;
+          mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         }
+      } else {
+        mimeType = 'application/pdf';
       }
-      
-      // Read the file content (either original PDF or converted PDF)
+
+      // Read the file content
       fileContent = fs.readFileSync(fileToProcess);
-      const mimeType = 'application/pdf'; // Always use PDF mime type
       
       // Create file data object
       const fileData = {

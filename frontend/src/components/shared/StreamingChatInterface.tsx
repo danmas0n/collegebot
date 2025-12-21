@@ -400,12 +400,45 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
         endLLMOperation(currentOperationId);
         setOperationId(null);
       }
-    }, 900000); // 15 minute timeout
+    }, 1800000); // 30 minute timeout
 
     try {
       while (true && !streamComplete) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // Stream ended - check if we received a complete event
+          if (!streamComplete) {
+            console.warn('Stream ended without complete event - likely Cloud Run timeout');
+
+            // Add a system message to inform the user
+            const timeoutMessage: Message = {
+              role: 'thinking',
+              content: '⚠️ **Connection interrupted** - The request took too long and was terminated by the server. Your conversation has been saved up to this point. You can continue by sending another message.',
+              timestamp: new Date().toISOString()
+            };
+            setMessages(prev => [...prev, timeoutMessage]);
+
+            // Save the chat with whatever messages we have
+            if (mode === 'chat' && currentChat) {
+              const partialChat = {
+                ...currentChat,
+                messages: latestMessagesRef.current,
+                updatedAt: new Date().toISOString()
+              };
+              console.log('Saving partial chat after timeout with', latestMessagesRef.current.length, 'messages');
+              onChatUpdate?.(partialChat);
+              saveChatToBackend(partialChat).catch(err => console.error('Failed to save partial chat:', err));
+            }
+
+            // Clean up UI state
+            setIsLoading(false);
+            if (currentOperationId) {
+              endLLMOperation(currentOperationId);
+              setOperationId(null);
+            }
+          }
+          break;
+        }
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -601,7 +634,29 @@ export const StreamingChatInterface = forwardRef<StreamingChatInterfaceRef, Stre
       }
     } catch (error) {
       console.error('Stream reading error:', error);
-      // End operation on stream error
+
+      // Add error message to chat
+      const errorMessage: Message = {
+        role: 'thinking',
+        content: `⚠️ **Connection error** - ${error instanceof Error ? error.message : 'Unknown error'}. Your conversation has been saved. You can continue by sending another message.`,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+
+      // Save the chat with whatever messages we have
+      if (mode === 'chat' && currentChat) {
+        const partialChat = {
+          ...currentChat,
+          messages: latestMessagesRef.current,
+          updatedAt: new Date().toISOString()
+        };
+        console.log('Saving partial chat after error with', latestMessagesRef.current.length, 'messages');
+        onChatUpdate?.(partialChat);
+        saveChatToBackend(partialChat).catch(err => console.error('Failed to save partial chat:', err));
+      }
+
+      // Clean up UI state
+      setIsLoading(false);
       if (currentOperationId) {
         console.log('Ending LLM operation due to stream error:', currentOperationId);
         endLLMOperation(currentOperationId);

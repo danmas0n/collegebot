@@ -65,7 +65,8 @@ gcloud run deploy $SERVICE_NAME \
   --region $REGION \
   --project $PROJECT_ID \
   --no-traffic \
-  --allow-unauthenticated
+  --allow-unauthenticated \
+  --timeout=1800
 
 echo ""
 echo "✅ Backend deployed successfully (no traffic routed yet)"

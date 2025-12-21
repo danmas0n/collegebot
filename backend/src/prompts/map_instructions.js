@@ -10,6 +10,8 @@ Process:
    • Track source chat IDs for traceability
 
 2. Check Current Map:
+   • Use get_map_locations to retrieve ALL pins with FULL details in ONE call
+   • This returns complete information for every location - no need to call get_map_location_details separately
    • Review existing pins to avoid duplicates
 
 3. For Each Location:

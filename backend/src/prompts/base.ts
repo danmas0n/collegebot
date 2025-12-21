@@ -114,8 +114,20 @@ const RECOMMENDATION_TOOLS: Tool[] = [
   },
   // Map tools for creating pins during recommendations
   {
+    name: 'get_map_locations',
+    description: 'Get ALL map locations with FULL details for a student in a single call. Returns complete information including coordinates, descriptions, notes, tier, chat references, and all metadata for every location. Use this to review the entire college list.',
+    parameters: [
+      {
+        name: 'studentId',
+        type: 'string',
+        description: 'ID of the student',
+        required: true
+      }
+    ]
+  },
+  {
     name: 'list_map_location_names',
-    description: 'Get a lightweight list of existing map location names and types for a student',
+    description: 'Get a lightweight list of just names, types, and IDs. Use get_map_locations instead if you need full details.',
     parameters: [
       {
         name: 'studentId',
@@ -127,7 +139,7 @@ const RECOMMENDATION_TOOLS: Tool[] = [
   },
   {
     name: 'get_map_location_details',
-    description: 'Get full details for a specific map location by name and type',
+    description: 'Get full details for a SINGLE map location by name and type. For multiple locations, use get_map_locations instead.',
     parameters: [
       {
         name: 'studentId',
@@ -293,7 +305,7 @@ const MAP_TOOLS: Tool[] = [
   },
   {
     name: 'get_map_locations',
-    description: 'Get all map locations for a student',
+    description: 'Get ALL map locations with FULL details for a student in a single call. Returns complete information including coordinates, descriptions, notes, tier, chat references, and all metadata for every location.',
     parameters: [
       {
         name: 'studentId',
@@ -305,7 +317,7 @@ const MAP_TOOLS: Tool[] = [
   },
   {
     name: 'list_map_location_names',
-    description: 'Get a lightweight list of existing map location names and types for a student',
+    description: 'Get a lightweight list of just names, types, and IDs for a student. Use get_map_locations instead if you need full details.',
     parameters: [
       {
         name: 'studentId',
@@ -317,7 +329,7 @@ const MAP_TOOLS: Tool[] = [
   },
   {
     name: 'get_map_location_details',
-    description: 'Get full details for a specific map location by name and type',
+    description: 'Get full details for a SINGLE map location by name and type.',
     parameters: [
       {
         name: 'studentId',
