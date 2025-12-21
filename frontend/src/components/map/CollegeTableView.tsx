@@ -150,6 +150,33 @@ export const CollegeTableView = ({
       renderCell: (params: GridRenderCellParams) => formatCurrency(params.value)
     },
     {
+      field: 'reason',
+      headerName: 'Why It\'s a Good Fit',
+      width: 200,
+      renderCell: (params: GridRenderCellParams) => {
+        const location = params.row as MapLocation;
+        const reason = location.metadata?.reason;
+
+        if (!reason) return <span style={{ color: '#999' }}>-</span>;
+
+        // Truncate to ~50 chars with ellipsis
+        const truncated = reason.length > 50 ? reason.substring(0, 50) + '...' : reason;
+
+        return (
+          <Tooltip title={reason}>
+            <span style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              display: 'block'
+            }}>
+              {truncated}
+            </span>
+          </Tooltip>
+        );
+      }
+    },
+    {
       field: 'actions',
       headerName: 'Actions',
       width: 120,
