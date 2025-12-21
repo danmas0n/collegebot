@@ -155,7 +155,8 @@ export const CollegeTableView = ({
       width: 200,
       renderCell: (params: GridRenderCellParams) => {
         const location = params.row as MapLocation;
-        const reason = location.metadata?.reason;
+        // Use description field (which contains the fit reasoning) with reason as fallback
+        const reason = location.metadata?.description || location.metadata?.reason;
 
         if (!reason) return <span style={{ color: '#999' }}>-</span>;
 

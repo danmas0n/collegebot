@@ -181,10 +181,10 @@ export const CollegeEditDialog = ({
               </Select>
             </FormControl>
 
-            {location.metadata?.reason && (
+            {(location.metadata?.description || location.metadata?.reason) && (
               <Alert severity="success" icon={false}>
                 <Typography variant="body2">
-                  <strong>Why it's a good fit:</strong> {location.metadata.reason}
+                  <strong>Why it's a good fit:</strong> {location.metadata?.description || location.metadata?.reason}
                 </Typography>
               </Alert>
             )}
