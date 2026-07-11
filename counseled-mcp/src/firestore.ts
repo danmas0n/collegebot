@@ -23,6 +23,12 @@ export async function trackersForEmail(email: string) {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as { allowed_emails: string[]; state: any }) }));
 }
 
+/** Admins are the existing counseled.app admin_users collection (doc id = email). */
+export async function isAdmin(email: string): Promise<boolean> {
+  const doc = await db.collection("admin_users").doc(email).get();
+  return doc.exists;
+}
+
 export async function trackerForEmail(email: string, trackerId: string) {
   const doc = await db.collection("trackers").doc(trackerId).get();
   if (!doc.exists) return null;

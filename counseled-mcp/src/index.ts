@@ -55,7 +55,7 @@ app.post("/mcp", bearer, async (req, res) => {
     res.status(403).json({ error: "token has no email" });
     return;
   }
-  const server = buildServer(email);
+  const server = await buildServer(email);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {
     transport.close();

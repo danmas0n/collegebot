@@ -4,7 +4,8 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { db, trackersForEmail, trackerForEmail } from "./firestore.js";
+import { db, trackersForEmail, trackerForEmail, isAdmin } from "./firestore.js";
+import { randomBytes } from "node:crypto";
 import { getEntitlement, setEntitlement, writesAllowed } from "./entitlements.js";
 import { searchColleges, findCollege, playbook, collegeDataLoaded } from "./college-data.js";
 
@@ -27,8 +28,40 @@ const STARTER_STATE = (studentName: string, gradYear: number | null, today: stri
 const text = (s: string) => ({ content: [{ type: "text" as const, text: s }] });
 const err = (s: string) => ({ content: [{ type: "text" as const, text: s }], isError: true });
 
-export function buildServer(email: string): McpServer {
+export async function buildServer(email: string): Promise<McpServer> {
   const server = new McpServer({ name: "counseled", version: "0.1.0" });
+  const admin = await isAdmin(email);
+
+  if (admin) {
+    server.registerTool(
+      "mint_invite",
+      {
+        title: "Mint invite codes (admin only)",
+        description:
+          "Admin-only: mint single-use, expiring invite codes that let a new family create a tracker on counseled.app. Returns the codes to hand out.",
+        inputSchema: {
+          count: z.number().int().min(1).max(20).default(1).describe("How many codes"),
+          days: z.number().int().min(1).max(365).default(30).describe("Days until each code expires"),
+          note: z.string().default("").describe("Who/what these are for (stored on the code)"),
+        },
+      },
+      async ({ count, days, note }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const codes: string[] = [];
+        const batch = db.batch();
+        for (let i = 0; i < count; i++) {
+          const code = "counseled-" + randomBytes(2).toString("hex") + "-" + randomBytes(2).toString("hex");
+          batch.set(db.collection("invite_codes").doc(code), {
+            created: today, expires: Date.now() + days * 86400_000, note, used_by: null, minted_by: email,
+          });
+          codes.push(code);
+        }
+        await batch.commit();
+        return text(`Minted ${count} invite code(s), valid ${days} days:\n` + codes.join("\n") +
+          `\n\nSend with: https://counseled.app/join (they add the connector, then tell their Claude the code).`);
+      }
+    );
+  }
 
   server.registerTool(
     "list_trackers",

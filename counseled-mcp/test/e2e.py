@@ -279,3 +279,21 @@ st, r = mcp("tools/call", {"name": "get_college", "arguments": {"name": "Tulane"
 check("get_college fuzzy lookup", "Tulane University" in json.dumps(r), json.dumps(r)[:200])
 
 print(f"\n{PASS} checks passed grand total.")
+
+# --- 12. admin-only minting ---
+st, r = mcp("tools/list", tid=50)
+names = [t["name"] for t in r.get("result", {}).get("tools", [])]
+check("non-admin does NOT see mint_invite", "mint_invite" not in names, str(names))
+adm = {"fields": {"email": fs_value(EMAIL)}}
+st, body, _ = http("PATCH",
+    "http://localhost:8080/v1/projects/demo-counseled/databases/(default)/documents/admin_users/" + EMAIL.replace("@", "%40"),
+    adm, headers={"Authorization": "Bearer owner"})
+check("seed admin_users doc", st == 200, body[:200])
+st, r = mcp("tools/list", tid=51)
+names = [t["name"] for t in r.get("result", {}).get("tools", [])]
+check("admin sees mint_invite", "mint_invite" in names, str(names))
+st, r = mcp("tools/call", {"name": "mint_invite", "arguments": {"count": 2, "days": 14, "note": "e2e"}}, tid=52)
+minted = re.findall(r"counseled-[0-9a-f]{4}-[0-9a-f]{4}", json.dumps(r))
+check("admin mints 2 codes", len(set(minted)) == 2, json.dumps(r)[:300])
+
+print(f"\n{PASS} checks passed FINAL total.")
