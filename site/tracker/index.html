@@ -382,12 +382,15 @@
   const TIER_COLOR = { lock: "#2e7d4f", conditional_target: "#1e5b4f", merit_lottery: "#b7791f", long_shot: "#b54a35" };
   let mapsLoading = null;
   function loadMaps() {
-    if (window.google?.maps) return Promise.resolve();
+    if (window.google?.maps?.Map) return Promise.resolve();
     if (!mapsLoading) mapsLoading = new Promise((ok, bad) => {
+      // classic callback bootstrap: fires only once the API is fully
+      // initialized (with loading=async, script onload precedes usability)
+      window.__mapsReady = ok;
       const s = document.createElement("script");
-      s.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDHX24gNfBlYZm7VuTBi7iL0QEo8p0yrPw&loading=async";
+      s.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDHX24gNfBlYZm7VuTBi7iL0QEo8p0yrPw&callback=__mapsReady";
       s.async = true;
-      s.onload = ok; s.onerror = bad;
+      s.onerror = bad;
       document.head.append(s);
     });
     return mapsLoading;
