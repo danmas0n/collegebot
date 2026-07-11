@@ -1,0 +1,316 @@
+school,state,region
+Adelphi University,NY,Northeast
+Agnes Scott College,GA,Southeast
+Alfred University,NY,Northeast
+Allegheny College,PA,Northeast
+American University,DC,Southeast
+Amherst College,MA,Northeast
+Appalachian State University,NC,Southeast
+Arizona State University,AZ,Southwest
+Auburn University,AL,Southeast
+Austin College,TX,Southwest
+Babson College,MA,Northeast
+Bard College,NY,Northeast
+Barnard College,NY,Northeast
+Bates College,ME,Northeast
+Baylor University,TX,Southwest
+Belmont University,TN,Southeast
+Beloit College,WI,Midwest
+Bennington College,VT,Northeast
+Bentley University,MA,Northeast
+Binghamton University,NY,Northeast
+Boston College,MA,Northeast
+Boston University,MA,Northeast
+Bowdoin College,ME,Northeast
+Bradley University,IL,Midwest
+Brandeis University,MA,Northeast
+Brown University,RI,Northeast
+Bryant University,RI,Northeast
+Bryn Mawr College,PA,Northeast
+Bucknell University,PA,Northeast
+Butler University,IN,Midwest
+CUNY Bernard M Baruch College,NY,Northeast
+CUNY Hunter College,NY,Northeast
+California Institute of Technology,CA,West
+California State Polytechnic University Pomona,CA,West
+California State University Fresno,CA,West
+California State University Fullerton,CA,West
+California State University Long Beach,CA,West
+California State University Los Angeles,CA,West
+Carleton College,MN,Midwest
+Carnegie Mellon University,PA,Northeast
+Case Western Reserve University,OH,Midwest
+Centre College,KY,Southeast
+Chapman University,CA,West
+Claremont McKenna College,CA,West
+Clark University,MA,Northeast
+Clarkson University,NY,Northeast
+Clemson University,SC,Southeast
+Coastal Carolina University,SC,Southeast
+Colby College,ME,Northeast
+Colgate University,NY,Northeast
+College of Charleston,SC,Southeast
+College of New Jersey,NJ,Northeast
+College of William and Mary,VA,Southeast
+College of the Holy Cross,MA,Northeast
+Colorado College,CO,West
+Colorado School of Mines,CO,West
+Colorado State University,CO,West
+Columbia University,NY,Northeast
+Connecticut College,CT,Northeast
+Cornell University,NY,Northeast
+Creighton University,NE,Midwest
+Dartmouth College,NH,Northeast
+Davidson College,NC,Southeast
+DePaul University,IL,Midwest
+DePauw University,IN,Midwest
+Denison University,OH,Midwest
+Dickinson College,PA,Northeast
+Drew University,NJ,Northeast
+Drexel University,PA,Northeast
+Duke University,NC,Southeast
+Duquesne University,PA,Northeast
+Earlham College,IN,Midwest
+East Carolina University,NC,Southeast
+Eckerd College,FL,Southeast
+Elon University,NC,Southeast
+Emory University,GA,Southeast
+Fairfield University,CT,Northeast
+Florida Atlantic University,FL,Southeast
+Florida Gulf Coast University,FL,Southeast
+Florida Institute of Technology,FL,Southeast
+Florida International University,FL,Southeast
+Florida State University,FL,Southeast
+Fordham University,NY,Northeast
+Franklin W Olin College of Engineering,MA,Northeast
+Franklin and Marshall College,PA,Northeast
+Furman University,SC,Southeast
+George Mason University,VA,Southeast
+George Washington University,DC,Southeast
+Georgetown University,DC,Southeast
+Georgia College,GA,Southeast
+Georgia Institute of Technology,GA,Southeast
+Georgia State University,GA,Southeast
+Gettysburg College,PA,Northeast
+Gonzaga University,WA,West
+Grinnell College,IA,Midwest
+Gustavus Adolphus College,MN,Midwest
+Hamilton College,NY,Northeast
+Harvard University,MA,Northeast
+Harvey Mudd College,CA,West
+Haverford College,PA,Northeast
+Hendrix College,AR,Southeast
+Hobart William Smith Colleges,NY,Northeast
+Hofstra University,NY,Northeast
+Howard University,DC,Southeast
+Illinois College,IL,Midwest
+Illinois Institute of Technology,IL,Midwest
+Illinois Wesleyan University,IL,Midwest
+Indiana University Bloomington,IN,Midwest
+Indiana University Purdue University Indianapolis,IN,Midwest
+Iowa State University,IA,Midwest
+Ithaca College,NY,Northeast
+James Madison University,VA,Southeast
+Johns Hopkins University,MD,Southeast
+Juniata College,PA,Northeast
+Kalamazoo College,MI,Midwest
+Kansas State University,KS,Midwest
+Kenyon College,OH,Midwest
+Lafayette College,PA,Northeast
+Lake Forest College,IL,Midwest
+Lawrence University,WI,Midwest
+Lehigh University,PA,Northeast
+Lewis  Clark College,OR,West
+Linfield College McMinnville Campus,OR,West
+Louisiana State University,LA,Southeast
+Loyola Marymount University,CA,West
+Loyola University Chicago,IL,Midwest
+Loyola University Maryland,MD,Southeast
+Macalester College,MN,Midwest
+Marist College,NY,Northeast
+Marquette University,WI,Midwest
+Massachusetts College of Liberal Arts,MA,Northeast
+Massachusetts Institute of Technology,MA,Northeast
+Miami University,OH,Midwest
+Michigan State University,MI,Midwest
+Michigan Technological University,MI,Midwest
+Middlebury College,VT,Northeast
+Milwaukee School of Engineering,WI,Midwest
+Mississippi State University,MS,Southeast
+Morehouse College,GA,Southeast
+Mount Holyoke College,MA,Northeast
+Muhlenberg College,PA,Northeast
+New College of Florida,FL,Southeast
+New Jersey Institute of Technology,NJ,Northeast
+New York University,NY,Northeast
+North Carolina State University,NC,Southeast
+Northeastern University,MA,Northeast
+Northern Arizona University,AZ,Southwest
+Northwestern University,IL,Midwest
+Oberlin College,OH,Midwest
+Occidental College,CA,West
+Ohio State University,OH,Midwest
+Ohio University,OH,Midwest
+Ohio Wesleyan University,OH,Midwest
+Oklahoma State University,OK,Southwest
+Oregon State University,OR,West
+Pennsylvania State University  University Park,PA,Northeast
+Pepperdine University,CA,West
+Pitzer College,CA,West
+Pomona College,CA,West
+Princeton University,NJ,Northeast
+Providence College,RI,Northeast
+Purdue University,IN,Midwest
+Quinnipiac University,CT,Northeast
+Ramapo College of New Jersey,NJ,Northeast
+Reed College,OR,West
+Rensselaer Polytechnic Institute,NY,Northeast
+Rhodes College,TN,Southeast
+Rice University,TX,Southwest
+Rochester Institute of Technology,NY,Northeast
+Rollins College,FL,Southeast
+Rose Hulman Institute of Technology,IN,Midwest
+Rutgers University New Brunswick,NJ,Northeast
+SUNY College at Geneseo,NY,Northeast
+SUNY College at Oswego,NY,Northeast
+SUNY Oneonta,NY,Northeast
+SUNY at Albany,NY,Northeast
+SUNY at Purchase College,NY,Northeast
+Saint Mary s College of California,CA,West
+San Diego State University,CA,West
+San Francisco State University,CA,West
+San Jose State University,CA,West
+Santa Clara University,CA,West
+Sarah Lawrence College,NY,Northeast
+Scripps College,CA,West
+Seattle University,WA,West
+Sewanee The University of the South,TN,Southeast
+Skidmore College,NY,Northeast
+Smith College,MA,Northeast
+Soka University of America,CA,West
+Southern Methodist University,TX,Southwest
+Southwestern University,TX,Southwest
+Spelman College,GA,Southeast
+St Lawrence University,NY,Northeast
+St Olaf College,MN,Midwest
+St John s College,NM,Southwest
+St John s College  Maryland,MD,Southeast
+St Mary s College of Maryland,MD,Southeast
+Stanford University,CA,West
+Stetson University,FL,Southeast
+Stevens Institute of Technology,NJ,Northeast
+Stonehill College,MA,Northeast
+Stony Brook University,NY,Northeast
+Susquehanna University,PA,Northeast
+Swarthmore College,PA,Northeast
+Temple University,PA,Northeast
+Texas A  M University College Station,TX,Southwest
+Texas Christian University,TX,Southwest
+Texas Tech University,TX,Southwest
+The College of Wooster,OH,Midwest
+Trinity College,CT,Northeast
+Trinity University,TX,Southwest
+Truman State University,MO,Midwest
+Tufts University,MA,Northeast
+Tulane University,LA,Southeast
+Union College,NY,Northeast
+United States Air Force Academy,CO,West
+United States Military Academy,NY,Northeast
+United States Naval Academy,MD,Southeast
+University at Buffalo,NY,Northeast
+University of Alabama,AL,Southeast
+University of Alabama at Birmingham,AL,Southeast
+University of Arizona,AZ,Southwest
+University of Arkansas,AR,Southeast
+University of California Berkeley,CA,West
+University of California Davis,CA,West
+University of California Irvine,CA,West
+University of California Los Angeles,CA,West
+University of California Merced,CA,West
+University of California Riverside,CA,West
+University of California San Diego,CA,West
+University of California Santa Barbara,CA,West
+University of California Santa Cruz,CA,West
+University of Central Florida,FL,Southeast
+University of Chicago,IL,Midwest
+University of Cincinnati,OH,Midwest
+University of Colorado Boulder,CO,West
+University of Connecticut,CT,Northeast
+University of Dayton,OH,Midwest
+University of Delaware,DE,Southeast
+University of Denver,CO,West
+University of Florida,FL,Southeast
+University of Georgia,GA,Southeast
+University of Houston,TX,Southwest
+University of Illinois at Chicago,IL,Midwest
+University of Illinois at Urbana Champaign,IL,Midwest
+University of Iowa,IA,Midwest
+University of Kansas,KS,Midwest
+University of Kentucky,KY,Southeast
+University of Louisville,KY,Southeast
+University of Maine,ME,Northeast
+University of Mary Washington,VA,Southeast
+University of Maryland Baltimore County,MD,Southeast
+University of Maryland College Park,MD,Southeast
+University of Massachusetts Amherst,MA,Northeast
+University of Massachusetts Boston,MA,Northeast
+University of Miami,FL,Southeast
+University of Michigan,MI,Midwest
+University of Minnesota Morris,MN,Midwest
+University of Minnesota Twin Cities,MN,Midwest
+University of Mississippi,MS,Southeast
+University of Missouri Columbia,MO,Midwest
+University of Nebraska Lincoln,NE,Midwest
+University of Nevada Las Vegas,NV,West
+University of Nevada Reno,NV,West
+University of New Hampshire,NH,Northeast
+University of New Mexico,NM,Southwest
+University of North Carolina Wilmington,NC,Southeast
+University of North Carolina at Asheville,NC,Southeast
+University of North Carolina at Chapel Hill,NC,Southeast
+University of North Carolina at Charlotte,NC,Southeast
+University of Notre Dame,IN,Midwest
+University of Oklahoma,OK,Southwest
+University of Oregon,OR,West
+University of Pennsylvania,PA,Northeast
+University of Pittsburgh,PA,Northeast
+University of Portland,OR,West
+University of Puget Sound,WA,West
+University of Redlands,CA,West
+University of Rhode Island,RI,Northeast
+University of Richmond,VA,Southeast
+University of Rochester,NY,Northeast
+University of San Diego,CA,West
+University of San Francisco,CA,West
+University of South Carolina,SC,Southeast
+University of South Florida,FL,Southeast
+University of Southern California,CA,West
+University of Tennessee Knoxville,TN,Southeast
+University of Texas at Austin,TX,Southwest
+University of Texas at Dallas,TX,Southwest
+University of Utah,UT,West
+University of Vermont,VT,Northeast
+University of Virginia Main Campus,VA,Southeast
+University of Washington Seattle Campus ,WA,West
+University of Wisconsin Madison,WI,Midwest
+Ursinus College,PA,Northeast
+Vanderbilt University,TN,Southeast
+Vassar College,NY,Northeast
+Villanova University,PA,Northeast
+Virginia Commonwealth University,VA,Southeast
+Virginia Polytechnic Institute and State University,VA,Southeast
+Wake Forest University,NC,Southeast
+Washington and Lee University,VA,Southeast
+Wellesley College,MA,Northeast
+Wesleyan University,CT,Northeast
+Wheaton College IL,IL,Midwest
+Wheaton College MA,MA,Northeast
+Whitman College,WA,West
+Willamette University,OR,West
+Williams College,MA,Northeast
+Worcester Polytechnic Institute,MA,Northeast
+Yale University,CT,Northeast
+Yeshiva University,NY,Northeast
+Georgia College & State University,GA,Southeast
+Hobart and William Smith Colleges,NY,Northeast
+University of Minnesota - Twin Cities Campus,MN,Midwest

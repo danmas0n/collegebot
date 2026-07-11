@@ -1,0 +1,23 @@
+{
+  "comment": "Synthetic test families matching evals/evals.json — usable directly with scripts/shortlist.py (write each 'profile' object to a file and pass --profile). Income and qualitative fields are for the interview/lens logic, not the script.",
+  "families": [
+    {"eval_id": 1, "label": "high-stats upper-middle NJ (core case)",
+     "income_bracket": "150-250k+", "interests": ["mechanical engineering", "aerospace"],
+     "profile": {"sat": 1540, "act": null, "gpa": 3.9, "budget": 45000, "home_state": "NJ", "regions": [], "exclude": []}},
+    {"eval_id": 2, "label": "modest stats, tight budget, TX",
+     "income_bracket": "under 100k", "interests": ["business", "sports management"],
+     "profile": {"sat": 1150, "act": null, "gpa": 3.4, "budget": 22000, "home_state": "TX", "regions": [], "exclude": []}},
+    {"eval_id": 3, "label": "moderate income — need lens should dominate",
+     "income_bracket": "under 100k", "interests": ["biology", "small East Coast LACs"],
+     "profile": {"sat": 1490, "act": null, "gpa": 4.0, "budget": 18000, "home_state": "PA", "regions": ["Northeast"], "exclude": []}},
+    {"eval_id": 4, "label": "test-optional, no score, OH",
+     "income_bracket": "100-150k", "interests": ["graphic design", "marketing"],
+     "profile": {"sat": null, "act": null, "gpa": 3.85, "budget": 35000, "home_state": "OH", "regions": [], "exclude": []}},
+    {"eval_id": 5, "label": "vague sophomore parent — interview test, no profile yet",
+     "income_bracket": "unknown", "interests": [],
+     "profile": null},
+    {"eval_id": 6, "label": "returning family, score jump 1430→1510",
+     "income_bracket": "150-250k", "interests": ["undecided STEM"],
+     "profile": {"sat": 1510, "act": null, "gpa": 3.8, "budget": 40000, "home_state": "PA", "regions": [], "exclude": []}}
+  ]
+}

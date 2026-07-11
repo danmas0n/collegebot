@@ -133,8 +133,20 @@ service cloud.firestore {
     // Settings collection (AI settings, etc.)
     match /settings/{document} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null 
+      allow write: if request.auth != null
         && isAdmin(request.auth.token.email);
+    }
+
+    // Family college trackers (counseled.app/tracker/?t={trackerId})
+    // Access is per-document: the signed-in user's email must be in the
+    // doc's allowed_emails. Clients may edit state but not the email list
+    // (only the admin SDK / console changes allowed_emails).
+    match /trackers/{trackerId} {
+      allow read: if request.auth != null
+        && request.auth.token.email in resource.data.allowed_emails;
+      allow update: if request.auth != null
+        && request.auth.token.email in resource.data.allowed_emails
+        && request.resource.data.allowed_emails == resource.data.allowed_emails;
     }
   }
 }

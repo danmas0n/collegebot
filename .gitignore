@@ -50,3 +50,8 @@ backend/.firebase-export
 
 # Production setup scripts with secrets (one-time use)
 update-backend-env-prod.sh
+# Firebase deploy cache
+.firebase/
+
+# Family tracker seed data (personal — lives in Firestore + GCS, not git)
+scripts/seed-tracker-state.json

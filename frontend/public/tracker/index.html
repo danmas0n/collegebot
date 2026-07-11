@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<!-- Counseled family college tracker — Firestore-backed, live-sync edition.
+
+     State lives in Firestore doc trackers/{TRACKER_ID}:
+       { allowed_emails: [..], state: {<tracker state contract>} }
+     - Family: Google sign-in; read/write gated by allowed_emails (see
+       firestore.rules "trackers" block). Edits save automatically and sync
+       live to every open tab (onSnapshot).
+     - Claude: reads/writes the same doc via the service account
+       (skills/college-money-finder/scripts/sync_tracker.py). No republish
+       step; this page is always current.
+     State contract and merge discipline:
+       skills/college-money-finder/references/tracker-artifact.md -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Counseled — College Money Tracker</title>
+<style>
+  :root {
+    --ink: #22302c; --muted: #66756e; --ground: #f6f7f5; --card: #ffffff;
+    --line: #e2e6e3; --accent: #1e5b4f; --accent-soft: #e4eeeb;
+    --good: #2e7d4f; --warn: #b7791f; --bad: #b54a35;
+    --serif: "Iowan Old Style", Palatino, Georgia, serif;
+    --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  html { background: var(--ground); }
+  body { margin: 0; padding: 24px 16px 48px; font-family: var(--sans); color: var(--ink); }
+  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+  header h1 { font-family: var(--serif); font-weight: 600; font-size: 1.7rem; margin: 0; text-wrap: balance; }
+  .headline { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; margin-top: 8px; color: var(--muted); font-size: .9rem; }
+  .headline strong { color: var(--ink); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  button { font: inherit; font-size: .82rem; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--card); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.subtle { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
+  button.subtle:hover { color: var(--ink); }
+  .sync { font-size: .78rem; color: var(--muted); }
+  .sync.live::before { content: "●"; color: var(--good); margin-right: 5px; }
+  .sync.saving::before { content: "●"; color: var(--warn); margin-right: 5px; }
+  .sync.error { color: var(--bad); }
+  .gate { max-width: 420px; margin: 12vh auto 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 28px; text-align: center; }
+  .gate h1 { font-family: var(--serif); font-size: 1.3rem; margin: 0 0 8px; }
+  .gate p { color: var(--muted); font-size: .9rem; }
+  .attention { background: var(--card); border: 1px solid var(--warn); border-radius: 6px; padding: 12px 16px; }
+  .attention h2 { margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
+  .attention ul { margin: 0; padding-left: 18px; font-size: .92rem; }
+  .attention li { margin: 3px 0; }
+  .attention .due { font-variant-numeric: tabular-nums; color: var(--bad); font-weight: 600; }
+  section.tier h2, .block h2 { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin: 0 0 2px; }
+  section.tier > p { margin: 0 0 12px; color: var(--muted); font-size: .85rem; max-width: 65ch; }
+  .school { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
+  .school.archived-card { opacity: .65; }
+  .school .row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .school h3 { margin: 0; font-size: 1.02rem; font-weight: 600; }
+  .chip { font-size: .72rem; padding: 2px 9px; border-radius: 99px; letter-spacing: .04em; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); background: none; }
+  .chip.applying, .chip.applied { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .chip.admitted, .chip.committed { background: #e6f2ea; color: var(--good); border-color: transparent; }
+  .chip.denied, .chip.dropped { background: #f7ebe8; color: var(--bad); border-color: transparent; }
+  .bar { position: relative; height: 10px; border-radius: 5px; background: var(--accent-soft); margin: 12px 0 6px; }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 5px; background: var(--accent); }
+  .bar .fill.over { background: var(--bad); }
+  .bar .budget-rule { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+  .money { display: flex; justify-content: space-between; gap: 12px; font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+  .money b { color: var(--ink); }
+  .meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: .85rem; flex-wrap: wrap; }
+  .meta .next { max-width: 46ch; }
+  .meta .deadline { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .meta .deadline.soon { color: var(--bad); font-weight: 600; }
+  .notes-line { margin-top: 8px; font-size: .85rem; color: var(--muted); max-width: 65ch; }
+  .controls { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); align-items: center; }
+  .controls select { font: inherit; font-size: .78rem; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  textarea.inline, input.inline { font: inherit; font-size: .85rem; width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; background: #fbfcfb; }
+  .todos ul { list-style: none; margin: 0; padding: 0; font-size: .9rem; }
+  .todos li { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--ground); }
+  .todos li.done label { text-decoration: line-through; color: var(--muted); }
+  .todos .who { font-size: .75rem; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
+  .todos .due2 { margin-left: auto; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .addrow { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .addrow input { flex: 1 1 200px; }
+  .log { border-top: 1px solid var(--line); padding-top: 16px; }
+  .log h2, .todos h2, details.archive summary { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; font-family: var(--sans); font-weight: 600; }
+  .log ol { list-style: none; margin: 0; padding: 0; font-size: .88rem; }
+  .log li { display: flex; gap: 14px; padding: 5px 0; border-bottom: 1px solid var(--ground); }
+  .log time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  details.archive summary { cursor: pointer; }
+  dialog { border: 1px solid var(--line); border-radius: 8px; padding: 18px; max-width: 560px; width: 92vw; font-family: var(--sans); }
+  dialog::backdrop { background: rgba(34,48,44,.35); }
+  dialog h2 { margin: 0 0 10px; font-family: var(--serif); font-size: 1.1rem; }
+  dialog .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  dialog .grid .full { grid-column: 1 / -1; }
+  dialog label { font-size: .75rem; color: var(--muted); display: block; margin-bottom: 2px; }
+  dialog textarea, dialog input, dialog select { font: inherit; font-size: .88rem; width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
+  dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  footer { color: var(--muted); font-size: .78rem; max-width: 65ch; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<dialog id="school-dialog"></dialog>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+(function () {
+  "use strict";
+  firebase.initializeApp({
+    apiKey: "AIzaSyAP5Y9GFIGjapG-wjzA8in-YFBuBFLorVk",
+    authDomain: "collegebot-dev-52f43.firebaseapp.com",
+    projectId: "collegebot-dev-52f43",
+    appId: "1:75043580028:web:15953f036c476551a681f9"
+  });
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const TRACKER_ID = new URLSearchParams(location.search).get("t") || "julia";
+  const ref = db.collection("trackers").doc(TRACKER_ID);
+
+  const TIERS = [
+    ["lock", "Locks", "Affordable at sticker or with automatic aid. The financial safety net."],
+    ["conditional_target", "Conditional targets", "Over budget at sticker, but realistic merit aid brings them under. The hidden fits."],
+    ["merit_lottery", "Merit lotteries", "Big awards exist here but are rare. Apply with eyes open."],
+    ["long_shot", "Long shots", "Little or no merit for no-need families. Full pay or need aid only."]
+  ];
+  const STATUSES = ["researching", "visiting", "applying", "applied", "admitted", "denied", "committed", "dropped"];
+
+  let state = null;
+  let editMode = false;
+  let syncStatus = "connecting";
+  let saveTimer = null;
+  let user = null;
+
+  const root = document.getElementById("root");
+  const money = n => n == null || n === "" ? "—" : "$" + Math.round(+n).toLocaleString();
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const today = () => new Date().toISOString().slice(0, 10);
+  const daysUntil = d => d ? Math.round((new Date(d) - new Date(today())) / 864e5) : null;
+  const uid = () => "id" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const who = () => (user?.displayName || user?.email || "family").split(" ")[0].split("@")[0];
+
+  function gate(msg, showSignIn) {
+    root.innerHTML = "";
+    const g = document.createElement("div");
+    g.className = "gate";
+    g.innerHTML = `<h1>College Money Tracker</h1><p>${esc(msg)}</p>` +
+      (showSignIn ? '<button class="primary" id="signin">Sign in with Google</button>' : "");
+    root.append(g);
+    const b = g.querySelector("#signin");
+    if (b) b.onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => gate("Sign-in failed: " + e.message, true));
+  }
+
+  function scheduleSave(logEntry) {
+    if (logEntry) state.log.push({ date: today(), entry: logEntry + " (" + who() + ")" });
+    state.updated = today();
+    syncStatus = "saving";
+    render();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      ref.set({ state }, { merge: true }).then(() => { syncStatus = "live"; render(); })
+        .catch(e => { syncStatus = "error: " + e.message; render(); });
+    }, 400);
+  }
+
+  function schoolDialog(existing) {
+    const s = existing || { name: "", tier: "conditional_target", status: "researching", coa: "", est_price: "",
+                            merit_rate: null, avg_merit: null, deadlines: {}, next_action: "", notes: "" };
+    const dlg = document.getElementById("school-dialog");
+    dlg.innerHTML = `<h2>${existing ? "Edit school" : "Add a school"}</h2>
+      <div class="grid">
+        <div class="full"><label>School name</label><input id="f-name" value="${esc(s.name)}"></div>
+        <div><label>Money tier</label><select id="f-tier">${TIERS.map(([k, t]) => `<option value="${k}" ${s.tier === k ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+        <div><label>Status</label><select id="f-status">${STATUSES.map(x => `<option ${s.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div><label>Sticker cost (yearly $)</label><input id="f-coa" inputmode="numeric" value="${s.coa ?? ""}"></div>
+        <div><label>Estimated price for us ($)</label><input id="f-est" inputmode="numeric" value="${s.est_price ?? ""}"></div>
+        <div><label>Nearest deadline label</label><input id="f-dlabel" placeholder="ea / merit_priority / rd" value="${esc(Object.keys(s.deadlines || {})[0] || "")}"></div>
+        <div><label>Deadline date</label><input id="f-ddate" type="date" value="${esc(Object.values(s.deadlines || {})[0] || "")}"></div>
+        <div class="full"><label>Next action</label><input id="f-next" value="${esc(s.next_action || "")}"></div>
+        <div class="full"><label>Notes</label><textarea id="f-notes" rows="3">${esc(s.notes || "")}</textarea></div>
+      </div>
+      <div class="actions"><button id="dlg-cancel">Cancel</button><button class="primary" id="dlg-save">${existing ? "Save" : "Add school"}</button></div>`;
+    dlg.showModal();
+    dlg.querySelector("#dlg-cancel").onclick = () => dlg.close();
+    dlg.querySelector("#dlg-save").onclick = () => {
+      const v = id => dlg.querySelector(id).value.trim();
+      if (!v("#f-name")) return;
+      s.name = v("#f-name"); s.tier = v("#f-tier"); s.status = v("#f-status");
+      s.coa = v("#f-coa") ? +v("#f-coa") : null; s.est_price = v("#f-est") ? +v("#f-est") : null;
+      s.deadlines = v("#f-dlabel") && v("#f-ddate") ? { [v("#f-dlabel")]: v("#f-ddate") } : (s.deadlines || {});
+      s.next_action = v("#f-next"); s.notes = v("#f-notes");
+      dlg.close();
+      scheduleSave(existing ? null : "Added " + s.name + " (" + s.tier.replace(/_/g, " ") + ").");
+      if (!existing) state.schools.push(s);
+      if (!existing) scheduleSave(null);
+    };
+  }
+
+  function move(school, dir) {
+    const peers = state.schools.filter(x => x.tier === school.tier && x.status !== "dropped");
+    const i = peers.indexOf(school), j = i + dir;
+    if (j < 0 || j >= peers.length) return;
+    const a = state.schools.indexOf(peers[i]), b = state.schools.indexOf(peers[j]);
+    [state.schools[a], state.schools[b]] = [state.schools[b], state.schools[a]];
+    scheduleSave(null);
+  }
+
+  function render() {
+    if (!state) return;
+    root.innerHTML = '<div class="wrap" id="app"></div>';
+    const app = document.getElementById("app");
+    const $ = h => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content; };
+    const budget = state.budget.yearly;
+
+    app.append($(`
+      <header>
+        <h1>${esc(state.student.name)} — College Search</h1>
+        <div class="headline">
+          <span>Class of <strong>${esc(state.student.grad_year)}</strong></span>
+          ${state.student.gpa ? `<span>GPA <strong>${esc(state.student.gpa)}</strong></span>` : ""}
+          ${state.student.sat ? `<span>SAT <strong>${esc(state.student.sat)}</strong></span>` : ""}
+          <span>Budget <strong>${money(budget)}/yr</strong></span>
+          <span>Updated <strong>${esc(state.updated)}</strong></span>
+        </div>
+        <div class="toolbar">
+          <button id="btn-edit">${editMode ? "Done editing" : "✎ Edit"}</button>
+          ${editMode ? '<button id="btn-add">+ Add school</button>' : ""}
+          <span class="sync ${syncStatus === "live" ? "live" : syncStatus === "saving" ? "saving" : "error"}">${
+            syncStatus === "live" ? "synced live" : syncStatus === "saving" ? "saving…" : esc(syncStatus)}</span>
+          <button class="subtle" id="btn-signout" title="${esc(user?.email || "")}">sign out</button>
+        </div>
+      </header>`));
+
+    const urgent = [];
+    for (const s of state.schools) {
+      if (s.status === "dropped") continue;
+      for (const [label, date] of Object.entries(s.deadlines || {})) {
+        const d = daysUntil(date);
+        if (d != null && d >= 0 && d <= 45) urgent.push({ school: s.name, what: label.replace(/_/g, " "), date, days: d });
+      }
+    }
+    for (const t of state.todos || []) {
+      const d = daysUntil(t.due);
+      if (!t.done && d != null && d <= 7) urgent.push({ school: t.school || "todo", what: t.text, date: t.due, days: d });
+    }
+    urgent.sort((a, b) => a.days - b.days);
+    if (urgent.length) app.append($(`
+      <div class="attention"><h2>Needs attention</h2>
+        <ul>${urgent.map(u => `<li><b>${esc(u.school)}</b> — ${esc(u.what)} <span class="due">${esc(u.date)}${u.days >= 0 ? ` (${u.days}d)` : " (overdue)"}</span></li>`).join("")}</ul>
+      </div>`));
+
+    const active = state.schools.filter(s => s.status !== "dropped");
+    const maxPrice = Math.max(budget * 1.4, ...active.map(s => s.coa || 0), 1);
+    for (const [key, title, blurb] of TIERS) {
+      const schools = active.filter(s => s.tier === key);
+      if (!schools.length) continue;
+      const sec = $(`<section class="tier"><h2>${title}</h2><p>${blurb}</p></section>`).firstElementChild;
+      schools.forEach(s => {
+        const est = s.npc_estimate ?? s.est_price ?? s.coa;
+        const pct = est ? Math.min(100, (est / maxPrice) * 100) : 0;
+        const budgetPct = Math.min(100, (budget / maxPrice) * 100);
+        const nearest = Object.entries(s.deadlines || {}).map(([k, v]) => [k, v, daysUntil(v)])
+          .filter(([, , d]) => d != null && d >= 0).sort((a, b) => a[2] - b[2])[0];
+        const card = $(`
+          <article class="school">
+            <div class="row1"><h3>${esc(s.name)}</h3><span class="chip ${esc(s.status)}">${esc(s.status.replace(/_/g, " "))}</span></div>
+            <div class="bar"><div class="fill ${est > budget ? "over" : ""}" style="width:${pct}%"></div><div class="budget-rule" style="left:${budgetPct}%"></div></div>
+            <div class="money">
+              <span>sticker <b>${money(s.coa)}</b></span>
+              ${s.merit_rate != null ? `<span>merit rate <b>${Math.round(s.merit_rate * 100)}%</b></span>` : ""}
+              ${s.avg_merit ? `<span>avg award <b>${money(s.avg_merit)}</b></span>` : ""}
+              <span>${s.npc_estimate != null ? "NPC estimate" : "est. price"} <b>${money(est)}</b></span>
+            </div>
+            ${(s.next_action || nearest) ? `<div class="meta"><span class="next">▸ ${esc(s.next_action || "")}</span>
+              ${nearest ? `<span class="deadline ${nearest[2] <= 45 ? "soon" : ""}">${esc(nearest[0].replace(/_/g, " "))} ${esc(nearest[1])}</span>` : ""}</div>` : ""}
+            ${s.notes ? `<div class="notes-line">${esc(s.notes)}</div>` : ""}
+          </article>`).firstElementChild;
+        if (editMode) {
+          const c = $(`<div class="controls">
+              <button class="subtle" data-act="up" title="Move up">↑</button>
+              <button class="subtle" data-act="down" title="Move down">↓</button>
+              <select data-act="tier" title="Money tier">${TIERS.map(([k, t]) => `<option value="${k}" ${s.tier === k ? "selected" : ""}>${t}</option>`).join("")}</select>
+              <select data-act="status" title="Status">${STATUSES.map(x => `<option ${s.status === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+              <button class="subtle" data-act="edit">edit…</button>
+              <button class="subtle" data-act="todo">+ todo</button>
+              <button class="subtle" data-act="archive">archive</button>
+            </div>`).firstElementChild;
+          c.addEventListener("click", e => {
+            const act = e.target.dataset?.act;
+            if (act === "up") move(s, -1);
+            if (act === "down") move(s, +1);
+            if (act === "edit") schoolDialog(s);
+            if (act === "archive") { s.status = "dropped"; scheduleSave("Archived " + s.name + "."); }
+            if (act === "todo") {
+              const text = prompt("Todo for " + s.name + ":", s.next_action || "");
+              if (text) { state.todos.push({ id: uid(), text, done: false, school: s.name, due: "" }); scheduleSave(null); }
+            }
+          });
+          c.addEventListener("change", e => {
+            const act = e.target.dataset?.act;
+            if (act === "tier") { s.tier = e.target.value; scheduleSave(s.name + " moved to " + s.tier.replace(/_/g, " ") + "."); }
+            if (act === "status") { s.status = e.target.value; scheduleSave(s.name + " → " + s.status + "."); }
+          });
+          card.append(c);
+        }
+        sec.append(card);
+      });
+      app.append(sec);
+    }
+
+    const archived = state.schools.filter(s => s.status === "dropped");
+    if (archived.length) {
+      const det = $(`<details class="archive"><summary>Archived (${archived.length})</summary></details>`).firstElementChild;
+      archived.forEach(s => {
+        const card = $(`<article class="school archived-card"><div class="row1"><h3>${esc(s.name)}</h3>
+          <button class="subtle" data-restore>restore</button></div>
+          ${s.notes ? `<div class="notes-line">${esc(s.notes)}</div>` : ""}</article>`).firstElementChild;
+        card.querySelector("[data-restore]").onclick = () => { s.status = "researching"; scheduleSave("Restored " + s.name + "."); };
+        det.append(card);
+      });
+      app.append(det);
+    }
+
+    const todos = state.todos || [];
+    const todosBlock = $(`<div class="todos block"><h2>To-dos</h2><ul></ul>
+      <div class="addrow"><input class="inline" id="todo-text" placeholder="Add a to-do…"><input class="inline" id="todo-due" type="date" style="flex:0 1 160px"><button id="todo-add">Add</button></div>
+      </div>`).firstElementChild;
+    const ul = todosBlock.querySelector("ul");
+    [...todos.filter(t => !t.done), ...todos.filter(t => t.done)].forEach(t => {
+      const li = $(`<li class="${t.done ? "done" : ""}"><input type="checkbox" id="${t.id}" ${t.done ? "checked" : ""}>
+        <label for="${t.id}">${esc(t.text)}</label>${t.school ? `<span class="who">${esc(t.school)}</span>` : ""}
+        ${t.due ? `<span class="due2">${esc(t.due)}</span>` : ""}
+        ${editMode ? '<button class="subtle" data-del>✕</button>' : ""}</li>`).firstElementChild;
+      li.querySelector("input").onchange = e => { t.done = e.target.checked; scheduleSave(null); };
+      const del = li.querySelector("[data-del]");
+      if (del) del.onclick = () => { state.todos = todos.filter(x => x !== t); scheduleSave(null); };
+      ul.append(li);
+    });
+    todosBlock.querySelector("#todo-add").onclick = () => {
+      const text = todosBlock.querySelector("#todo-text").value.trim();
+      if (!text) return;
+      state.todos.push({ id: uid(), text, done: false, school: "", due: todosBlock.querySelector("#todo-due").value || "" });
+      scheduleSave(null);
+    };
+    app.append(todosBlock);
+
+    const logBlock = $(`<div class="log"><h2>Journal</h2><ol></ol>
+      <div class="addrow"><input class="inline" id="log-text" placeholder="Add a journal entry…"><button id="log-add">Add</button></div></div>`).firstElementChild;
+    const ol = logBlock.querySelector("ol");
+    (state.log || []).slice().reverse().forEach(e => ol.append($(`<li><time>${esc(e.date)}</time><span>${esc(e.entry)}</span></li>`)));
+    logBlock.querySelector("#log-add").onclick = () => {
+      const text = logBlock.querySelector("#log-text").value.trim();
+      if (text) scheduleSave(text);
+    };
+    app.append(logBlock);
+
+    app.append($(`<footer>Estimates come from Common Data Set filings (1–2 years old) and net price calculators;
+      none are offers. The dark rule on each bar marks the family budget of ${money(budget)}/yr. Edits save
+      automatically and sync to everyone — including Claude, which reads and updates this same page.</footer>`));
+
+    document.getElementById("btn-edit").onclick = () => { editMode = !editMode; render(); };
+    document.getElementById("btn-signout").onclick = () => auth.signOut().then(() => location.reload());
+    const addBtn = document.getElementById("btn-add");
+    if (addBtn) addBtn.onclick = () => schoolDialog(null);
+  }
+
+  auth.onAuthStateChanged(u => {
+    user = u;
+    if (!u) { gate("Sign in to see your family's college tracker.", true); return; }
+    gate("Loading…", false);
+    ref.onSnapshot(snap => {
+      if (!snap.exists) { gate("No tracker found for this link.", false); return; }
+      if (snap.metadata.hasPendingWrites) return; // our own echo
+      state = snap.data().state;
+      syncStatus = "live";
+      render();
+    }, err => gate(err.code === "permission-denied"
+      ? "This tracker is private to the family. Signed in as " + (u.email || "unknown") + " — ask Dan to add this email."
+      : "Error: " + err.message, false));
+  });
+})();
+</script>
+</body>
+</html>

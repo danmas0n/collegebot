@@ -1,0 +1,47 @@
+{
+  "skill_name": "college-money-finder",
+  "evals": [
+    {
+      "id": 1,
+      "name": "high-stats-upper-middle-core-case",
+      "prompt": "Our daughter is a junior at a competitive NJ public high school — 3.9 unweighted, 1540 SAT, wants mechanical engineering, maybe aerospace. We make about $260k so I assume we get zero need-based aid anywhere. We can pay about $45k a year without loans. Everyone says 'just apply and see' but I'd rather know which schools actually give real merit money to families like ours. Where should we be looking?",
+      "expected_output": "Runs the frontier analysis with the embedded dataset. Names specific schools with real numbers (merit rate to no-need freshmen, average award, estimated net). Includes locks (in-state NJ + auto-merit schools), conditional targets with data citations, and honest full-pay-or-bust calls for any elites. States the need-aid lens is irrelevant at this income. Cites CDS year and caveats. Offers advice letter and tracker.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "modest-stats-tight-budget-pivot",
+      "prompt": "My son has a 3.4 GPA and got an 1150 on the SAT, probably won't retake. We're in Texas and can spend maybe $22k/year max, and honestly even that is a stretch. He wants business or sports management. Is merit aid even a thing for a kid like him or is that only for straight-A students?",
+      "expected_output": "Honest but kind: large merit at selective schools is unlikely below-band, BUT the frontier reframe still works — in-state Texas publics, schools where his stats are at/above the 75th percentile (where HE is the merit candidate), and low-sticker options. Does not fabricate merit odds at reach schools. Concrete list with numbers, anchored on Texas in-state prices.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "moderate-income-need-lens-routing",
+      "prompt": "Single mom, I make about $78k as a nurse. My daughter has a 4.0 and a 1490, wants biology, dreams about small East Coast colleges. I keep reading that private colleges cost $90k and I've basically told her they're impossible. We could pay maybe $18k a year. Are we stuck with community college then state school?",
+      "expected_output": "Recognizes the income means the NEED-based lens likely dominates: meets-full-need schools (Amherst-type LACs, which give no merit but meet ~100% of need) may cost LESS than $18k for this family. Presents both lenses: meets-full-need list to check via NPCs, plus merit-generous backups. Directly corrects the '$90k sticker = impossible' misconception. Does not promise specific need awards — routes to NPCs.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "test-optional-no-score",
+      "prompt": "our kid is going into senior year, 3.85 gpa but terrible standardized test taker - never broke 1200 on practice SATs so we're going test optional. she wants graphic design or maybe marketing. we're in ohio, budget is around $35k/yr. does test optional kill merit chances? what schools would actually give her money?",
+      "expected_output": "Addresses the test-optional-vs-merit question head on: many merit programs still key on scores, some are GPA-only — distinguishes them. Uses GPA-based positioning from the dataset. Ohio in-state anchors (and notes test_policy column data). Concrete school list with numbers and the caveat to verify each school's test-optional merit policy for the current year.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "vague-sophomore-parent-interview",
+      "prompt": "I heard from a friend that some expensive colleges actually end up cheaper than state schools because of scholarships? My son is only a sophomore but I'm already stressed about paying for college. Is that true and what should we be doing now?",
+      "expected_output": "Confirms the premise IS sometimes true with a concrete example or two from the data (tuition-discounting privates vs state sticker). Starts the interview naturally (2-3 questions: rough stats trajectory, home state, comfortable yearly number) rather than dumping a form or a premature list. Sets sophomore-appropriate expectations: directional frontier now, real list junior year, PSAT/testing plan matters for merit.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "returning-family-tracker-update",
+      "prompt": "We talked before about colleges for our daughter (the tracker is in this project). She just got her October SAT back: 1510, up from 1430! Also we visited Pitt and she loved it. Can you update everything and tell me if the higher score changes which schools are realistic?",
+      "expected_output": "Loads/updates existing tracker state rather than re-interviewing. Re-runs positioning with 1510: identifies schools where she crossed the 75th percentile (tier upgrades). Updates Pitt status/notes with the visit, appends journal entries, restates top next actions. Offers full frontier re-run.",
+      "files": []
+    }
+  ]
+}

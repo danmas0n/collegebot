@@ -1,0 +1,63 @@
+# counseled-mcp
+
+Remote MCP server that lets any family's own Claude (claude.ai custom
+connector or Claude Code) read and write their college tracker on
+counseled.app. OAuth 2.1 (dynamic client registration + PKCE) with Google
+sign-in via the existing Firebase Auth; state in the existing Firestore
+(`trackers/{id}` docs, same ones the live tracker page syncs with).
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `list_trackers` | Trackers the signed-in user's email can access |
+| `get_tracker` | Full state (student, budget, schools, todos, journal) |
+| `update_tracker` | Full-state write with merge guardrails: schools can never be deleted (archive via status `dropped`), journal is append-only, every write appends a provenance entry and bumps `baseline_version` |
+
+Access model: a user can touch exactly the trackers whose `allowed_emails`
+contains their Google email — same rule the web page enforces.
+
+## Local test
+
+```bash
+firebase emulators:start --only firestore,auth --project demo-counseled &
+npm run build
+FIRESTORE_EMULATOR_HOST=localhost:8080 FIREBASE_AUTH_EMULATOR_HOST=localhost:9099 \
+  GOOGLE_CLOUD_PROJECT=demo-counseled PUBLIC_URL=http://localhost:8787 PORT=8787 \
+  node build/index.js &
+python3 test/e2e.py   # 14 checks: OAuth flow, MCP handshake, tools, guardrails, scoping
+```
+
+## Deploy (Cloud Run)
+
+```bash
+cd counseled-mcp
+gcloud run deploy counseled-mcp --source . \
+  --project collegebot-dev-52f43 --region us-central1 \
+  --allow-unauthenticated --min-instances 0
+# note the service URL it prints, then bake it in:
+gcloud run services update counseled-mcp --project collegebot-dev-52f43 \
+  --region us-central1 --set-env-vars PUBLIC_URL=<service URL>
+```
+
+`--allow-unauthenticated` is correct: OAuth happens at the application layer;
+the Cloud Run default service account provides Firestore access via ADC.
+Optional: map `mcp.counseled.app` to the service and set PUBLIC_URL to that
+instead (do this before real users connect — the URL is baked into tokens'
+issuer metadata).
+
+## Connect a Claude
+
+- **claude.ai:** Settings → Connectors → Add custom connector → `<PUBLIC_URL>/mcp`
+  → sign in with the Google account that's on your family's tracker.
+- **Claude Code:** `claude mcp add --transport http counseled <PUBLIC_URL>/mcp`
+
+## Notes
+
+- OAuth artifacts live in Firestore collections `oauth_clients`,
+  `oauth_requests`, `oauth_codes`, `oauth_tokens` (opaque revocable tokens:
+  access 1h, refresh 30d). To revoke a user, delete their token docs.
+- Expired docs are small and harmless; add a TTL policy on `expires` fields
+  in the Firestore console when convenient.
+- The Firestore *rules* don't apply to this server (admin SDK) — scoping is
+  enforced in `src/firestore.ts` (`trackersForEmail`). Keep it that way.
