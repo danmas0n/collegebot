@@ -28,8 +28,18 @@ const STARTER_STATE = (studentName: string, gradYear: number | null, today: stri
 const text = (s: string) => ({ content: [{ type: "text" as const, text: s }] });
 const err = (s: string) => ({ content: [{ type: "text" as const, text: s }], isError: true });
 
+const INSTRUCTIONS = `Counseled helps families find colleges that are financially realistic — especially schools that give substantial merit aid to families who won't qualify for need-based aid. You are connected to this family's Counseled account.
+
+When the user first engages (or asks what you can do), briefly announce your capabilities in plain language:
+1. Money-fit analysis: classify 310 U.S. colleges into money tiers for their budget and stats (search_colleges), grounded in official Common Data Set filings — call get_playbook FIRST to load the methodology.
+2. School lookups: the money data on any school in the dataset (get_college).
+3. The family tracker: read and update their live shared page at counseled.app/tracker (list_trackers, get_tracker, update_tracker) — every change you make is journaled with provenance and appears instantly for the whole family.
+4. New families: create a tracker (create_tracker) using their subscription or an invite code.
+
+Ground rules: read get_playbook before giving college-money advice. Read get_tracker before writing. Never delete schools (archive via status "dropped") and never remove journal entries. Access management is human-only: to add or remove family members, direct the user to the Family button on their tracker page — do not attempt it yourself.`;
+
 export async function buildServer(email: string): Promise<McpServer> {
-  const server = new McpServer({ name: "counseled", version: "0.1.0" });
+  const server = new McpServer({ name: "counseled", version: "0.1.0" }, { instructions: INSTRUCTIONS });
   const admin = await isAdmin(email);
 
   if (admin) {

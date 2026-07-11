@@ -1,16 +1,11 @@
 <!DOCTYPE html>
-<!-- Counseled family college tracker — Firestore-backed, live-sync edition.
+<!-- Counseled family college tracker — v3 (insights-first).
 
-     State lives in Firestore doc trackers/{TRACKER_ID}:
-       { allowed_emails: [..], state: {<tracker state contract>} }
-     - Family: Google sign-in; read/write gated by allowed_emails (see
-       firestore.rules "trackers" block). Edits save automatically and sync
-       live to every open tab (onSnapshot).
-     - Claude: reads/writes the same doc via the service account
-       (skills/college-money-finder/scripts/sync_tracker.py). No republish
-       step; this page is always current.
-     State contract and merge discipline:
-       skills/college-money-finder/references/tracker-artifact.md -->
+     State: Firestore doc trackers/{id} { allowed_emails, owner_email?, state }.
+     Contract: skills/college-money-finder/references/tracker-artifact.md.
+     Live sync via onSnapshot; local echoes skipped; family membership uses
+     atomic arrayUnion/arrayRemove (rules enforce guardrails).
+     College data panels fetch the public read-only API on the MCP host. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -26,12 +21,12 @@
     --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
   }
   html { background: var(--ground); }
-  body { margin: 0; padding: 24px 16px 48px; font-family: var(--sans); color: var(--ink); }
-  .wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
-  header h1 { font-family: var(--serif); font-weight: 600; font-size: 1.7rem; margin: 0; text-wrap: balance; }
-  .headline { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; margin-top: 8px; color: var(--muted); font-size: .9rem; }
-  .headline strong { color: var(--ink); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  body { margin: 0; padding: 20px 16px 48px; font-family: var(--sans); color: var(--ink); }
+  .wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  header h1 { font-family: var(--serif); font-weight: 600; font-size: 1.55rem; margin: 0; text-wrap: balance; }
+  .headline { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; margin-top: 6px; color: var(--muted); font-size: .88rem; }
+  .headline strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
   button { font: inherit; font-size: .82rem; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
            background: var(--card); color: var(--ink); cursor: pointer; }
   button:hover { border-color: var(--accent); }
@@ -46,53 +41,92 @@
   .gate { max-width: 420px; margin: 12vh auto 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 28px; text-align: center; }
   .gate h1 { font-family: var(--serif); font-size: 1.3rem; margin: 0 0 8px; }
   .gate p { color: var(--muted); font-size: .9rem; }
-  #map-panel { background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-  #map { height: 340px; }
+
+  /* insights */
+  .insights { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 4px 18px; }
+  .tile { padding: 6px 0; }
+  .tile .label { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .tile .value { font-size: 1.12rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.25; }
+  .tile .sub { font-size: .8rem; color: var(--muted); }
+  .tile .flag { font-size: .8rem; font-weight: 600; }
+  .tile .flag.warn { color: var(--warn); }
+  .tile .flag.bad { color: var(--bad); }
+  .donext { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .donext .label { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .donext ol { margin: 0; padding-left: 20px; font-size: .9rem; }
+  .donext li { margin: 4px 0; }
+  .donext .tag { font-size: .72rem; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; }
+  .donext .due { color: var(--bad); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* map */
+  #map-panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  #map-panel summary { padding: 10px 16px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); cursor: pointer; font-weight: 600; }
+  #map { height: 300px; }
   #map-legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 14px; font-size: .78rem; color: var(--muted); }
   #map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
-  .attention { background: var(--card); border: 1px solid var(--warn); border-radius: 6px; padding: 12px 16px; }
-  .attention h2 { margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
-  .attention ul { margin: 0; padding-left: 18px; font-size: .92rem; }
-  .attention li { margin: 3px 0; }
-  .attention .due { font-variant-numeric: tabular-nums; color: var(--bad); font-weight: 600; }
-  section.tier h2, .block h2 { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin: 0 0 2px; }
-  section.tier > p { margin: 0 0 12px; color: var(--muted); font-size: .85rem; max-width: 65ch; }
-  .school { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
-  .school.archived-card { opacity: .65; }
-  .school .row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  .school h3 { margin: 0; font-size: 1.02rem; font-weight: 600; }
-  .chip { font-size: .72rem; padding: 2px 9px; border-radius: 99px; letter-spacing: .04em; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); background: none; }
+
+  /* tiers & compact rows */
+  section.tier h2 { font-family: var(--serif); font-size: 1.1rem; font-weight: 600; margin: 0 0 2px; }
+  section.tier > p.blurb { margin: 0 0 8px; color: var(--muted); font-size: .82rem; max-width: 70ch; }
+  .rows { background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .row { border-bottom: 1px solid var(--ground); }
+  .row:last-child { border-bottom: none; }
+  .row-head { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 10px; align-items: center;
+              padding: 10px 14px; cursor: pointer; }
+  .row-head:hover { background: #fbfcfb; }
+  .row-head .name { font-weight: 600; font-size: .95rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-head .name i { font-style: normal; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; }
+  .chip { font-size: .7rem; padding: 2px 9px; border-radius: 99px; letter-spacing: .04em; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); background: none; }
   .chip.applying, .chip.applied { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
   .chip.admitted, .chip.committed { background: #e6f2ea; color: var(--good); border-color: transparent; }
   .chip.denied, .chip.dropped { background: #f7ebe8; color: var(--bad); border-color: transparent; }
-  .bar { position: relative; height: 10px; border-radius: 5px; background: var(--accent-soft); margin: 12px 0 6px; }
-  .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 5px; background: var(--accent); }
-  .bar .fill.over { background: var(--bad); }
-  .bar .budget-rule { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
-  .money { display: flex; justify-content: space-between; gap: 12px; font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
-  .money b { color: var(--ink); }
-  .meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: .85rem; flex-wrap: wrap; }
-  .meta .next { max-width: 46ch; }
-  .meta .deadline { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .meta .deadline.soon { color: var(--bad); font-weight: 600; }
-  .notes-line { margin-top: 8px; font-size: .85rem; color: var(--muted); max-width: 65ch; }
-  .controls { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); align-items: center; }
-  .controls select { font: inherit; font-size: .78rem; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .minibar { position: relative; width: 110px; height: 8px; border-radius: 4px; background: var(--accent-soft); }
+  .minibar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--accent); }
+  .minibar .fill.over { background: var(--bad); }
+  .minibar .rule { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+  .row-head .price { font-size: .85rem; font-variant-numeric: tabular-nums; font-weight: 600; min-width: 70px; text-align: right; }
+  .row-head .when { font-size: .76rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 86px; text-align: right; }
+  .row-head .when.soon { color: var(--bad); font-weight: 600; }
+  .row-body { padding: 4px 16px 14px; font-size: .87rem; }
+  .row-body .money { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-variant-numeric: tabular-nums; margin: 6px 0; }
+  .row-body .money b { color: var(--ink); }
+  .row-body .next { margin: 6px 0; }
+  .row-body .notes-line { color: var(--muted); max-width: 75ch; margin: 6px 0; }
+  .row-body .controls { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); align-items: center; }
+  .row-body .controls select { font: inherit; font-size: .78rem; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .datapanel { margin-top: 8px; background: #fbfcfb; border: 1px dashed var(--line); border-radius: 6px; padding: 10px 12px; font-size: .82rem; }
+  .datapanel table { border-collapse: collapse; }
+  .datapanel td { padding: 2px 14px 2px 0; color: var(--muted); }
+  .datapanel td b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
   textarea.inline, input.inline { font: inherit; font-size: .85rem; width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; background: #fbfcfb; }
-  .todos ul { list-style: none; margin: 0; padding: 0; font-size: .9rem; }
-  .todos li { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--ground); }
+  .todos ul, #fam-list { list-style: none; margin: 0; padding: 0; font-size: .9rem; }
+  .todos li, #fam-list li { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--ground); }
   .todos li.done label { text-decoration: line-through; color: var(--muted); }
-  .todos .who { font-size: .75rem; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
-  .todos .due2 { margin-left: auto; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .who { font-size: .75rem; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
+  .due2 { margin-left: auto; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .addrow { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .addrow input { flex: 1 1 200px; }
+  .block h2, .log h2, details.archive summary { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; font-family: var(--sans); font-weight: 600; }
   .log { border-top: 1px solid var(--line); padding-top: 16px; }
-  .log h2, .todos h2, details.archive summary { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; font-family: var(--sans); font-weight: 600; }
-  .log ol { list-style: none; margin: 0; padding: 0; font-size: .88rem; }
+  .log ol { list-style: none; margin: 0; padding: 0; font-size: .87rem; }
   .log li { display: flex; gap: 14px; padding: 5px 0; border-bottom: 1px solid var(--ground); }
   .log time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   details.archive summary { cursor: pointer; }
-  dialog { border: 1px solid var(--line); border-radius: 8px; padding: 18px; max-width: 560px; width: 92vw; font-family: var(--sans); }
+
+  /* ask-Claude capabilities */
+  .ask { background: var(--accent-soft); border-radius: 8px; padding: 16px 18px; }
+  .ask h2 { font-family: var(--serif); font-size: 1.05rem; margin: 0 0 4px; color: var(--accent); }
+  .ask p { margin: 0 0 10px; font-size: .85rem; color: var(--ink); max-width: 75ch; }
+  .prompts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+  .prompt { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; font-size: .82rem;
+            display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .prompt button { font-size: .72rem; padding: 2px 8px; white-space: nowrap; }
+  .ask .setup { font-size: .78rem; color: var(--muted); margin-top: 10px; }
+  .ask .setup a { color: var(--accent); }
+
+  dialog { border: 1px solid var(--line); border-radius: 8px; padding: 18px; max-width: 560px; width: 92vw; font-family: var(--sans); color: var(--ink); }
   dialog::backdrop { background: rgba(34,48,44,.35); }
   dialog h2 { margin: 0 0 10px; font-family: var(--serif); font-size: 1.1rem; }
   dialog .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -100,12 +134,14 @@
   dialog label { font-size: .75rem; color: var(--muted); display: block; margin-bottom: 2px; }
   dialog textarea, dialog input, dialog select { font: inherit; font-size: .88rem; width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
   dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-  footer { color: var(--muted); font-size: .78rem; max-width: 65ch; }
+  dialog p.hint { font-size: .82rem; color: var(--muted); margin: 0 0 10px; max-width: 55ch; }
+  footer { color: var(--muted); font-size: .78rem; max-width: 70ch; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <dialog id="school-dialog"></dialog>
+<dialog id="family-dialog"></dialog>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -117,12 +153,12 @@
     apiKey: "AIzaSyAP5Y9GFIGjapG-wjzA8in-YFBuBFLorVk",
     authDomain: "collegebot-dev-52f43.firebaseapp.com",
     projectId: "collegebot-dev-52f43",
-    appId: "1:75043580028:web:15953f036c476551a681f9"
   });
   const auth = firebase.auth();
   const db = firebase.firestore();
   const TRACKER_ID = new URLSearchParams(location.search).get("t") || "julia";
   const ref = db.collection("trackers").doc(TRACKER_ID);
+  const DATA_API = "https://mcp.counseled.app";
 
   const TIERS = [
     ["lock", "Locks", "Affordable at sticker or with automatic aid. The financial safety net."],
@@ -130,23 +166,23 @@
     ["merit_lottery", "Merit lotteries", "Big awards exist here but are rare. Apply with eyes open."],
     ["long_shot", "Long shots", "Little or no merit for no-need families. Full pay or need aid only."]
   ];
+  const TIER_COLOR = { lock: "#2e7d4f", conditional_target: "#1e5b4f", merit_lottery: "#b7791f", long_shot: "#b54a35" };
   const STATUSES = ["researching", "visiting", "applying", "applied", "admitted", "denied", "committed", "dropped"];
 
-  let state = null;
-  let allowedEmails = [];
-  let ownerEmail = "";
-  let editMode = false;
-  let syncStatus = "connecting";
-  let saveTimer = null;
-  let user = null;
+  let state = null, allowedEmails = [], ownerEmail = "";
+  let editMode = false, syncStatus = "connecting", saveTimer = null, user = null;
+  const expanded = new Set();
+  const dataCache = {};
 
   const root = document.getElementById("root");
   const money = n => n == null || n === "" ? "—" : "$" + Math.round(+n).toLocaleString();
+  const kmoney = n => n == null ? "—" : "$" + (Math.round(+n / 100) / 10).toFixed(1) + "k";
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const today = () => new Date().toISOString().slice(0, 10);
   const daysUntil = d => d ? Math.round((new Date(d) - new Date(today())) / 864e5) : null;
   const uid = () => "id" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const who = () => (user?.displayName || user?.email || "family").split(" ")[0].split("@")[0];
+  const $ = h => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content; };
 
   function gate(msg, showSignIn) {
     root.innerHTML = "";
@@ -171,9 +207,92 @@
     }, 400);
   }
 
+  // ---------- insights ----------
+  function computeInsights() {
+    const active = state.schools.filter(s => s.status !== "dropped");
+    const byTier = k => active.filter(s => s.tier === k);
+    const locks = byTier("lock");
+
+    const deadlines = [];
+    for (const s of active) {
+      if (["admitted", "denied", "committed"].includes(s.status)) continue;
+      for (const [label, date] of Object.entries(s.deadlines || {})) {
+        const d = daysUntil(date);
+        if (d != null && d >= 0) deadlines.push({ school: s.name, label: label.replace(/_/g, " "), date, days: d });
+      }
+    }
+    deadlines.sort((a, b) => a.days - b.days);
+
+    const lockPrices = locks.map(s => s.npc_estimate ?? s.est_price ?? s.coa).filter(n => n != null);
+    const cheapestLock = lockPrices.length
+      ? locks.reduce((m, s) => ((s.npc_estimate ?? s.est_price ?? s.coa) < (m.npc_estimate ?? m.est_price ?? m.coa) ? s : m))
+      : null;
+
+    const todos = state.todos || [];
+    const openTodos = todos.filter(t => !t.done);
+    const overdue = openTodos.filter(t => t.due && daysUntil(t.due) < 0);
+    const npcCandidates = active.filter(s => s.tier === "long_shot" || s.tier === "merit_lottery");
+    const npcRun = npcCandidates.filter(s => s.npc_run || s.npc_estimate != null);
+
+    // "do next": overdue todos, urgent deadlines, dated todos, NPC gap, stale gaps
+    const next = [];
+    for (const t of overdue) next.push({ text: t.text, tag: t.school || "", due: t.due, overdue: true });
+    for (const d of deadlines.filter(x => x.days <= 45).slice(0, 2))
+      next.push({ text: `${d.label} deadline`, tag: d.school, due: d.date });
+    for (const t of openTodos.filter(t => t.due && daysUntil(t.due) >= 0).sort((a, b) => daysUntil(a.due) - daysUntil(b.due)))
+      next.push({ text: t.text, tag: t.school || "", due: t.due });
+    if (npcCandidates.length && npcRun.length === 0)
+      next.push({ text: `Run a Net Price Calculator — none of your ${npcCandidates.length} lotteries/long shots has one yet`, tag: "", due: "" });
+    for (const t of openTodos.filter(t => !t.due)) next.push({ text: t.text, tag: t.school || "", due: "" });
+    const seen = new Set(); const donext = [];
+    for (const n of next) { const k = n.text + n.tag; if (!seen.has(k)) { seen.add(k); donext.push(n); } if (donext.length >= 3) break; }
+
+    return { active, locks, deadlines, cheapestLock, openTodos, overdue, npcCandidates, npcRun, donext,
+             counts: TIERS.map(([k, t]) => [t, byTier(k).length]) };
+  }
+
+  function insightsBlock() {
+    const I = computeInsights();
+    const nextDl = I.deadlines[0];
+    const est = s => s ? (s.npc_estimate ?? s.est_price ?? s.coa) : null;
+
+    const tiles = `
+      <div class="tiles">
+        <div class="tile"><div class="label">Next deadline</div>
+          ${nextDl ? `<div class="value ${nextDl.days <= 45 ? "" : ""}">${nextDl.days}d</div>
+            <div class="sub">${esc(nextDl.school)} — ${esc(nextDl.label)} ${esc(nextDl.date)}</div>
+            ${nextDl.days <= 45 ? '<div class="flag warn">⚠ inside 45 days</div>' : ""}`
+          : `<div class="value">—</div><div class="sub">no upcoming deadlines on file</div>`}
+        </div>
+        <div class="tile"><div class="label">Cheapest sure path</div>
+          ${I.cheapestLock ? `<div class="value">${kmoney(est(I.cheapestLock))}/yr</div><div class="sub">${esc(I.cheapestLock.name)}</div>`
+            : `<div class="value">—</div><div class="sub">no locks yet</div>`}
+          ${I.locks.length < 2 ? '<div class="flag bad">✚ add a financial safety — every list needs 2 locks</div>' : ""}
+        </div>
+        <div class="tile"><div class="label">List shape</div>
+          <div class="value">${I.active.length} schools</div>
+          <div class="sub">${I.counts.map(([t, n]) => `${n} ${t.toLowerCase().replace("conditional targets", "targets")}`).join(" · ")}</div>
+        </div>
+        <div class="tile"><div class="label">Verification</div>
+          <div class="value">${I.npcRun.length}/${I.npcCandidates.length} NPCs</div>
+          <div class="sub">${I.openTodos.length} to-do${I.openTodos.length === 1 ? "" : "s"} open${I.overdue.length ? "" : ""}</div>
+          ${I.overdue.length ? `<div class="flag bad">⚠ ${I.overdue.length} overdue</div>` : ""}
+        </div>
+      </div>`;
+
+    const donext = I.donext.length ? `
+      <div class="donext"><div class="label">Do next</div>
+        <ol>${I.donext.map(n => `<li>${esc(n.text)}${n.tag ? `<span class="tag">${esc(n.tag)}</span>` : ""}
+          ${n.due ? ` <span class="${n.overdue ? "due" : ""}" style="font-size:.8rem">${n.overdue ? "overdue " : ""}${esc(n.due)}</span>` : ""}</li>`).join("")}</ol>
+      </div>` : "";
+
+    return $(`<div class="insights">${tiles}${donext}</div>`);
+  }
+
+  // ---------- school dialog ----------
   function schoolDialog(existing) {
     const s = existing || { name: "", tier: "conditional_target", status: "researching", coa: "", est_price: "",
-                            merit_rate: null, avg_merit: null, deadlines: {}, next_action: "", notes: "" };
+                            merit_rate: null, avg_merit: null, deadlines: {}, next_action: "", notes: "", lat: null, lng: null };
     const dlg = document.getElementById("school-dialog");
     dlg.innerHTML = `<h2>${existing ? "Edit school" : "Add a school"}</h2>
       <div class="grid">
@@ -193,15 +312,148 @@
     dlg.querySelector("#dlg-save").onclick = () => {
       const v = id => dlg.querySelector(id).value.trim();
       if (!v("#f-name")) return;
+      const isNew = !existing;
       s.name = v("#f-name"); s.tier = v("#f-tier"); s.status = v("#f-status");
       s.coa = v("#f-coa") ? +v("#f-coa") : null; s.est_price = v("#f-est") ? +v("#f-est") : null;
       s.deadlines = v("#f-dlabel") && v("#f-ddate") ? { [v("#f-dlabel")]: v("#f-ddate") } : (s.deadlines || {});
       s.next_action = v("#f-next"); s.notes = v("#f-notes");
+      if (isNew) state.schools.push(s);
       dlg.close();
-      scheduleSave(existing ? null : "Added " + s.name + " (" + s.tier.replace(/_/g, " ") + ").");
-      if (!existing) state.schools.push(s);
-      if (!existing) scheduleSave(null);
+      scheduleSave(isNew ? "Added " + s.name + " (" + s.tier.replace(/_/g, " ") + ")." : null);
     };
+  }
+
+  // ---------- family dialog (its own top-level control, independent of Edit) ----------
+  function familyDialog() {
+    const dlg = document.getElementById("family-dialog");
+    const rows = allowedEmails.map(e => {
+      const isSelf = e.toLowerCase() === (user?.email || "").toLowerCase();
+      const isOwner = e.toLowerCase() === ownerEmail.toLowerCase();
+      return `<li><span>${esc(e)}</span>
+        ${isOwner ? '<span class="who">owner</span>' : ""}${isSelf ? '<span class="who">you</span>' : ""}
+        ${!isSelf && !isOwner ? `<button class="subtle" data-rm="${esc(e)}" title="Remove access">✕</button>` : ""}</li>`;
+    }).join("");
+    dlg.innerHTML = `<h2>Family access</h2>
+      <p class="hint">People who can see and edit this tracker — on this page and through their own
+      Claude via the Counseled connector. Adding family happens here, by you (max 6, Google-sign-in emails).</p>
+      <ul id="fam-list">${rows}</ul>
+      <div class="addrow"><input class="inline" id="fam-email" type="email" placeholder="family-member@gmail.com"><button class="primary" id="fam-add">Add</button></div>
+      <div class="actions"><button id="fam-close">Done</button></div>`;
+    dlg.showModal();
+    dlg.querySelector("#fam-close").onclick = () => dlg.close();
+    dlg.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
+      const e = b.dataset.rm;
+      if (!confirm(`Remove ${e} from this tracker?`)) return;
+      ref.update({ allowed_emails: firebase.firestore.FieldValue.arrayRemove(e) })
+        .then(() => { allowedEmails = allowedEmails.filter(x => x !== e); scheduleSave(`${e} removed from family access`); familyDialog(); })
+        .catch(err2 => alert("Could not remove: " + err2.message));
+    });
+    dlg.querySelector("#fam-add").onclick = () => {
+      const addr = dlg.querySelector("#fam-email").value.trim().toLowerCase();
+      if (!addr || !addr.includes("@")) return;
+      if (allowedEmails.map(x => x.toLowerCase()).includes(addr)) { alert(addr + " already has access."); return; }
+      if (allowedEmails.length >= 6) { alert("Max 6 family members."); return; }
+      ref.update({ allowed_emails: firebase.firestore.FieldValue.arrayUnion(addr) })
+        .then(() => { allowedEmails = [...allowedEmails, addr]; scheduleSave(`${addr} added to family access`); familyDialog(); })
+        .catch(err2 => alert("Could not add: " + err2.message + " (is it a Google-sign-in email?)"));
+    };
+  }
+
+  // ---------- college data panel ----------
+  async function loadDataPanel(school, container) {
+    container.innerHTML = '<span style="color:var(--muted)">loading school data…</span>';
+    try {
+      if (!dataCache[school.name]) {
+        const r = await fetch(DATA_API + "/api/college?name=" + encodeURIComponent(school.name));
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "not found in dataset");
+        dataCache[school.name] = await r.json();
+      }
+      const d = dataCache[school.name];
+      const pct = v => v === "" || v == null ? "—" : Math.round(parseFloat(v) * 100) + "%";
+      const dollars = v => v === "" || v == null ? "—" : money(v);
+      container.innerHTML = `<table>
+        <tr><td>Merit to no-need freshmen</td><td><b>${pct(d.pct_no_need_merit)}</b> get <b>${dollars(d.avg_merit)}</b> avg</td></tr>
+        <tr><td>Sticker (in / out of state)</td><td><b>${dollars(d.coa_in)}</b> / <b>${dollars(d.coa_out)}</b></td></tr>
+        <tr><td>Need met (avg / fully)</td><td><b>${d.avg_pct_need_met || "—"}%</b> / <b>${d.pct_need_fully_met || "—"}%</b></td></tr>
+        <tr><td>Admit rate · SAT mid-50</td><td><b>${pct(d.admit_rate)}</b> · <b>${d.sat_25 || "—"}–${d.sat_75 || "—"}</b></td></tr>
+        <tr><td>Source</td><td>${esc(d.year)} Common Data Set · confidence ${esc(d.confidence)}${d.flags ? " · " + esc(d.flags) : ""}</td></tr>
+      </table>${d.notes ? `<div style="margin-top:6px;color:var(--muted)">${esc(d.notes)}</div>` : ""}`;
+    } catch (e) {
+      container.innerHTML = `<span style="color:var(--muted)">No dataset entry: ${esc(e.message)}. Ask your Claude to look it up live.</span>`;
+    }
+  }
+
+  // ---------- rows ----------
+  function schoolRow(s, budget, maxPrice) {
+    const est = s.npc_estimate ?? s.est_price ?? s.coa;
+    const pct = est ? Math.min(100, (est / maxPrice) * 100) : 0;
+    const budgetPct = Math.min(100, (budget / maxPrice) * 100);
+    const nearest = Object.entries(s.deadlines || {}).map(([k, v]) => [k, v, daysUntil(v)])
+      .filter(([, , d]) => d != null && d >= 0).sort((a, b) => a[2] - b[2])[0];
+    const isOpen = expanded.has(s.name);
+
+    const row = $(`<div class="row">
+      <div class="row-head" role="button" aria-expanded="${isOpen}">
+        <span class="name"><i style="background:${TIER_COLOR[s.tier] || "#66756e"}"></i>${esc(s.name)}</span>
+        <span class="chip ${esc(s.status)}">${esc(s.status.replace(/_/g, " "))}</span>
+        <span class="minibar"><span class="fill ${est > budget ? "over" : ""}" style="width:${pct}%"></span><span class="rule" style="left:${budgetPct}%"></span></span>
+        <span class="price">${kmoney(est)}</span>
+        <span class="when ${nearest && nearest[2] <= 45 ? "soon" : ""}">${nearest ? esc(nearest[0].replace(/_/g, " ")) + " " + esc(nearest[1].slice(5)) : ""}</span>
+      </div>
+    </div>`).firstElementChild;
+
+    row.querySelector(".row-head").onclick = () => { isOpen ? expanded.delete(s.name) : expanded.add(s.name); render(); };
+
+    if (isOpen) {
+      const body = $(`<div class="row-body">
+        <div class="money">
+          <span>sticker <b>${money(s.coa)}</b></span>
+          ${s.merit_rate != null ? `<span>merit rate <b>${Math.round(s.merit_rate * 100)}%</b></span>` : ""}
+          ${s.avg_merit ? `<span>avg award <b>${money(s.avg_merit)}</b></span>` : ""}
+          <span>${s.npc_estimate != null ? "NPC estimate" : "est. price"} <b>${money(est)}</b></span>
+        </div>
+        ${s.next_action ? `<div class="next">▸ ${esc(s.next_action)}</div>` : ""}
+        ${s.notes ? `<div class="notes-line">${esc(s.notes)}</div>` : ""}
+        <button class="subtle" data-data>▦ school data</button>
+        <div class="datapanel" hidden></div>
+      </div>`).firstElementChild;
+
+      const panel = body.querySelector(".datapanel");
+      body.querySelector("[data-data]").onclick = () => {
+        if (panel.hidden) { panel.hidden = false; loadDataPanel(s, panel); } else panel.hidden = true;
+      };
+
+      if (editMode) {
+        const c = $(`<div class="controls">
+            <button class="subtle" data-act="up" title="Move up">↑</button>
+            <button class="subtle" data-act="down" title="Move down">↓</button>
+            <select data-act="tier">${TIERS.map(([k, t]) => `<option value="${k}" ${s.tier === k ? "selected" : ""}>${t}</option>`).join("")}</select>
+            <select data-act="status">${STATUSES.map(x => `<option ${s.status === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+            <button class="subtle" data-act="edit">edit…</button>
+            <button class="subtle" data-act="todo">+ todo</button>
+            <button class="subtle" data-act="archive">archive</button>
+          </div>`).firstElementChild;
+        c.addEventListener("click", e => {
+          const act = e.target.dataset?.act;
+          if (act === "up") move(s, -1);
+          if (act === "down") move(s, +1);
+          if (act === "edit") schoolDialog(s);
+          if (act === "archive") { s.status = "dropped"; scheduleSave("Archived " + s.name + "."); }
+          if (act === "todo") {
+            const text = prompt("Todo for " + s.name + ":", s.next_action || "");
+            if (text) { state.todos.push({ id: uid(), text, done: false, school: s.name, due: "" }); scheduleSave(null); }
+          }
+        });
+        c.addEventListener("change", e => {
+          const act = e.target.dataset?.act;
+          if (act === "tier") { s.tier = e.target.value; scheduleSave(s.name + " moved to " + s.tier.replace(/_/g, " ") + "."); }
+          if (act === "status") { s.status = e.target.value; scheduleSave(s.name + " → " + s.status + "."); }
+        });
+        body.append(c);
+      }
+      row.append(body);
+    }
+    return row;
   }
 
   function move(school, dir) {
@@ -213,11 +465,53 @@
     scheduleSave(null);
   }
 
+  // ---------- map ----------
+  let mapsLoading = null;
+  function loadMaps() {
+    if (window.google?.maps?.Map) return Promise.resolve();
+    if (!mapsLoading) mapsLoading = new Promise((ok, bad) => {
+      window.__mapsReady = ok;
+      const s = document.createElement("script");
+      s.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDHX24gNfBlYZm7VuTBi7iL0QEo8p0yrPw&callback=__mapsReady";
+      s.async = true;
+      s.onerror = bad;
+      document.head.append(s);
+    });
+    return mapsLoading;
+  }
+  async function renderMap(schools) {
+    const el = document.getElementById("map");
+    if (!el) return;
+    try { await loadMaps(); } catch { el.closest("#map-panel")?.remove(); return; }
+    if (!document.getElementById("map")) return;
+    const pts = schools.filter(s => s.lat != null && s.lng != null);
+    const bounds = new google.maps.LatLngBounds();
+    const map = new google.maps.Map(el, { mapTypeControl: false, streetViewControl: false, fullscreenControl: true });
+    const info = new google.maps.InfoWindow();
+    for (const s of pts) {
+      const pos = { lat: +s.lat, lng: +s.lng };
+      bounds.extend(pos);
+      const marker = new google.maps.Marker({
+        map, position: pos, title: s.name,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: TIER_COLOR[s.tier] || "#66756e",
+                fillOpacity: 0.95, strokeColor: "#ffffff", strokeWeight: 2 },
+      });
+      marker.addListener("click", () => {
+        const est = s.npc_estimate ?? s.est_price ?? s.coa;
+        info.setContent(`<div style="font-family:sans-serif;font-size:13px"><b>${esc(s.name)}</b><br>` +
+          `${esc((s.tier || "").replace(/_/g, " "))} · ${esc(s.status)}<br>est. ${money(est)}/yr</div>`);
+        info.open(map, marker);
+      });
+    }
+    map.fitBounds(bounds, 40);
+    if (pts.length === 1) map.setZoom(9);
+  }
+
+  // ---------- render ----------
   function render() {
     if (!state) return;
     root.innerHTML = '<div class="wrap" id="app"></div>';
     const app = document.getElementById("app");
-    const $ = h => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content; };
     const budget = state.budget.yearly;
 
     app.append($(`
@@ -231,7 +525,8 @@
           <span>Updated <strong>${esc(state.updated)}</strong></span>
         </div>
         <div class="toolbar">
-          <button id="btn-edit">${editMode ? "Done editing" : "✎ Edit"}</button>
+          <button id="btn-edit" ${editMode ? 'class="primary"' : ""}>${editMode ? "Done editing" : "✎ Edit"}</button>
+          <button id="btn-family">⛨ Family</button>
           ${editMode ? '<button id="btn-add">+ Add school</button>' : ""}
           <span class="sync ${syncStatus === "live" ? "live" : syncStatus === "saving" ? "saving" : "error"}">${
             syncStatus === "live" ? "synced live" : syncStatus === "saving" ? "saving…" : esc(syncStatus)}</span>
@@ -239,88 +534,23 @@
         </div>
       </header>`));
 
-    const urgent = [];
-    for (const s of state.schools) {
-      if (s.status === "dropped") continue;
-      for (const [label, date] of Object.entries(s.deadlines || {})) {
-        const d = daysUntil(date);
-        if (d != null && d >= 0 && d <= 45) urgent.push({ school: s.name, what: label.replace(/_/g, " "), date, days: d });
-      }
-    }
-    for (const t of state.todos || []) {
-      const d = daysUntil(t.due);
-      if (!t.done && d != null && d <= 7) urgent.push({ school: t.school || "todo", what: t.text, date: t.due, days: d });
-    }
-    urgent.sort((a, b) => a.days - b.days);
-    if (urgent.length) app.append($(`
-      <div class="attention"><h2>Needs attention</h2>
-        <ul>${urgent.map(u => `<li><b>${esc(u.school)}</b> — ${esc(u.what)} <span class="due">${esc(u.date)}${u.days >= 0 ? ` (${u.days}d)` : " (overdue)"}</span></li>`).join("")}</ul>
-      </div>`));
+    app.append(insightsBlock());
 
     const active = state.schools.filter(s => s.status !== "dropped");
     if (active.some(s => s.lat != null && s.lng != null)) {
-      app.append($(`<div id="map-panel"><div id="map"></div><div id="map-legend">
-        <span><i style="background:#2e7d4f"></i>lock</span>
-        <span><i style="background:#1e5b4f"></i>conditional target</span>
-        <span><i style="background:#b7791f"></i>merit lottery</span>
-        <span><i style="background:#b54a35"></i>long shot</span></div></div>`));
+      app.append($(`<details id="map-panel" open><summary>Map</summary><div id="map"></div><div id="map-legend">
+        ${TIERS.map(([k, t]) => `<span><i style="background:${TIER_COLOR[k]}"></i>${t.toLowerCase()}</span>`).join("")}
+      </div></details>`));
       queueMicrotask(() => renderMap(active));
     }
+
     const maxPrice = Math.max(budget * 1.4, ...active.map(s => s.coa || 0), 1);
     for (const [key, title, blurb] of TIERS) {
       const schools = active.filter(s => s.tier === key);
       if (!schools.length) continue;
-      const sec = $(`<section class="tier"><h2>${title}</h2><p>${blurb}</p></section>`).firstElementChild;
-      schools.forEach(s => {
-        const est = s.npc_estimate ?? s.est_price ?? s.coa;
-        const pct = est ? Math.min(100, (est / maxPrice) * 100) : 0;
-        const budgetPct = Math.min(100, (budget / maxPrice) * 100);
-        const nearest = Object.entries(s.deadlines || {}).map(([k, v]) => [k, v, daysUntil(v)])
-          .filter(([, , d]) => d != null && d >= 0).sort((a, b) => a[2] - b[2])[0];
-        const card = $(`
-          <article class="school">
-            <div class="row1"><h3>${esc(s.name)}</h3><span class="chip ${esc(s.status)}">${esc(s.status.replace(/_/g, " "))}</span></div>
-            <div class="bar"><div class="fill ${est > budget ? "over" : ""}" style="width:${pct}%"></div><div class="budget-rule" style="left:${budgetPct}%"></div></div>
-            <div class="money">
-              <span>sticker <b>${money(s.coa)}</b></span>
-              ${s.merit_rate != null ? `<span>merit rate <b>${Math.round(s.merit_rate * 100)}%</b></span>` : ""}
-              ${s.avg_merit ? `<span>avg award <b>${money(s.avg_merit)}</b></span>` : ""}
-              <span>${s.npc_estimate != null ? "NPC estimate" : "est. price"} <b>${money(est)}</b></span>
-            </div>
-            ${(s.next_action || nearest) ? `<div class="meta"><span class="next">▸ ${esc(s.next_action || "")}</span>
-              ${nearest ? `<span class="deadline ${nearest[2] <= 45 ? "soon" : ""}">${esc(nearest[0].replace(/_/g, " "))} ${esc(nearest[1])}</span>` : ""}</div>` : ""}
-            ${s.notes ? `<div class="notes-line">${esc(s.notes)}</div>` : ""}
-          </article>`).firstElementChild;
-        if (editMode) {
-          const c = $(`<div class="controls">
-              <button class="subtle" data-act="up" title="Move up">↑</button>
-              <button class="subtle" data-act="down" title="Move down">↓</button>
-              <select data-act="tier" title="Money tier">${TIERS.map(([k, t]) => `<option value="${k}" ${s.tier === k ? "selected" : ""}>${t}</option>`).join("")}</select>
-              <select data-act="status" title="Status">${STATUSES.map(x => `<option ${s.status === x ? "selected" : ""}>${x}</option>`).join("")}</select>
-              <button class="subtle" data-act="edit">edit…</button>
-              <button class="subtle" data-act="todo">+ todo</button>
-              <button class="subtle" data-act="archive">archive</button>
-            </div>`).firstElementChild;
-          c.addEventListener("click", e => {
-            const act = e.target.dataset?.act;
-            if (act === "up") move(s, -1);
-            if (act === "down") move(s, +1);
-            if (act === "edit") schoolDialog(s);
-            if (act === "archive") { s.status = "dropped"; scheduleSave("Archived " + s.name + "."); }
-            if (act === "todo") {
-              const text = prompt("Todo for " + s.name + ":", s.next_action || "");
-              if (text) { state.todos.push({ id: uid(), text, done: false, school: s.name, due: "" }); scheduleSave(null); }
-            }
-          });
-          c.addEventListener("change", e => {
-            const act = e.target.dataset?.act;
-            if (act === "tier") { s.tier = e.target.value; scheduleSave(s.name + " moved to " + s.tier.replace(/_/g, " ") + "."); }
-            if (act === "status") { s.status = e.target.value; scheduleSave(s.name + " → " + s.status + "."); }
-          });
-          card.append(c);
-        }
-        sec.append(card);
-      });
+      const sec = $(`<section class="tier"><h2>${title} <span style="color:var(--muted);font-family:var(--sans);font-size:.85rem;font-weight:400">${schools.length}</span></h2><p class="blurb">${blurb}</p><div class="rows"></div></section>`).firstElementChild;
+      const rowsEl = sec.querySelector(".rows");
+      schools.forEach(s => rowsEl.append(schoolRow(s, budget, maxPrice)));
       app.append(sec);
     }
 
@@ -328,9 +558,8 @@
     if (archived.length) {
       const det = $(`<details class="archive"><summary>Archived (${archived.length})</summary></details>`).firstElementChild;
       archived.forEach(s => {
-        const card = $(`<article class="school archived-card"><div class="row1"><h3>${esc(s.name)}</h3>
-          <button class="subtle" data-restore>restore</button></div>
-          ${s.notes ? `<div class="notes-line">${esc(s.notes)}</div>` : ""}</article>`).firstElementChild;
+        const card = $(`<div class="row" style="background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:8px"><div class="row-head"><span class="name">${esc(s.name)}</span>
+          <span></span><span></span><span></span><button class="subtle" data-restore>restore</button></div></div>`).firstElementChild;
         card.querySelector("[data-restore]").onclick = () => { s.status = "researching"; scheduleSave("Restored " + s.name + "."); };
         det.append(card);
       });
@@ -360,110 +589,49 @@
     };
     app.append(todosBlock);
 
-    // Family access management — deliberately a human-only, in-page control:
-    // AI assistants (correctly) refuse to modify access, so the button is here.
-    if (editMode) {
-      const fam = $(`<div class="todos block"><h2>Family access</h2>
-        <p style="margin:0 0 8px;color:var(--muted);font-size:.85rem;max-width:65ch">
-          People who can see and edit this tracker — on this page and through their own
-          Claude via the Counseled connector. Adding family is done here, by you (max 6,
-          Google-sign-in emails).</p>
-        <ul id="fam-list"></ul>
-        <div class="addrow"><input class="inline" id="fam-email" type="email" placeholder="family-member@gmail.com"><button id="fam-add">Add family member</button></div>
-        </div>`).firstElementChild;
-      const ul = fam.querySelector("#fam-list");
-      for (const e of allowedEmails) {
-        const isSelf = e.toLowerCase() === (user?.email || "").toLowerCase();
-        const isOwner = e.toLowerCase() === ownerEmail.toLowerCase();
-        const li = $(`<li><span>${esc(e)}</span>
-          ${isOwner ? '<span class="who">owner</span>' : ""}${isSelf ? '<span class="who">you</span>' : ""}
-          ${!isSelf && !isOwner ? '<button class="subtle" data-rm title="Remove access">✕</button>' : ""}</li>`).firstElementChild;
-        const rm = li.querySelector("[data-rm]");
-        if (rm) rm.onclick = () => {
-          if (!confirm(`Remove ${e} from this tracker?`)) return;
-          // arrayRemove is atomic — no read-modify-write, can't clobber
-          // concurrent changes; mirror locally since we skip our own echoes
-          ref.update({ allowed_emails: firebase.firestore.FieldValue.arrayRemove(e) })
-            .then(() => { allowedEmails = allowedEmails.filter(x => x !== e); scheduleSave(`${e} removed from family access`); })
-            .catch(err2 => alert("Could not remove: " + err2.message));
-        };
-        ul.append(li);
-      }
-      fam.querySelector("#fam-add").onclick = () => {
-        const addr = fam.querySelector("#fam-email").value.trim().toLowerCase();
-        if (!addr || !addr.includes("@")) return;
-        if (allowedEmails.map(x => x.toLowerCase()).includes(addr)) { alert(addr + " already has access."); return; }
-        if (allowedEmails.length >= 6) { alert("Max 6 family members."); return; }
-        ref.update({ allowed_emails: firebase.firestore.FieldValue.arrayUnion(addr) })
-          .then(() => { allowedEmails = [...allowedEmails, addr]; scheduleSave(`${addr} added to family access`); })
-          .catch(err2 => alert("Could not add: " + err2.message + " (is it a Google-sign-in email?)"));
+    // ask-your-Claude capabilities
+    const PROMPTS = [
+      "Re-run our frontier analysis with my latest stats and update the tracker",
+      "What does the data say about [school]? Compare it to what's on our list",
+      "Research current-year merit scholarship deadlines for our targets and update the tracker",
+      "Add [school] to our list with the money data filled in",
+      "We visited [school] — log it in the journal and update the status",
+      "Which two schools on our list should we drop, and why?"
+    ];
+    const ask = $(`<div class="ask"><h2>Ask your Claude</h2>
+      <p>This tracker is connected: any family member's Claude can read the playbook, search the
+      310-school money dataset, look up any school, and update this page — with every change
+      journaled. Try one of these (tap to copy):</p>
+      <div class="prompts">${PROMPTS.map(p => `<div class="prompt"><span>${esc(p)}</span><button data-copy="${esc(p)}">copy</button></div>`).join("")}</div>
+      <div class="setup">Not set up yet? Add the connector in Claude → Settings → Connectors →
+      <code>${DATA_API}/mcp</code> and sign in with your family email. Details at <a href="/join">counseled.app/join</a>.</div>
+    </div>`).firstElementChild;
+    ask.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => {
+      navigator.clipboard.writeText(b.dataset.copy).then(() => { b.textContent = "copied!"; setTimeout(() => b.textContent = "copy", 1500); });
+    });
+    app.append(ask);
+
+    if (state.log?.length || editMode) {
+      const logBlock = $(`<div class="log"><h2>Journal</h2><ol></ol>
+        <div class="addrow"><input class="inline" id="log-text" placeholder="Add a journal entry…"><button id="log-add">Add</button></div></div>`).firstElementChild;
+      const ol = logBlock.querySelector("ol");
+      (state.log || []).slice().reverse().forEach(e => ol.append($(`<li><time>${esc(e.date)}</time><span>${esc(e.entry)}</span></li>`)));
+      logBlock.querySelector("#log-add").onclick = () => {
+        const text = logBlock.querySelector("#log-text").value.trim();
+        if (text) scheduleSave(text);
       };
-      app.append(fam);
+      app.append(logBlock);
     }
 
-    const logBlock = $(`<div class="log"><h2>Journal</h2><ol></ol>
-      <div class="addrow"><input class="inline" id="log-text" placeholder="Add a journal entry…"><button id="log-add">Add</button></div></div>`).firstElementChild;
-    const ol = logBlock.querySelector("ol");
-    (state.log || []).slice().reverse().forEach(e => ol.append($(`<li><time>${esc(e.date)}</time><span>${esc(e.entry)}</span></li>`)));
-    logBlock.querySelector("#log-add").onclick = () => {
-      const text = logBlock.querySelector("#log-text").value.trim();
-      if (text) scheduleSave(text);
-    };
-    app.append(logBlock);
-
-    app.append($(`<footer>Estimates come from Common Data Set filings (1–2 years old) and net price calculators;
-      none are offers. The dark rule on each bar marks the family budget of ${money(budget)}/yr. Edits save
-      automatically and sync to everyone — including Claude, which reads and updates this same page.</footer>`));
+    app.append($(`<footer>Estimates come from Common Data Set filings and federal IPEDS data (1–2 years
+      old) plus net price calculators; none are offers. The dark rule on each bar marks the family budget
+      of ${money(budget)}/yr. Edits save automatically and sync to everyone — including your Claude.</footer>`));
 
     document.getElementById("btn-edit").onclick = () => { editMode = !editMode; render(); };
+    document.getElementById("btn-family").onclick = familyDialog;
     document.getElementById("btn-signout").onclick = () => auth.signOut().then(() => location.reload());
     const addBtn = document.getElementById("btn-add");
     if (addBtn) addBtn.onclick = () => schoolDialog(null);
-  }
-
-  // ---- map (loads Google Maps JS on demand once any school has coords) ----
-  const TIER_COLOR = { lock: "#2e7d4f", conditional_target: "#1e5b4f", merit_lottery: "#b7791f", long_shot: "#b54a35" };
-  let mapsLoading = null;
-  function loadMaps() {
-    if (window.google?.maps?.Map) return Promise.resolve();
-    if (!mapsLoading) mapsLoading = new Promise((ok, bad) => {
-      // classic callback bootstrap: fires only once the API is fully
-      // initialized (with loading=async, script onload precedes usability)
-      window.__mapsReady = ok;
-      const s = document.createElement("script");
-      s.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDHX24gNfBlYZm7VuTBi7iL0QEo8p0yrPw&callback=__mapsReady";
-      s.async = true;
-      s.onerror = bad;
-      document.head.append(s);
-    });
-    return mapsLoading;
-  }
-  async function renderMap(schools) {
-    const el = document.getElementById("map");
-    if (!el) return;
-    try { await loadMaps(); } catch { el.parentElement.remove(); return; }
-    if (!document.getElementById("map")) return; // re-rendered meanwhile
-    const pts = schools.filter(s => s.lat != null && s.lng != null);
-    const bounds = new google.maps.LatLngBounds();
-    const map = new google.maps.Map(el, { mapTypeControl: false, streetViewControl: false, fullscreenControl: true });
-    const info = new google.maps.InfoWindow();
-    for (const s of pts) {
-      const pos = { lat: +s.lat, lng: +s.lng };
-      bounds.extend(pos);
-      const marker = new google.maps.Marker({
-        map, position: pos, title: s.name,
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: TIER_COLOR[s.tier] || "#66756e",
-                fillOpacity: 0.95, strokeColor: "#ffffff", strokeWeight: 2 },
-      });
-      marker.addListener("click", () => {
-        const est = s.npc_estimate ?? s.est_price ?? s.coa;
-        info.setContent(`<div style="font-family:sans-serif;font-size:13px"><b>${esc(s.name)}</b><br>` +
-          `${esc((s.tier || "").replace(/_/g, " "))} · ${esc(s.status)}<br>est. ${money(est)}/yr</div>`);
-        info.open(map, marker);
-      });
-    }
-    map.fitBounds(bounds, 40);
-    if (pts.length === 1) map.setZoom(9);
   }
 
   auth.onAuthStateChanged(u => {
@@ -479,7 +647,7 @@
       syncStatus = "live";
       render();
     }, err => gate(err.code === "permission-denied"
-      ? "This tracker is private to the family. Signed in as " + (u.email || "unknown") + " — ask Dan to add this email."
+      ? "This tracker is private to the family. Signed in as " + (u.email || "unknown") + " — ask the tracker owner to add this email (Family button on their page)."
       : "Error: " + err.message, false));
   });
 })();

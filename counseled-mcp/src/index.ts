@@ -19,6 +19,7 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { provider, handleConsent } from "./oauth.js";
 import { buildServer } from "./tools.js";
+import { findCollege, collegeCount } from "./college-data.js";
 import { mountBilling, billingEnabled } from "./billing.js";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -40,6 +41,24 @@ app.use(
 );
 
 app.post("/oauth/consent", handleConsent);
+
+// Public read-only college-data API for the tracker page's data panels.
+// The dataset is public information (CDS/IPEDS extracts); no auth needed.
+const API_ORIGINS = new Set([
+  "https://counseled.app",
+  "https://collegebot-dev-52f43.web.app",
+  "http://localhost:5001",
+]);
+app.get("/api/college", (req, res) => {
+  const origin = String(req.headers.origin || "");
+  if (API_ORIGINS.has(origin)) res.set("Access-Control-Allow-Origin", origin);
+  const name = String(req.query.name || "").trim();
+  if (!name) return res.status(400).json({ error: "name required" });
+  const row = findCollege(name);
+  if (!row) return res.status(404).json({ error: `no college matching '${name}' in the ${collegeCount()} -school dataset` });
+  res.set("Cache-Control", "public, max-age=86400");
+  return res.json(row);
+});
 
 const bearer = requireBearerAuth({
   verifier: provider,

@@ -51,6 +51,7 @@ try {
   console.error("college data not loaded:", e);
 }
 export const collegeDataLoaded = () => COLLEGES.length > 0;
+export const collegeCount = () => COLLEGES.length;
 
 // ---- tier logic (mirror of shortlist.py) ----
 const MERIT_RATE_TARGET = 0.15;

@@ -302,3 +302,16 @@ minted = re.findall(r"counseled-[0-9a-f]{4}-[0-9a-f]{4}", json.dumps(r))
 check("admin mints 2 codes", len(set(minted)) == 2, json.dumps(r)[:300])
 
 print(f"\n{PASS} checks passed FINAL total.")
+
+# --- 13. capability discovery: server instructions + public data API ---
+st, r = mcp("initialize", {"protocolVersion": "2025-06-18",
+    "capabilities": {}, "clientInfo": {"name": "e2e4", "version": "0"}}, tid=60)
+instr = r.get("result", {}).get("instructions", "")
+check("initialize carries capability instructions", "Counseled" in instr and "get_playbook" in instr, instr[:200])
+st, body, hdrs = http("GET", BASE + "/api/college?name=Tulane", headers={"Origin": "https://counseled.app"})
+check("public /api/college serves data", st == 200 and "Tulane University" in body, body[:200])
+check("CORS header for counseled.app", hdrs.get("Access-Control-Allow-Origin") == "https://counseled.app", str(hdrs)[:200])
+st, body, _ = http("GET", BASE + "/api/college?name=Hogwarts")
+check("unknown school 404s cleanly", st == 404, body[:200])
+
+print(f"\n{PASS} checks passed GRAND FINAL total.")
