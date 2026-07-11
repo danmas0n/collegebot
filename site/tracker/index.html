@@ -173,6 +173,9 @@
   let editMode = false, syncStatus = "connecting", saveTimer = null, user = null;
   const expanded = new Set();
   const dataCache = {};
+  let customPages = null;          // [{page_id,title,version,updated}] lazily loaded
+  let viewingPage = new URLSearchParams(location.search).get("p") || null;
+  let pagePort = null;             // MessageChannel port to the sandboxed page
 
   const root = document.getElementById("root");
   const money = n => n == null || n === "" ? "—" : "$" + Math.round(+n).toLocaleString();
@@ -507,8 +510,74 @@
     if (pts.length === 1) map.setZoom(9);
   }
 
+  // ---------- custom pages (sandboxed freeform views) ----------
+  async function loadPages() {
+    if (customPages !== null) return customPages;
+    try {
+      const snap = await db.collection("pages").where("tracker_id", "==", TRACKER_ID).get();
+      customPages = snap.docs.map(d => ({ page_id: d.id, title: d.data().title, updated: d.data().updated, version: d.data().version }));
+    } catch { customPages = []; }
+    return customPages;
+  }
+
+  function openPageViewer(pageId, title) {
+    // capability nonce rides the URL fragment; the served bootstrap captures
+    // and clears it before page code runs, then proves itself with it
+    const k = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
+    const url = new URL(location.href);
+    url.searchParams.set("p", pageId);
+    history.replaceState(null, "", url);
+    viewingPage = pageId;
+    pagePort = null;
+
+    root.innerHTML = '<div class="wrap" id="app"></div>';
+    const app = document.getElementById("app");
+    app.append($(`<header>
+      <div class="toolbar" style="margin:0">
+        <button id="pg-back">← Back to tracker</button>
+        <span style="font-family:var(--serif);font-weight:600">${esc(title || "Custom page")}</span>
+        <span class="sync live" style="margin-left:auto">live data</span>
+      </div></header>`));
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.style.cssText = "width:100%;height:calc(100vh - 130px);border:1px solid var(--line);border-radius:8px;background:#fff";
+    frame.src = DATA_API + "/p/" + encodeURIComponent(pageId) + "#k=" + k;
+    app.append(frame);
+
+    const onMsg = ev => {
+      if (ev.source !== frame.contentWindow) return;
+      if (!ev.data || ev.data.type !== "counseled-ready" || ev.data.k !== k) return;
+      const ch = new MessageChannel();
+      pagePort = ch.port1;
+      frame.contentWindow.postMessage({ type: "counseled-port" }, "*", [ch.port2]);
+      pagePort.postMessage({ type: "state", state });
+    };
+    window.addEventListener("message", onMsg);
+    document.getElementById("pg-back").onclick = () => {
+      window.removeEventListener("message", onMsg);
+      pagePort = null; viewingPage = null;
+      const u = new URL(location.href); u.searchParams.delete("p"); history.replaceState(null, "", u);
+      render();
+    };
+  }
+
   // ---------- render ----------
   function render() {
+    if (viewingPage && state) {
+      // live updates flow to an open page; full re-render stays suspended
+      if (pagePort) pagePort.postMessage({ type: "state", state });
+      if (!document.getElementById("pg-back")) {
+        loadPages().then(pages => {
+          const p = pages.find(x => x.page_id === viewingPage);
+          openPageViewer(viewingPage, p ? p.title : "Custom page");
+        });
+      }
+      return;
+    }
+    renderMain();
+  }
+
+  function renderMain() {
     if (!state) return;
     root.innerHTML = '<div class="wrap" id="app"></div>';
     const app = document.getElementById("app");
@@ -589,12 +658,27 @@
     };
     app.append(todosBlock);
 
+    // custom pages (freeform Claude-built views)
+    if (customPages === null) {
+      loadPages().then(() => { if (!viewingPage && customPages.length) render(); });
+    } else if (customPages.length) {
+      const pagesBlock = $(`<div class="todos block"><h2>Custom pages</h2><ul></ul></div>`).firstElementChild;
+      const pul = pagesBlock.querySelector("ul");
+      customPages.forEach(p => {
+        const li = $(`<li><span>${esc(p.title)}</span><span class="who">v${esc(p.version)}</span>
+          <span class="due2">${esc(p.updated || "")}</span><button data-open>open →</button></li>`).firstElementChild;
+        li.querySelector("[data-open]").onclick = () => openPageViewer(p.page_id, p.title);
+        pul.append(li);
+      });
+      app.append(pagesBlock);
+    }
+
     // ask-your-Claude capabilities
     const PROMPTS = [
       "Re-run our frontier analysis with my latest stats and update the tracker",
       "What does the data say about [school]? Compare it to what's on our list",
       "Research current-year merit scholarship deadlines for our targets and update the tracker",
-      "Add [school] to our list with the money data filled in",
+      "Build us a custom page that visualizes [cost vs. selectivity / our decision timeline / anything]",
       "We visited [school] — log it in the journal and update the status",
       "Which two schools on our list should we drop, and why?"
     ];

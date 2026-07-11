@@ -68,6 +68,17 @@ exist. Maintain them on Claude's side; families won't type coordinates.
   remove a member, point them to the tracker page → Edit → Family access —
   a by-hand control, consistent with the rule that assistants never modify
   access permissions.
+- **Freeform custom pages (connector only):** when the family wants a view
+  the tracker doesn't offer — comparison matrices, decision grids, cost
+  projections, essay boards, anything — design one with `create_page` and
+  iterate with `get_page`/`update_page`. Pages are body-content-only HTML,
+  everything inlined (the sandbox blocks ALL external network, iframes,
+  objects, and outbound forms; 400KB max). Never hardcode family data into
+  the page: it receives live tracker state read-only via
+  `Counseled.ready(state => render(state))` and re-renders with
+  `Counseled.onUpdate(state => render(state))`. Match the tracker's calm
+  aesthetic (system fonts, #1e5b4f accent on #f6f7f5) unless asked
+  otherwise, and journal what you built.
 - **Live mode via service account (maintainer fallback, Claude Code only):**
   same Firestore documents through `scripts/sync_tracker.py` (pull → merge →
   push). Append a journal entry crediting "Claude" on every push. Add family

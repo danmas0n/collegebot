@@ -20,6 +20,7 @@ import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middlew
 import { provider, handleConsent } from "./oauth.js";
 import { buildServer } from "./tools.js";
 import { findCollege, collegeCount } from "./college-data.js";
+import { mountPages } from "./pages.js";
 import { mountBilling, billingEnabled } from "./billing.js";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -41,6 +42,7 @@ app.use(
 );
 
 app.post("/oauth/consent", handleConsent);
+mountPages(app);
 
 // Public read-only college-data API for the tracker page's data panels.
 // The dataset is public information (CDS/IPEDS extracts); no auth needed.

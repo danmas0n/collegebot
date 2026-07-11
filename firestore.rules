@@ -144,6 +144,15 @@ service cloud.firestore {
     // only — AI assistants refuse to modify access controls). Guardrails:
     // 1-6 members, you can't remove yourself, the owner can't be removed,
     // and owner_email itself is immutable from clients.
+    // Custom pages (freeform Claude-built views). Family members read page
+    // metadata/html from the tracker page; all writes go through the MCP
+    // server (admin SDK) which validates and sandboxes them.
+    match /pages/{pageId} {
+      allow read: if request.auth != null
+        && request.auth.token.email in
+           get(/databases/$(database)/documents/trackers/$(resource.data.tracker_id)).data.allowed_emails;
+    }
+
     match /trackers/{trackerId} {
       allow read: if request.auth != null
         && request.auth.token.email in resource.data.allowed_emails;

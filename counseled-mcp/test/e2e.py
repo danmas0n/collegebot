@@ -315,3 +315,32 @@ st, body, _ = http("GET", BASE + "/api/college?name=Hogwarts")
 check("unknown school 404s cleanly", st == 404, body[:200])
 
 print(f"\n{PASS} checks passed GRAND FINAL total.")
+
+# --- 14. freeform pages: create, sandbox-serve, lint, iterate ---
+PAGE_HTML = "<style>h1{color:#1e5b4f}</style><h1>Cost matrix</h1><script>Counseled.ready(s => { document.querySelector('h1').textContent = s.student.name + ' has ' + s.schools.length + ' schools'; });</script>"
+st, r = mcp("tools/call", {"name": "create_page", "arguments":
+    {"tracker_id": "testfam", "title": "Cost matrix", "html": PAGE_HTML}}, tid=70)
+body_txt = json.dumps(r)
+check("create_page succeeds", "page_id pg_" in body_txt, body_txt[:300])
+page_id = re.search(r"pg_[A-Za-z0-9_-]+", body_txt).group(0)
+
+st, body, hdrs = http("GET", BASE + "/p/" + page_id)
+check("page served with strict CSP", st == 200 and "connect-src 'none'" in hdrs.get("Content-Security-Policy", ""), str(hdrs)[:300])
+check("page wraps bootstrap + content", "counseled-ready" in body and "Cost matrix" in body, body[:200])
+check("frame-ancestors pins counseled.app", "frame-ancestors https://counseled.app" in hdrs.get("Content-Security-Policy", ""))
+
+st, r = mcp("tools/call", {"name": "create_page", "arguments":
+    {"tracker_id": "testfam", "title": "Evil", "html": "<iframe src='https://evil.example'></iframe>"}}, tid=71)
+check("iframe in page rejected at creation", "forbidden construct" in json.dumps(r), json.dumps(r)[:200])
+
+st, r = mcp("tools/call", {"name": "update_page", "arguments":
+    {"page_id": page_id, "html": PAGE_HTML + "<p>v2</p>", "session_note": "e2e iterate"}}, tid=72)
+check("update_page bumps version", "v2" in json.dumps(r), json.dumps(r)[:200])
+st, r = mcp("tools/call", {"name": "list_pages", "arguments": {"tracker_id": "testfam"}}, tid=73)
+check("list_pages shows the page", "Cost matrix" in json.dumps(r), json.dumps(r)[:200])
+st, r = mcp2("tools/call", {"name": "get_page", "arguments": {"page_id": page_id}}, tid=74)
+check("other family's member cannot read the page", "not accessible" in json.dumps(r), json.dumps(r)[:200])
+st, body, _ = http("GET", BASE + "/p/pg_doesnotexist")
+check("unknown page 404s", st == 404)
+
+print(f"\n{PASS} checks passed ABSOLUTE FINAL total.")

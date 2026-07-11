@@ -8,6 +8,7 @@ import { db, trackersForEmail, trackerForEmail, isAdmin } from "./firestore.js";
 import { randomBytes } from "node:crypto";
 import { getEntitlement, setEntitlement, writesAllowed } from "./entitlements.js";
 import { searchColleges, findCollege, playbook, collegeDataLoaded } from "./college-data.js";
+import { validatePageHtml, newPageId, pagesForTracker, MAX_PAGES_PER_TRACKER } from "./pages.js";
 
 const MAX_FAMILY_MEMBERS = 6;
 
@@ -35,6 +36,7 @@ When the user first engages (or asks what you can do), briefly announce your cap
 2. School lookups: the money data on any school in the dataset (get_college).
 3. The family tracker: read and update their live shared page at counseled.app/tracker (list_trackers, get_tracker, update_tracker) — every change you make is journaled with provenance and appears instantly for the whole family.
 4. New families: create a tracker (create_tracker) using their subscription or an invite code.
+5. Freeform pages: when the family wants a visualization or tracking view the main tracker doesn't offer, BUILD IT — design a custom page (create_page / update_page) and it appears in their tracker's "Custom pages" section. Pages are body-content-only HTML with everything inlined (external network is blocked by CSP; no iframes/objects). At view time the page receives the live tracker state read-only: call Counseled.ready(state => { ...render... }) and Counseled.onUpdate(state => { ...re-render... }). Offer this proactively when a family's question suggests a bespoke view (comparison matrices, decision grids, timelines, cost projections, essay boards).
 
 Ground rules: read get_playbook before giving college-money advice. Read get_tracker before writing. Never delete schools (archive via status "dropped") and never remove journal entries. Access management is human-only: to add or remove family members, direct the user to the Family button on their tracker page — do not attempt it yourself.`;
 
@@ -219,6 +221,107 @@ export async function buildServer(email: string): Promise<McpServer> {
       }
       await setEntitlement(email, { status: "active", source: "invite" });
       return created(trackerId, student_name);
+    }
+  );
+
+  server.registerTool(
+    "create_page",
+    {
+      title: "Create a custom page for the family",
+      description:
+        "Build a freeform visualization or tracking view as a custom page in the family's tracker (appears under 'Custom pages'). html is BODY CONTENT ONLY (no doctype/html shell) with ALL CSS/JS inlined — the page runs in a strict sandbox: no external network, no iframes/objects/forms-out, max 400KB. It receives the live tracker state READ-ONLY via Counseled.ready(state => {...}) and Counseled.onUpdate(state => {...}) — always use these rather than hardcoding data, so the page stays current as the tracker changes. Design well: match the tracker's calm aesthetic (system fonts, #1e5b4f accent, #f6f7f5 ground) unless asked otherwise.",
+      inputSchema: {
+        tracker_id: z.string(),
+        title: z.string().max(80).describe("Short human title, e.g. 'Cost vs. selectivity matrix'"),
+        html: z.string().describe("Body-content HTML with inline <style>/<script>"),
+      },
+    },
+    async ({ tracker_id, title, html }) => {
+      const t = await trackerForEmail(email, tracker_id);
+      if (!t) return err(`No tracker '${tracker_id}' accessible to ${email}.`);
+      const w = await writesAllowed(t as any);
+      if (!w.ok) return err(w.why!);
+      const bad = validatePageHtml(html);
+      if (bad) return err(bad);
+      const existing = await pagesForTracker(tracker_id);
+      if (existing.length >= MAX_PAGES_PER_TRACKER) return err(`Tracker already has ${MAX_PAGES_PER_TRACKER} pages — delete or update one instead.`);
+      const pageId = newPageId();
+      const today = new Date().toISOString().slice(0, 10);
+      await db.collection("pages").doc(pageId).set({
+        tracker_id, title, html, created_by: email, version: 1, created: today, updated: today,
+      });
+      const state = t.state;
+      state.log.push({ date: today, entry: `Created custom page '${title}' (Claude, via ${email})` });
+      await t.ref.set({ state }, { merge: true });
+      return text(
+        `Created page '${title}' (page_id ${pageId}, v1). The family sees it in the Custom pages section of ` +
+        `https://counseled.app/tracker/?t=${tracker_id} — or directly at https://counseled.app/tracker/?t=${tracker_id}&p=${pageId}. ` +
+        `It renders with live tracker state; use update_page to iterate.`
+      );
+    }
+  );
+
+  server.registerTool(
+    "update_page",
+    {
+      title: "Update a custom page",
+      description:
+        "Replace a custom page's html (and optionally title). Same sandbox rules as create_page. Use get_page first to read the current version when iterating on feedback.",
+      inputSchema: {
+        page_id: z.string(),
+        html: z.string(),
+        title: z.string().max(80).optional(),
+        session_note: z.string().describe("One sentence on what changed, for the family journal"),
+      },
+    },
+    async ({ page_id, html, title, session_note }) => {
+      const doc = await db.collection("pages").doc(page_id).get();
+      if (!doc.exists) return err(`No page '${page_id}'.`);
+      const page = doc.data()!;
+      const t = await trackerForEmail(email, page.tracker_id);
+      if (!t) return err(`Page '${page_id}' belongs to a tracker not accessible to ${email}.`);
+      const w = await writesAllowed(t as any);
+      if (!w.ok) return err(w.why!);
+      const bad = validatePageHtml(html);
+      if (bad) return err(bad);
+      const today = new Date().toISOString().slice(0, 10);
+      await doc.ref.update({ html, ...(title ? { title } : {}), version: (page.version ?? 1) + 1, updated: today });
+      const state = t.state;
+      state.log.push({ date: today, entry: `${session_note} — page '${title || page.title}' v${(page.version ?? 1) + 1} (Claude, via ${email})` });
+      await t.ref.set({ state }, { merge: true });
+      return text(`Updated page '${title || page.title}' to v${(page.version ?? 1) + 1}. Open tabs pick it up on next view.`);
+    }
+  );
+
+  server.registerTool(
+    "list_pages",
+    {
+      title: "List the family's custom pages",
+      description: "List custom pages on a tracker (id, title, version, dates). Use get_page to read one's html.",
+      inputSchema: { tracker_id: z.string() },
+    },
+    async ({ tracker_id }) => {
+      const t = await trackerForEmail(email, tracker_id);
+      if (!t) return err(`No tracker '${tracker_id}' accessible to ${email}.`);
+      const pages = await pagesForTracker(tracker_id);
+      return text(pages.length ? JSON.stringify(pages, null, 1) : "No custom pages yet — offer to build one with create_page.");
+    }
+  );
+
+  server.registerTool(
+    "get_page",
+    {
+      title: "Read a custom page's html",
+      description: "Fetch a custom page (metadata + html) so you can iterate on it with update_page.",
+      inputSchema: { page_id: z.string() },
+    },
+    async ({ page_id }) => {
+      const doc = await db.collection("pages").doc(page_id).get();
+      if (!doc.exists) return err(`No page '${page_id}'.`);
+      const page = doc.data()!;
+      const t = await trackerForEmail(email, page.tracker_id);
+      if (!t) return err(`Page '${page_id}' belongs to a tracker not accessible to ${email}.`);
+      return text(JSON.stringify(page, null, 1));
     }
   );
 
