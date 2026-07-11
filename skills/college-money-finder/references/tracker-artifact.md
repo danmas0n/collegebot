@@ -23,6 +23,7 @@ One JSON object in `<script type="application/json" id="tracker-state">`:
      "status": "researching|visiting|applying|applied|admitted|denied|committed|dropped",
      "coa": 0, "merit_rate": 0.0, "avg_merit": 0, "est_price": 0,
      "npc_run": false, "npc_estimate": null,
+     "lat": null, "lng": null,
      "deadlines": {"merit_priority": "", "ea": "", "rd": ""},
      "next_action": "", "notes": ""}
   ],
@@ -34,6 +35,11 @@ One JSON object in `<script type="application/json" id="tracker-state">`:
 Array order within a tier is the family's chosen order — preserve it.
 `status: "dropped"` means archived (the page shows it in a collapsed
 section with a restore button); never delete school rows.
+
+Always include `lat`/`lng` (approximate main-campus coordinates — you know
+them; no geocoding call needed) when adding a school: the live tracker page
+renders a map of the list, color-coded by money tier, once coordinates
+exist. Maintain them on Claude's side; families won't type coordinates.
 
 ## The sync loop (how edits flow both ways)
 

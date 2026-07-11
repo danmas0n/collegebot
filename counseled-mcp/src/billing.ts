@@ -20,12 +20,13 @@ import Stripe from "stripe";
 import { setEntitlement, entitlementByStripeCustomer } from "./entitlements.js";
 
 const KEY = process.env.STRIPE_SECRET_KEY;
-const PRICE = process.env.STRIPE_PRICE_ID;
+const PRICE_YEARLY = process.env.STRIPE_PRICE_YEARLY || process.env.STRIPE_PRICE_ID;
+const PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY;
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:8787";
 
 const stripe = KEY ? new Stripe(KEY) : null;
-export const billingEnabled = Boolean(stripe && PRICE && WEBHOOK_SECRET);
+export const billingEnabled = Boolean(stripe && (PRICE_YEARLY || PRICE_MONTHLY) && WEBHOOK_SECRET);
 
 export function mountBilling(app: Express) {
   // Raw body BEFORE express.json for signature verification — mount early.
@@ -33,11 +34,12 @@ export function mountBilling(app: Express) {
 
   app.get("/join", (_req, res) => res.type("html").send(joinPage()));
 
-  app.post("/join/checkout", async (_req, res) => {
-    if (!stripe || !PRICE) return res.status(503).json({ error: "billing not configured — invite-only for now" });
+  app.post("/join/checkout", async (req, res) => {
+    const price = req.query.plan === "monthly" ? PRICE_MONTHLY : PRICE_YEARLY;
+    if (!stripe || !price) return res.status(503).json({ error: "billing not configured — invite-only for now" });
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      line_items: [{ price: PRICE, quantity: 1 }],
+      line_items: [{ price, quantity: 1 }],
       allow_promotion_codes: true,
       success_url: `${PUBLIC_URL}/join/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${PUBLIC_URL}/join`,
@@ -100,8 +102,13 @@ async function handleWebhook(req: Request, res: Response) {
 }
 
 function joinPage(): string {
+  const buttons = [
+    PRICE_YEARLY ? `<form method="POST" action="/join/checkout?plan=yearly"><button class="primary">$39/year — best value</button></form>` : "",
+    PRICE_MONTHLY ? `<form method="POST" action="/join/checkout?plan=monthly"><button>$3.99/month</button></form>` : "",
+  ].join("");
   const checkout = billingEnabled
-    ? `<form method="POST" action="/join/checkout"><button class="primary">Get started — $39/year</button></form>`
+    ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${buttons}</div>
+       <p class="muted">Monthly works well if you're joining mid-journey; cancel anytime either way.</p>`
     : `<p class="muted">Sign-ups are currently invite-only. Have an invite code? Skip to step 2 below and give Claude your code.</p>`;
   return page("Counseled — your family's college money HQ", `
     <h1>Counseled</h1>
@@ -142,7 +149,8 @@ function page(title: string, body: string): string {
   h2 { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 1.05rem; margin: 22px 0 6px; }
   p, li { font-size: .95rem; line-height: 1.5; }
   .muted { color: #66756e; font-size: .85rem; }
-  button.primary { font: inherit; padding: 10px 18px; border-radius: 6px; border: none; background: #1e5b4f; color: #fff; cursor: pointer; }
+  button { font: inherit; padding: 10px 18px; border-radius: 6px; border: 1px solid #e2e6e3; background: #fff; color: #22302c; cursor: pointer; }
+  button.primary { border: none; background: #1e5b4f; color: #fff; }
   code { background: #eef1ef; padding: 2px 6px; border-radius: 4px; font-size: .85em; word-break: break-all; }
 </style></head><body><div class="card">${body}</div></body></html>`;
 }

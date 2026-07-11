@@ -46,6 +46,10 @@
   .gate { max-width: 420px; margin: 12vh auto 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 28px; text-align: center; }
   .gate h1 { font-family: var(--serif); font-size: 1.3rem; margin: 0 0 8px; }
   .gate p { color: var(--muted); font-size: .9rem; }
+  #map-panel { background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  #map { height: 340px; }
+  #map-legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 14px; font-size: .78rem; color: var(--muted); }
+  #map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
   .attention { background: var(--card); border: 1px solid var(--warn); border-radius: 6px; padding: 12px 16px; }
   .attention h2 { margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
   .attention ul { margin: 0; padding-left: 18px; font-size: .92rem; }
@@ -252,6 +256,14 @@
       </div>`));
 
     const active = state.schools.filter(s => s.status !== "dropped");
+    if (active.some(s => s.lat != null && s.lng != null)) {
+      app.append($(`<div id="map-panel"><div id="map"></div><div id="map-legend">
+        <span><i style="background:#2e7d4f"></i>lock</span>
+        <span><i style="background:#1e5b4f"></i>conditional target</span>
+        <span><i style="background:#b7791f"></i>merit lottery</span>
+        <span><i style="background:#b54a35"></i>long shot</span></div></div>`));
+      queueMicrotask(() => renderMap(active));
+    }
     const maxPrice = Math.max(budget * 1.4, ...active.map(s => s.coa || 0), 1);
     for (const [key, title, blurb] of TIERS) {
       const schools = active.filter(s => s.tier === key);
@@ -364,6 +376,48 @@
     document.getElementById("btn-signout").onclick = () => auth.signOut().then(() => location.reload());
     const addBtn = document.getElementById("btn-add");
     if (addBtn) addBtn.onclick = () => schoolDialog(null);
+  }
+
+  // ---- map (loads Google Maps JS on demand once any school has coords) ----
+  const TIER_COLOR = { lock: "#2e7d4f", conditional_target: "#1e5b4f", merit_lottery: "#b7791f", long_shot: "#b54a35" };
+  let mapsLoading = null;
+  function loadMaps() {
+    if (window.google?.maps) return Promise.resolve();
+    if (!mapsLoading) mapsLoading = new Promise((ok, bad) => {
+      const s = document.createElement("script");
+      s.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyDHX24gNfBlYZm7VuTBi7iL0QEo8p0yrPw&loading=async";
+      s.async = true;
+      s.onload = ok; s.onerror = bad;
+      document.head.append(s);
+    });
+    return mapsLoading;
+  }
+  async function renderMap(schools) {
+    const el = document.getElementById("map");
+    if (!el) return;
+    try { await loadMaps(); } catch { el.parentElement.remove(); return; }
+    if (!document.getElementById("map")) return; // re-rendered meanwhile
+    const pts = schools.filter(s => s.lat != null && s.lng != null);
+    const bounds = new google.maps.LatLngBounds();
+    const map = new google.maps.Map(el, { mapTypeControl: false, streetViewControl: false, fullscreenControl: true });
+    const info = new google.maps.InfoWindow();
+    for (const s of pts) {
+      const pos = { lat: +s.lat, lng: +s.lng };
+      bounds.extend(pos);
+      const marker = new google.maps.Marker({
+        map, position: pos, title: s.name,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: TIER_COLOR[s.tier] || "#66756e",
+                fillOpacity: 0.95, strokeColor: "#ffffff", strokeWeight: 2 },
+      });
+      marker.addListener("click", () => {
+        const est = s.npc_estimate ?? s.est_price ?? s.coa;
+        info.setContent(`<div style="font-family:sans-serif;font-size:13px"><b>${esc(s.name)}</b><br>` +
+          `${esc((s.tier || "").replace(/_/g, " "))} · ${esc(s.status)}<br>est. ${money(est)}/yr</div>`);
+        info.open(map, marker);
+      });
+    }
+    map.fitBounds(bounds, 40);
+    if (pts.length === 1) map.setZoom(9);
   }
 
   auth.onAuthStateChanged(u => {
