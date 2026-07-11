@@ -8,6 +8,20 @@
     ],
     "rewrites": [
       {
+        "source": "/join",
+        "run": {
+          "serviceId": "counseled-mcp",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/join/**",
+        "run": {
+          "serviceId": "counseled-mcp",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

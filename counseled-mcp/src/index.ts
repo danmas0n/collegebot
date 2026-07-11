@@ -19,11 +19,13 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { provider, handleConsent } from "./oauth.js";
 import { buildServer } from "./tools.js";
+import { mountBilling, billingEnabled } from "./billing.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 const app = express();
+mountBilling(app); // mounts /stripe/webhook with raw body — must precede express.json
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
@@ -68,5 +70,5 @@ app.get("/mcp", bearer, (_req, res) => res.status(405).set("Allow", "POST").send
 app.delete("/mcp", bearer, (_req, res) => res.status(405).set("Allow", "POST").send());
 
 app.listen(PORT, () => {
-  console.log(`counseled-mcp listening on :${PORT} (public: ${PUBLIC_URL})`);
+  console.log(`counseled-mcp listening on :${PORT} (public: ${PUBLIC_URL}, billing: ${billingEnabled ? "on" : "invite-only"})`);
 });

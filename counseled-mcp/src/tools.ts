@@ -5,6 +5,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db, trackersForEmail, trackerForEmail } from "./firestore.js";
+import { getEntitlement, setEntitlement, writesAllowed } from "./entitlements.js";
+
+const MAX_FAMILY_MEMBERS = 6;
 
 const REQUIRED_STATE_KEYS = ["student", "budget", "schools", "todos", "log", "updated"] as const;
 
@@ -77,6 +80,8 @@ export function buildServer(email: string): McpServer {
     async ({ tracker_id, state, session_note }) => {
       const t = await trackerForEmail(email, tracker_id);
       if (!t) return err(`No tracker '${tracker_id}' accessible to ${email}.`);
+      const w = await writesAllowed(t as any);
+      if (!w.ok) return err(w.why!);
 
       for (const key of REQUIRED_STATE_KEYS) {
         if (!(key in state)) return err(`state is missing required key '${key}' — send the COMPLETE state object.`);
@@ -112,18 +117,46 @@ export function buildServer(email: string): McpServer {
     {
       title: "Create a family tracker",
       description:
-        "Create a new college tracker for this family on counseled.app. Requires an invite code from counseled.app. Use when the user has no tracker yet (list_trackers is empty) and provides an invite code. The signed-in user becomes the tracker's first member and can add family later.",
+        "Create a new college tracker for this family on counseled.app. Use when the user has no tracker yet (list_trackers is empty). Works if the user has an active counseled.app subscription (from counseled.app/join) OR provides an invite code. The signed-in user becomes the tracker's owner and can add family with add_family_member.",
       inputSchema: {
-        invite_code: z.string().describe("Invite code provided by counseled.app"),
         student_name: z.string().describe("The student's name, e.g. 'Alex Rivera'"),
         grad_year: z.number().int().nullable().describe("Expected high-school graduation year, or null if unknown"),
+        invite_code: z.string().optional().describe("Invite code, only needed if the family has no subscription"),
       },
     },
-    async ({ invite_code, student_name, grad_year }) => {
-      const codeRef = db.collection("invite_codes").doc(invite_code.trim().toLowerCase());
+    async ({ student_name, grad_year, invite_code }) => {
       const today = new Date().toISOString().slice(0, 10);
+      const makeId = () => {
+        const base = student_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "family";
+        return `${base}-${Math.random().toString(36).slice(2, 8)}`;
+      };
+      const newTracker = (id: string, source: string) => ({
+        allowed_emails: [email],
+        owner_email: email,
+        created: today,
+        source,
+        state: STARTER_STATE(student_name, grad_year, today),
+      });
 
-      // atomically claim the invite code, then create the tracker
+      // Path 1: active entitlement (Stripe subscriber or prior invite)
+      const ent = await getEntitlement(email);
+      if (ent?.status === "active") {
+        const id = makeId();
+        await db.collection("trackers").doc(id).set(newTracker(id, "entitlement"));
+        return created(id, student_name);
+      }
+      if (ent?.status === "lapsed") {
+        return err(`The subscription for ${email} has lapsed. Renew at https://counseled.app/join, or use a new invite code.`);
+      }
+
+      // Path 2: invite code (claimed atomically; also grants an entitlement)
+      if (!invite_code) {
+        return err(
+          `${email} has no active counseled.app subscription. Either subscribe at https://counseled.app/join ` +
+          `(then retry without a code), or provide an invite code.`
+        );
+      }
+      const codeRef = db.collection("invite_codes").doc(invite_code.trim().toLowerCase());
       let trackerId = "";
       try {
         trackerId = await db.runTransaction(async (tx) => {
@@ -132,29 +165,56 @@ export function buildServer(email: string): McpServer {
           const code = codeDoc.data()!;
           if (code.used_by) throw new Error("invite code already used");
           if (code.expires && code.expires < Date.now()) throw new Error("invite code expired");
-
-          const base = student_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "family";
-          const id = `${base}-${Math.random().toString(36).slice(2, 8)}`;
-          tx.set(db.collection("trackers").doc(id), {
-            allowed_emails: [email],
-            created: today,
-            invite_code: codeRef.id,
-            state: STARTER_STATE(student_name, grad_year, today),
-          });
+          const id = makeId();
+          tx.set(db.collection("trackers").doc(id), newTracker(id, "invite"));
           tx.update(codeRef, { used_by: email, used_at: today, tracker_id: id });
           return id;
         });
       } catch (e: any) {
         return err(`Could not create tracker: ${e.message}`);
       }
+      await setEntitlement(email, { status: "active", source: "invite" });
+      return created(trackerId, student_name);
+    }
+  );
+
+  server.registerTool(
+    "add_family_member",
+    {
+      title: "Add a family member to a tracker",
+      description:
+        "Give another family member (by Google email) access to a tracker this user belongs to. They can then use the web page AND connect their own Claude. Confirm the exact email with the user before calling — access grants should be deliberate.",
+      inputSchema: {
+        tracker_id: z.string(),
+        member_email: z.string().email().describe("The family member's Google account email"),
+      },
+    },
+    async ({ tracker_id, member_email }) => {
+      const t = await trackerForEmail(email, tracker_id);
+      if (!t) return err(`No tracker '${tracker_id}' accessible to ${email}.`);
+      const emails: string[] = t.allowed_emails;
+      const addr = member_email.trim().toLowerCase();
+      if (emails.map((e) => e.toLowerCase()).includes(addr)) return text(`${addr} already has access to '${tracker_id}'.`);
+      if (emails.length >= MAX_FAMILY_MEMBERS) return err(`Tracker '${tracker_id}' already has ${MAX_FAMILY_MEMBERS} members (the max).`);
+      await t.ref.update({ allowed_emails: [...emails, addr] });
+      const state = t.state;
+      state.log.push({ date: new Date().toISOString().slice(0, 10), entry: `${addr} added to the family (by ${email} via Claude).` });
+      await t.ref.set({ state }, { merge: true });
       return text(
-        `Created tracker '${trackerId}' for ${student_name}. ` +
-        `The family can view and edit it at https://counseled.app/tracker/?t=${trackerId} ` +
-        `(sign in as ${email}; add family members by asking counseled.app support for now). ` +
-        `Next: run the college-money-finder interview and fill the list with update_tracker.`
+        `${addr} now has access to '${tracker_id}': the page at https://counseled.app/tracker/?t=${tracker_id} ` +
+        `and their own Claude via the Counseled connector (they sign in with that Google account).`
       );
     }
   );
+
+  function created(id: string, studentName: string) {
+    return text(
+      `Created tracker '${id}' for ${studentName}. ` +
+      `The family page is https://counseled.app/tracker/?t=${id} (sign in with ${email}). ` +
+      `Add family members with add_family_member. ` +
+      `Next: run the college-money-finder interview and fill the list with update_tracker.`
+    );
+  }
 
   return server;
 }

@@ -13,7 +13,8 @@ sign-in via the existing Firebase Auth; state in the existing Firestore
 | `list_trackers` | Trackers the signed-in user's email can access |
 | `get_tracker` | Full state (student, budget, schools, todos, journal) |
 | `update_tracker` | Full-state write with merge guardrails: schools can never be deleted (archive via status `dropped`), journal is append-only, every write appends a provenance entry and bumps `baseline_version` |
-| `create_tracker` | Self-serve onboarding: creates a starter tracker for the signed-in user. Gated by a single-use, expiring **invite code** (mint with `scripts/mint-invite.py` at the repo root). |
+| `create_tracker` | Self-serve onboarding: creates a starter tracker for the signed-in user. Requires an active **entitlement** (Stripe subscriber via /join, or a redeemed invite) or a single-use expiring **invite code** (mint with `scripts/mint-invite.py`). Redeeming a code grants an entitlement, so families with multiple kids create more trackers without new codes. |
+| `add_family_member` | Any member grants another Google email access to their tracker (max 6) — works for both the web page and that person's own Claude. |
 
 Access model: any Google account may complete OAuth, but a token can only
 (a) touch trackers whose `allowed_emails` contains its email — same rule the
@@ -54,6 +55,26 @@ issuer metadata).
 - **claude.ai:** Settings → Connectors → Add custom connector → `<PUBLIC_URL>/mcp`
   → sign in with the Google account that's on your family's tracker.
 - **Claude Code:** `claude mcp add --transport http counseled <PUBLIC_URL>/mcp`
+
+## Billing (Stripe, optional)
+
+Without Stripe env vars the service runs **invite-only** (`/join` says so).
+To enable subscriptions ($39/yr family plan):
+
+1. Stripe dashboard → create a Product ("Counseled family plan") with a
+   yearly Price; copy the `price_...` id.
+2. Dashboard → Developers → Webhooks → Add endpoint:
+   `<PUBLIC_URL>/stripe/webhook`, events `customer.subscription.updated` +
+   `customer.subscription.deleted`; copy the `whsec_...` secret.
+3. Set env vars on the Cloud Run service:
+   `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`.
+
+Flow: `/join` → Checkout → `/join/success` writes an active entitlement for
+the checkout email → that user's Claude runs `create_tracker` with no code.
+Cancellation/lapse ⇒ entitlement `lapsed` ⇒ the family's trackers become
+**read-only** (data always readable/exportable; renewal re-enables writes).
+`counseled.app/join` is proxied to this service via a Firebase Hosting
+rewrite, so printed URLs can use the friendly domain.
 
 ## Notes
 
