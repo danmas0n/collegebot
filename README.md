@@ -42,6 +42,9 @@ provides the data, the methodology, and the family's shared state.
 - Refresh the dataset (annual, ~June): run the `cds-refresh` skill in Claude Code
 - Add a family member to a tracker:
   `python3 skills/college-money-finder/scripts/sync_tracker.py allow <id> --email <email>`
+- Invite a new family (they create their own tracker via their Claude):
+  `python3 scripts/mint-invite.py --note "for the Smiths"` → send them the
+  code + the skill zip + the connector URL
 
 ## License
 

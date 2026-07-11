@@ -13,9 +13,12 @@ sign-in via the existing Firebase Auth; state in the existing Firestore
 | `list_trackers` | Trackers the signed-in user's email can access |
 | `get_tracker` | Full state (student, budget, schools, todos, journal) |
 | `update_tracker` | Full-state write with merge guardrails: schools can never be deleted (archive via status `dropped`), journal is append-only, every write appends a provenance entry and bumps `baseline_version` |
+| `create_tracker` | Self-serve onboarding: creates a starter tracker for the signed-in user. Gated by a single-use, expiring **invite code** (mint with `scripts/mint-invite.py` at the repo root). |
 
-Access model: a user can touch exactly the trackers whose `allowed_emails`
-contains their Google email — same rule the web page enforces.
+Access model: any Google account may complete OAuth, but a token can only
+(a) touch trackers whose `allowed_emails` contains its email — same rule the
+web page enforces — and (b) create a tracker with a valid invite code.
+Tokens without either capability can do nothing.
 
 ## Local test
 

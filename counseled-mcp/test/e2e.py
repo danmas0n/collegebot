@@ -136,7 +136,7 @@ check("MCP initialize", st == 200 and r.get("result", {}).get("serverInfo", {}).
 
 st, r = mcp("tools/list", tid=2)
 names = [t["name"] for t in r.get("result", {}).get("tools", [])]
-check("tools/list shows 3 tools", set(names) == {"list_trackers", "get_tracker", "update_tracker"}, str(names))
+check("tools/list shows 4 tools", set(names) == {"list_trackers", "get_tracker", "update_tracker", "create_tracker"}, str(names))
 
 st, r = mcp("tools/call", {"name": "list_trackers", "arguments": {}}, tid=3)
 check("list_trackers finds seeded tracker", "testfam" in json.dumps(r), json.dumps(r)[:300])
@@ -159,17 +159,50 @@ st, r = mcp("tools/call", {"name": "update_tracker", "arguments":
     {"tracker_id": "testfam", "state": bad, "session_note": "bad"}}, tid=6)
 check("guardrail refuses school deletion", "Refusing" in json.dumps(r), json.dumps(r)[:300])
 
-# --- 9. scoping: stranger's token sees nothing ---
+# --- 9. new-user journey: token OK, scoped out, invite-gated creation ---
 st, body, _ = http("POST",
     "http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake",
     {"email": "stranger@example.com", "password": "testtest", "returnSecureToken": True})
-stranger_token = json.loads(body)["idToken"]
+stranger_id_token = json.loads(body)["idToken"]
 q2 = urllib.parse.urlencode({"response_type": "code", "client_id": client["client_id"],
     "redirect_uri": "http://localhost:9999/callback", "code_challenge": challenge,
     "code_challenge_method": "S256"})
 st, body, _ = http("GET", meta["authorization_endpoint"] + "?" + q2)
 req2 = re.search(r'"(authreq_[A-Za-z0-9_-]+)"', body).group(1)
-st, body, _ = http("POST", BASE + "/oauth/consent", {"reqId": req2, "idToken": stranger_token})
-check("stranger denied at consent (no tracker access)", st == 403, body[:200])
+st, body, _ = http("POST", BASE + "/oauth/consent", {"reqId": req2, "idToken": stranger_id_token})
+check("new user can authorize (no tracker yet)", st == 200 and "code=" in json.loads(body).get("redirect", ""), body[:200])
+code2 = urllib.parse.parse_qs(urllib.parse.urlparse(json.loads(body)["redirect"]).query)["code"][0]
+st, body, _ = http("POST", meta["token_endpoint"], {
+    "grant_type": "authorization_code", "code": code2, "code_verifier": verifier,
+    "client_id": client["client_id"], "redirect_uri": "http://localhost:9999/callback"}, form=True)
+AT2 = json.loads(body)["access_token"]
+def mcp2(method, params=None, tid=1):
+    st, body, _ = http("POST", BASE + "/mcp",
+        {"jsonrpc": "2.0", "id": tid, "method": method, "params": params or {}},
+        headers={"Authorization": "Bearer " + AT2, "Accept": "application/json, text/event-stream"})
+    if body.startswith("event:") or "\ndata:" in body or body.startswith("data:"):
+        datas = [l[5:].strip() for l in body.splitlines() if l.startswith("data:")]
+        body = datas[-1] if datas else body
+    return st, json.loads(body) if body.strip() else {}
+mcp2("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "e2e2", "version": "0"}})
+st, r = mcp2("tools/call", {"name": "get_tracker", "arguments": {"tracker_id": "testfam"}}, tid=11)
+check("stranger cannot read another family's tracker", "No tracker" in json.dumps(r), json.dumps(r)[:200])
+st, r = mcp2("tools/call", {"name": "create_tracker", "arguments":
+    {"invite_code": "bogus-code", "student_name": "New Kid", "grad_year": 2028}}, tid=12)
+check("bogus invite code refused", "invalid invite code" in json.dumps(r), json.dumps(r)[:200])
+inv = {"fields": {"created": fs_value("2026-07-10"), "expires": fs_value(9999999999999),
+                  "note": fs_value("e2e"), "used_by": fs_value(None)}}
+st, body, _ = http("PATCH",
+    "http://localhost:8080/v1/projects/demo-counseled/databases/(default)/documents/invite_codes/counseled-test-code",
+    inv, headers={"Authorization": "Bearer owner"})
+check("seed invite code", st == 200, body[:200])
+st, r = mcp2("tools/call", {"name": "create_tracker", "arguments":
+    {"invite_code": "counseled-test-code", "student_name": "New Kid", "grad_year": 2028}}, tid=13)
+check("create_tracker with valid invite", "Created tracker" in json.dumps(r), json.dumps(r)[:300])
+st, r = mcp2("tools/call", {"name": "create_tracker", "arguments":
+    {"invite_code": "counseled-test-code", "student_name": "Sneaky Second", "grad_year": 2028}}, tid=14)
+check("invite code is single-use", "already used" in json.dumps(r), json.dumps(r)[:200])
+st, r = mcp2("tools/call", {"name": "list_trackers", "arguments": {}}, tid=15)
+check("new tracker visible to its creator", "new-kid" in json.dumps(r), json.dumps(r)[:300])
 
-print(f"\n{PASS} checks passed — full OAuth + MCP round trip works.")
+print(f"\n{PASS} checks passed — OAuth, MCP, guardrails, and onboarding all work.")

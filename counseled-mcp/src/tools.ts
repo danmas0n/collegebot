@@ -4,9 +4,21 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { trackersForEmail, trackerForEmail } from "./firestore.js";
+import { db, trackersForEmail, trackerForEmail } from "./firestore.js";
 
 const REQUIRED_STATE_KEYS = ["student", "budget", "schools", "todos", "log", "updated"] as const;
+
+const STARTER_STATE = (studentName: string, gradYear: number | null, today: string) => ({
+  baseline_version: 1,
+  student: { name: studentName, grad_year: gradYear, gpa: null, sat: null, act: null },
+  budget: { yearly: null, notes: "" },
+  updated: today,
+  schools: [],
+  todos: [
+    { id: "t1", text: "Run the college-money-finder interview with Claude to build the first list", done: false, school: "", due: "" },
+  ],
+  log: [{ date: today, entry: `Tracker created for ${studentName}.` }],
+});
 
 const text = (s: string) => ({ content: [{ type: "text" as const, text: s }] });
 const err = (s: string) => ({ content: [{ type: "text" as const, text: s }], isError: true });
@@ -91,6 +103,55 @@ export function buildServer(email: string): McpServer {
         `Updated tracker '${tracker_id}' to version ${next.baseline_version} ` +
         `(${next.schools.length} schools, ${next.todos.length} todos). ` +
         `Open tabs at https://counseled.app/tracker/?t=${tracker_id} update live.`
+      );
+    }
+  );
+
+  server.registerTool(
+    "create_tracker",
+    {
+      title: "Create a family tracker",
+      description:
+        "Create a new college tracker for this family on counseled.app. Requires an invite code from counseled.app. Use when the user has no tracker yet (list_trackers is empty) and provides an invite code. The signed-in user becomes the tracker's first member and can add family later.",
+      inputSchema: {
+        invite_code: z.string().describe("Invite code provided by counseled.app"),
+        student_name: z.string().describe("The student's name, e.g. 'Alex Rivera'"),
+        grad_year: z.number().int().nullable().describe("Expected high-school graduation year, or null if unknown"),
+      },
+    },
+    async ({ invite_code, student_name, grad_year }) => {
+      const codeRef = db.collection("invite_codes").doc(invite_code.trim().toLowerCase());
+      const today = new Date().toISOString().slice(0, 10);
+
+      // atomically claim the invite code, then create the tracker
+      let trackerId = "";
+      try {
+        trackerId = await db.runTransaction(async (tx) => {
+          const codeDoc = await tx.get(codeRef);
+          if (!codeDoc.exists) throw new Error("invalid invite code");
+          const code = codeDoc.data()!;
+          if (code.used_by) throw new Error("invite code already used");
+          if (code.expires && code.expires < Date.now()) throw new Error("invite code expired");
+
+          const base = student_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "family";
+          const id = `${base}-${Math.random().toString(36).slice(2, 8)}`;
+          tx.set(db.collection("trackers").doc(id), {
+            allowed_emails: [email],
+            created: today,
+            invite_code: codeRef.id,
+            state: STARTER_STATE(student_name, grad_year, today),
+          });
+          tx.update(codeRef, { used_by: email, used_at: today, tracker_id: id });
+          return id;
+        });
+      } catch (e: any) {
+        return err(`Could not create tracker: ${e.message}`);
+      }
+      return text(
+        `Created tracker '${trackerId}' for ${student_name}. ` +
+        `The family can view and edit it at https://counseled.app/tracker/?t=${trackerId} ` +
+        `(sign in as ${email}; add family members by asking counseled.app support for now). ` +
+        `Next: run the college-money-finder interview and fill the list with update_tracker.`
       );
     }
   );

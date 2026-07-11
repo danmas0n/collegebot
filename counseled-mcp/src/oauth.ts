@@ -18,7 +18,7 @@ import type { OAuthServerProvider, AuthorizationParams } from "@modelcontextprot
 import type { OAuthRegisteredClientsStore } from "@modelcontextprotocol/sdk/server/auth/clients.js";
 import type { OAuthClientInformationFull, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { db, auth, trackersForEmail } from "./firestore.js";
+import { db, auth } from "./firestore.js";
 
 const ACCESS_TTL_MS = 60 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -165,12 +165,9 @@ export async function handleConsent(req: Request, res: Response) {
     const email = decoded.email;
     if (!email) return res.status(403).json({ error: "Google account has no email" });
 
-    const trackers = await trackersForEmail(email);
-    if (trackers.length === 0) {
-      return res.status(403).json({
-        error: `${email} does not have access to any tracker on counseled.app. Ask your family's account owner to add you.`,
-      });
-    }
+    // Users with no tracker yet may still authorize: their token can only
+    // list (empty) and create_tracker with a valid invite code. Actual
+    // tracker access is enforced per-tool by allowed_emails.
 
     const code = token("code");
     await db.collection("oauth_codes").doc(code).set({
