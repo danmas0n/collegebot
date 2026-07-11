@@ -381,8 +381,10 @@
         const rm = li.querySelector("[data-rm]");
         if (rm) rm.onclick = () => {
           if (!confirm(`Remove ${e} from this tracker?`)) return;
-          ref.update({ allowed_emails: allowedEmails.filter(x => x !== e) })
-            .then(() => scheduleSave(`${e} removed from family access`))
+          // arrayRemove is atomic — no read-modify-write, can't clobber
+          // concurrent changes; mirror locally since we skip our own echoes
+          ref.update({ allowed_emails: firebase.firestore.FieldValue.arrayRemove(e) })
+            .then(() => { allowedEmails = allowedEmails.filter(x => x !== e); scheduleSave(`${e} removed from family access`); })
             .catch(err2 => alert("Could not remove: " + err2.message));
         };
         ul.append(li);
@@ -392,8 +394,8 @@
         if (!addr || !addr.includes("@")) return;
         if (allowedEmails.map(x => x.toLowerCase()).includes(addr)) { alert(addr + " already has access."); return; }
         if (allowedEmails.length >= 6) { alert("Max 6 family members."); return; }
-        ref.update({ allowed_emails: [...allowedEmails, addr] })
-          .then(() => scheduleSave(`${addr} added to family access`))
+        ref.update({ allowed_emails: firebase.firestore.FieldValue.arrayUnion(addr) })
+          .then(() => { allowedEmails = [...allowedEmails, addr]; scheduleSave(`${addr} added to family access`); })
           .catch(err2 => alert("Could not add: " + err2.message + " (is it a Google-sign-in email?)"));
       };
       app.append(fam);
