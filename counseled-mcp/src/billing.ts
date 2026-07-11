@@ -119,24 +119,42 @@ function joinPage(): string {
     <p><b>Bring your own Claude</b> (free or paid claude.ai account). Counseled
     provides the data, the method, and the shared family page.</p>
     ${checkout}
-    <h2>Set up (5 minutes)</h2>
+    <h2>Set up (2 minutes — one install)</h2>
     <ol>
-      <li>Download the <a href="https://counseled.app/counseled-skill.zip">college-money-finder skill</a> and upload it in Claude: Settings → Capabilities → Skills.</li>
-      <li>Add the Counseled connector in Claude: Settings → Connectors → Add custom connector → <code>${PUBLIC_URL}/mcp</code> — sign in with Google when asked.</li>
-      <li>Tell Claude: <i>"Set up our college tracker"</i> — it will use your invite code or subscription and interview you from there.</li>
+      <li>In Claude: <a href="https://claude.ai/settings/connectors" target="_blank">Settings → Connectors</a> → Add custom connector → paste
+        <code>${PUBLIC_URL}/mcp</code> <button class="mini" data-copy="${PUBLIC_URL}/mcp">copy</button> → sign in with Google.</li>
+      <li>Start a chat and paste: <br><code id="setup-prompt">Set up our college tracker on Counseled — read the playbook, interview us, and build our list.</code>
+        <button class="mini" data-copy="#setup-prompt">copy</button></li>
     </ol>
-    <p class="muted">Cancel anytime; your tracker stays readable and exportable forever.</p>`);
+    <p class="muted">That's it — the connector includes the college money data and the counselor
+    playbook. Optional power-up: the <a href="https://counseled.app/counseled-skill.zip">offline skill</a>
+    (Settings → Capabilities → Skills) adds the same method for use without the connector.
+    Cancel anytime; your tracker stays readable and exportable forever.</p>
+    <script>
+      document.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => {
+        const t = b.dataset.copy.startsWith("#") ? document.querySelector(b.dataset.copy).textContent : b.dataset.copy;
+        navigator.clipboard.writeText(t).then(() => { b.textContent = "copied!"; setTimeout(() => b.textContent = "copy", 1500); });
+      });
+    </script>`);
 }
 
 function successPage(email: string): string {
   return page("Welcome to Counseled", `
     <h1>You're in 🎉</h1>
-    <p>Subscription active for <b>${email.replace(/[<>&"]/g, "")}</b>. Two steps left:</p>
+    <p>Subscription active for <b>${email.replace(/[<>&"]/g, "")}</b>. One install left:</p>
     <ol>
-      <li>Download the <a href="https://counseled.app/counseled-skill.zip">college-money-finder skill</a> and upload it in Claude: Settings → Capabilities → Skills.</li>
-      <li>Add the connector: Settings → Connectors → Add custom connector → <code>${PUBLIC_URL}/mcp</code> — sign in with <b>the same Google account you used at checkout</b>.</li>
+      <li>In Claude: <a href="https://claude.ai/settings/connectors" target="_blank">Settings → Connectors</a> → Add custom connector → paste
+        <code>${PUBLIC_URL}/mcp</code> <button class="mini" data-copy="${PUBLIC_URL}/mcp">copy</button> → sign in with
+        <b>the same Google account you used at checkout</b>.</li>
+      <li>Start a chat and paste: <br><code id="setup-prompt">Set up our college tracker on Counseled — read the playbook, interview us, and build our list.</code>
+        <button class="mini" data-copy="#setup-prompt">copy</button></li>
     </ol>
-    <p>Then tell Claude: <i>"Set up our college tracker."</i></p>`);
+    <script>
+      document.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => {
+        const t = b.dataset.copy.startsWith("#") ? document.querySelector(b.dataset.copy).textContent : b.dataset.copy;
+        navigator.clipboard.writeText(t).then(() => { b.textContent = "copied!"; setTimeout(() => b.textContent = "copy", 1500); });
+      });
+    </script>`);
 }
 
 function page(title: string, body: string): string {
@@ -151,6 +169,7 @@ function page(title: string, body: string): string {
   .muted { color: #66756e; font-size: .85rem; }
   button { font: inherit; padding: 10px 18px; border-radius: 6px; border: 1px solid #e2e6e3; background: #fff; color: #22302c; cursor: pointer; }
   button.primary { border: none; background: #1e5b4f; color: #fff; }
+  button.mini { padding: 2px 8px; font-size: .75rem; vertical-align: middle; }
   code { background: #eef1ef; padding: 2px 6px; border-radius: 4px; font-size: .85em; word-break: break-all; }
 </style></head><body><div class="card">${body}</div></body></html>`;
 }

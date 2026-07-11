@@ -15,6 +15,9 @@ sign-in via the existing Firebase Auth; state in the existing Firestore
 | `update_tracker` | Full-state write with merge guardrails: schools can never be deleted (archive via status `dropped`), journal is append-only, every write appends a provenance entry and bumps `baseline_version` |
 | `create_tracker` | Self-serve onboarding: creates a starter tracker for the signed-in user. Requires an active **entitlement** (Stripe subscriber via /join, or a redeemed invite) or a single-use expiring **invite code** (mint with `scripts/mint-invite.py`). Redeeming a code grants an entitlement, so families with multiple kids create more trackers without new codes. |
 | `add_family_member` | Any member grants another Google email access to their tracker (max 6) — works for both the web page and that person's own Claude. |
+| `get_playbook` | The full money-fit methodology + interview guide + data caveats — makes the connector self-sufficient without the skill installed. |
+| `search_colleges` | Server-side money-tier analysis over the bundled 310-school dataset (`data/colleges.csv`, kept in sync by cds-refresh). |
+| `get_college` | One school's row, fuzzy name match. |
 
 Access model: any Google account may complete OAuth, but a token can only
 (a) touch trackers whose `allowed_emails` contains its email — same rule the

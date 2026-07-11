@@ -91,7 +91,9 @@ forward stale rows.
 
 Then:
 
-1. Copy `colleges.csv` into `college-money-finder/data/`.
+1. Copy `colleges.csv` into `college-money-finder/data/` AND
+   `counseled-mcp/data/` (the connector serves the same dataset via
+   search_colleges; redeploy the Cloud Run service after updating).
 2. Update `college-money-finder/data/DATA_NOTES.md`: vintage counts, schools
    added/dropped/stale, notable changes (schools whose merit programs
    appeared/vanished), extraction audit stats.

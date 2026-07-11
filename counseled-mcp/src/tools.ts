@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db, trackersForEmail, trackerForEmail } from "./firestore.js";
 import { getEntitlement, setEntitlement, writesAllowed } from "./entitlements.js";
+import { searchColleges, findCollege, playbook, collegeDataLoaded } from "./college-data.js";
 
 const MAX_FAMILY_MEMBERS = 6;
 
@@ -206,6 +207,55 @@ export function buildServer(email: string): McpServer {
       );
     }
   );
+
+  if (collegeDataLoaded()) {
+    server.registerTool(
+      "get_playbook",
+      {
+        title: "Get the Counseled money-fit playbook",
+        description:
+          "Read Counseled's college financial-fit methodology BEFORE running an analysis or interviewing a family: money-tier definitions (locks / conditional targets / merit lotteries), how to interview a family about budget (budget ≠ financial need), how to place a student in a school's stats distribution, honest-uncertainty rules, and data caveats. Call once per conversation before using search_colleges.",
+        inputSchema: {},
+      },
+      async () => text(playbook())
+    );
+
+    server.registerTool(
+      "search_colleges",
+      {
+        title: "Search colleges by budget and stats",
+        description:
+          "Run the Counseled money-tier analysis over 310 U.S. colleges (data from official Common Data Set filings + IPEDS). Given a family's yearly budget and the student's stats, returns every school classified as lock / conditional_target / merit_lottery / full_pay_or_bust / over_budget, with sticker cost, merit rate to no-need freshmen, average award, and estimated price after typical merit. Read get_playbook first; curate the output (8-15 schools by fit) rather than dumping it.",
+        inputSchema: {
+          budget: z.number().describe("Yearly all-in budget in dollars, e.g. 40000"),
+          sat: z.number().nullable().optional().describe("SAT composite, if taken"),
+          act: z.number().nullable().optional().describe("ACT composite, if taken"),
+          gpa: z.number().nullable().optional().describe("Unweighted GPA (4.0 scale)"),
+          home_state: z.string().nullable().optional().describe("Two-letter home state for in-state pricing, e.g. 'NJ'"),
+        },
+      },
+      async ({ budget, sat, act, gpa, home_state }) => {
+        const r = searchColleges({ budget, sat, act, gpa, home_state });
+        const summary = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.length]));
+        return text(JSON.stringify({ summary, ...r }, null, 1));
+      }
+    );
+
+    server.registerTool(
+      "get_college",
+      {
+        title: "Look up one college's money data",
+        description:
+          "Look up a single college's row in the Counseled dataset: costs, merit-aid rates to no-need freshmen, need-met percentages, admissions stats, data confidence and caveats. Fuzzy name matching.",
+        inputSchema: { name: z.string().describe("College name, e.g. 'Tulane' or 'University of Pittsburgh'") },
+      },
+      async ({ name }) => {
+        const row = findCollege(name);
+        if (!row) return err(`No college matching '${name}' in the dataset (310 schools). It may still exist — just not in our CDS corpus.`);
+        return text(JSON.stringify(row, null, 1));
+      }
+    );
+  }
 
   function created(id: string, studentName: string) {
     return text(

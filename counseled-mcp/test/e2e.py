@@ -136,7 +136,7 @@ check("MCP initialize", st == 200 and r.get("result", {}).get("serverInfo", {}).
 
 st, r = mcp("tools/list", tid=2)
 names = [t["name"] for t in r.get("result", {}).get("tools", [])]
-check("tools/list shows 5 tools", set(names) == {"list_trackers", "get_tracker", "update_tracker", "create_tracker", "add_family_member"}, str(names))
+check("tools/list shows core + data tools", set(names) >= {"list_trackers", "get_tracker", "update_tracker", "create_tracker", "add_family_member"}, str(names))
 
 st, r = mcp("tools/call", {"name": "list_trackers", "arguments": {}}, tid=3)
 check("list_trackers finds seeded tracker", "testfam" in json.dumps(r), json.dumps(r)[:300])
@@ -264,3 +264,18 @@ st, r = mcp2("tools/call", {"name": "create_tracker", "arguments":
 check("lapsed user cannot create new tracker", "lapsed" in json.dumps(r), json.dumps(r)[:300])
 
 print(f"\n{PASS} checks passed total.")
+
+# --- 11. connector-only experience: data + playbook tools ---
+st, r = mcp("tools/list", tid=40)
+names = [t["name"] for t in r.get("result", {}).get("tools", [])]
+check("data tools present (8 total)", set(names) >= {"get_playbook", "search_colleges", "get_college"}, str(names))
+st, r = mcp("tools/call", {"name": "get_playbook", "arguments": {}}, tid=41)
+check("playbook served", "money tier" in json.dumps(r).lower() or "conditional target" in json.dumps(r).lower(), json.dumps(r)[:200])
+st, r = mcp("tools/call", {"name": "search_colleges", "arguments":
+    {"budget": 40000, "sat": 1550, "gpa": 3.95, "home_state": "NJ"}}, tid=42)
+body = json.loads(r["result"]["content"][0]["text"])
+check("search_colleges classifies the dataset", body["summary"].get("conditional_target", 0) > 10, str(body["summary"]))
+st, r = mcp("tools/call", {"name": "get_college", "arguments": {"name": "Tulane"}}, tid=43)
+check("get_college fuzzy lookup", "Tulane University" in json.dumps(r), json.dumps(r)[:200])
+
+print(f"\n{PASS} checks passed grand total.")
