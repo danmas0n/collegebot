@@ -151,7 +151,7 @@ export async function buildServer(email: string): Promise<McpServer> {
     {
       title: "Create a family tracker",
       description:
-        "Create a new college tracker for this family on counseled.app. Use when the user has no tracker yet (list_trackers is empty). Works if the user has an active counseled.app subscription (from counseled.app/join) OR provides an invite code. The signed-in user becomes the tracker's owner and can add family with add_family_member.",
+        "Create a new college tracker for this family on counseled.app. Use when the user has no tracker yet (list_trackers is empty). Works if the user has an active counseled.app subscription (from counseled.app/join) OR provides an invite code. The signed-in user becomes the tracker's owner; family members are added by hand in the tracker page's Family section (Edit mode) — there is intentionally no tool for that.",
       inputSchema: {
         student_name: z.string().describe("The student's name, e.g. 'Alex Rivera'"),
         grad_year: z.number().int().nullable().describe("Expected high-school graduation year, or null if unknown"),
@@ -212,34 +212,10 @@ export async function buildServer(email: string): Promise<McpServer> {
     }
   );
 
-  server.registerTool(
-    "add_family_member",
-    {
-      title: "Add a family member to a tracker",
-      description:
-        "Give another family member (by Google email) access to a tracker this user belongs to. They can then use the web page AND connect their own Claude. Confirm the exact email with the user before calling — access grants should be deliberate.",
-      inputSchema: {
-        tracker_id: z.string(),
-        member_email: z.string().email().describe("The family member's Google account email"),
-      },
-    },
-    async ({ tracker_id, member_email }) => {
-      const t = await trackerForEmail(email, tracker_id);
-      if (!t) return err(`No tracker '${tracker_id}' accessible to ${email}.`);
-      const emails: string[] = t.allowed_emails;
-      const addr = member_email.trim().toLowerCase();
-      if (emails.map((e) => e.toLowerCase()).includes(addr)) return text(`${addr} already has access to '${tracker_id}'.`);
-      if (emails.length >= MAX_FAMILY_MEMBERS) return err(`Tracker '${tracker_id}' already has ${MAX_FAMILY_MEMBERS} members (the max).`);
-      await t.ref.update({ allowed_emails: [...emails, addr] });
-      const state = t.state;
-      state.log.push({ date: new Date().toISOString().slice(0, 10), entry: `${addr} added to the family (by ${email} via Claude).` });
-      await t.ref.set({ state }, { merge: true });
-      return text(
-        `${addr} now has access to '${tracker_id}': the page at https://counseled.app/tracker/?t=${tracker_id} ` +
-        `and their own Claude via the Counseled connector (they sign in with that Google account).`
-      );
-    }
-  );
+  // NOTE: there is deliberately NO tool for managing tracker access.
+  // Access grants are human-only: the Family section of the tracker page
+  // (edit mode) is where members add/remove emails by hand. AI assistants
+  // refuse to modify access controls — don't add such a tool back.
 
   if (collegeDataLoaded()) {
     server.registerTool(
@@ -294,7 +270,7 @@ export async function buildServer(email: string): Promise<McpServer> {
     return text(
       `Created tracker '${id}' for ${studentName}. ` +
       `The family page is https://counseled.app/tracker/?t=${id} (sign in with ${email}). ` +
-      `Add family members with add_family_member. ` +
+      `To add family members, open that page → Edit → Family access (a by-hand control; there is no tool for it). ` +
       `Next: run the college-money-finder interview and fill the list with update_tracker.`
     );
   }

@@ -139,14 +139,22 @@ service cloud.firestore {
 
     // Family college trackers (counseled.app/tracker/?t={trackerId})
     // Access is per-document: the signed-in user's email must be in the
-    // doc's allowed_emails. Clients may edit state but not the email list
-    // (only the admin SDK / console changes allowed_emails).
+    // doc's allowed_emails. Members manage the email list BY HAND in the
+    // tracker page's Family section (access grants are deliberately human-
+    // only — AI assistants refuse to modify access controls). Guardrails:
+    // 1-6 members, you can't remove yourself, the owner can't be removed,
+    // and owner_email itself is immutable from clients.
     match /trackers/{trackerId} {
       allow read: if request.auth != null
         && request.auth.token.email in resource.data.allowed_emails;
       allow update: if request.auth != null
         && request.auth.token.email in resource.data.allowed_emails
-        && request.resource.data.allowed_emails == resource.data.allowed_emails;
+        && request.resource.data.allowed_emails.size() >= 1
+        && request.resource.data.allowed_emails.size() <= 6
+        && request.auth.token.email in request.resource.data.allowed_emails
+        && (!('owner_email' in resource.data)
+            || request.resource.data.allowed_emails.hasAll([resource.data.owner_email]))
+        && request.resource.data.get('owner_email', '') == resource.data.get('owner_email', '');
     }
   }
 }

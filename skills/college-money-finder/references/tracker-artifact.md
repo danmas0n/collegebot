@@ -64,6 +64,10 @@ exist. Maintain them on Claude's side; families won't type coordinates.
   above → `update_tracker` with a one-sentence `session_note`. The family's
   page at counseled.app/tracker/?t=<id> updates live; the server enforces
   the guardrails (no school deletion, journal append-only) and provenance.
+  Access management is not yours to do: when the family wants to add or
+  remove a member, point them to the tracker page → Edit → Family access —
+  a by-hand control, consistent with the rule that assistants never modify
+  access permissions.
 - **Live mode via service account (maintainer fallback, Claude Code only):**
   same Firestore documents through `scripts/sync_tracker.py` (pull → merge →
   push). Append a journal entry crediting "Claude" on every push. Add family

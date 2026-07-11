@@ -133,6 +133,8 @@
   const STATUSES = ["researching", "visiting", "applying", "applied", "admitted", "denied", "committed", "dropped"];
 
   let state = null;
+  let allowedEmails = [];
+  let ownerEmail = "";
   let editMode = false;
   let syncStatus = "connecting";
   let saveTimer = null;
@@ -358,6 +360,45 @@
     };
     app.append(todosBlock);
 
+    // Family access management — deliberately a human-only, in-page control:
+    // AI assistants (correctly) refuse to modify access, so the button is here.
+    if (editMode) {
+      const fam = $(`<div class="todos block"><h2>Family access</h2>
+        <p style="margin:0 0 8px;color:var(--muted);font-size:.85rem;max-width:65ch">
+          People who can see and edit this tracker — on this page and through their own
+          Claude via the Counseled connector. Adding family is done here, by you (max 6,
+          Google-sign-in emails).</p>
+        <ul id="fam-list"></ul>
+        <div class="addrow"><input class="inline" id="fam-email" type="email" placeholder="family-member@gmail.com"><button id="fam-add">Add family member</button></div>
+        </div>`).firstElementChild;
+      const ul = fam.querySelector("#fam-list");
+      for (const e of allowedEmails) {
+        const isSelf = e.toLowerCase() === (user?.email || "").toLowerCase();
+        const isOwner = e.toLowerCase() === ownerEmail.toLowerCase();
+        const li = $(`<li><span>${esc(e)}</span>
+          ${isOwner ? '<span class="who">owner</span>' : ""}${isSelf ? '<span class="who">you</span>' : ""}
+          ${!isSelf && !isOwner ? '<button class="subtle" data-rm title="Remove access">✕</button>' : ""}</li>`).firstElementChild;
+        const rm = li.querySelector("[data-rm]");
+        if (rm) rm.onclick = () => {
+          if (!confirm(`Remove ${e} from this tracker?`)) return;
+          ref.update({ allowed_emails: allowedEmails.filter(x => x !== e) })
+            .then(() => scheduleSave(`${e} removed from family access`))
+            .catch(err2 => alert("Could not remove: " + err2.message));
+        };
+        ul.append(li);
+      }
+      fam.querySelector("#fam-add").onclick = () => {
+        const addr = fam.querySelector("#fam-email").value.trim().toLowerCase();
+        if (!addr || !addr.includes("@")) return;
+        if (allowedEmails.map(x => x.toLowerCase()).includes(addr)) { alert(addr + " already has access."); return; }
+        if (allowedEmails.length >= 6) { alert("Max 6 family members."); return; }
+        ref.update({ allowed_emails: [...allowedEmails, addr] })
+          .then(() => scheduleSave(`${addr} added to family access`))
+          .catch(err2 => alert("Could not add: " + err2.message + " (is it a Google-sign-in email?)"));
+      };
+      app.append(fam);
+    }
+
     const logBlock = $(`<div class="log"><h2>Journal</h2><ol></ol>
       <div class="addrow"><input class="inline" id="log-text" placeholder="Add a journal entry…"><button id="log-add">Add</button></div></div>`).firstElementChild;
     const ol = logBlock.querySelector("ol");
@@ -431,6 +472,8 @@
       if (!snap.exists) { gate("No tracker found for this link.", false); return; }
       if (snap.metadata.hasPendingWrites) return; // our own echo
       state = snap.data().state;
+      allowedEmails = snap.data().allowed_emails || [];
+      ownerEmail = snap.data().owner_email || "";
       syncStatus = "live";
       render();
     }, err => gate(err.code === "permission-denied"

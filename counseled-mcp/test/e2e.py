@@ -136,7 +136,7 @@ check("MCP initialize", st == 200 and r.get("result", {}).get("serverInfo", {}).
 
 st, r = mcp("tools/list", tid=2)
 names = [t["name"] for t in r.get("result", {}).get("tools", [])]
-check("tools/list shows core + data tools", set(names) >= {"list_trackers", "get_tracker", "update_tracker", "create_tracker", "add_family_member"}, str(names))
+check("tools/list shows core + data tools", set(names) >= {"list_trackers", "get_tracker", "update_tracker", "create_tracker"} and "add_family_member" not in names, str(names))
 
 st, r = mcp("tools/call", {"name": "list_trackers", "arguments": {}}, tid=3)
 check("list_trackers finds seeded tracker", "testfam" in json.dumps(r), json.dumps(r)[:300])
@@ -240,9 +240,14 @@ check("entitled user creates 2nd tracker without code", "Created tracker" in jso
 
 st, r = mcp2("tools/call", {"name": "list_trackers", "arguments": {}}, tid=17)
 newkid_id = [t["tracker_id"] for t in json.loads(r["result"]["content"][0]["text"]) if t["tracker_id"].startswith("new-kid")][0]
-st, r = mcp2("tools/call", {"name": "add_family_member", "arguments":
-    {"tracker_id": newkid_id, "member_email": EMAIL}}, tid=18)
-check("add_family_member grants access", "now has access" in json.dumps(r), json.dumps(r)[:300])
+# family adds are page-only (no tool by design); emulate the page's write via
+# admin REST, then confirm the added member sees the tracker through the API
+import urllib.request as _u
+patch_url = ("http://localhost:8080/v1/projects/demo-counseled/databases/(default)/documents/trackers/"
+             + newkid_id + "?updateMask.fieldPaths=allowed_emails")
+body2 = {"fields": {"allowed_emails": fs_value(["stranger@example.com", EMAIL])}}
+st, body, _ = http("PATCH", patch_url, body2, headers={"Authorization": "Bearer owner"})
+check("page-style family add (admin emulation)", st == 200, body[:200])
 st, r = mcp("tools/call", {"name": "list_trackers", "arguments": {}}, tid=19)
 check("added member sees the shared tracker", newkid_id in json.dumps(r), json.dumps(r)[:300])
 
