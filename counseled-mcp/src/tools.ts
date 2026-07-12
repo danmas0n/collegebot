@@ -254,8 +254,8 @@ export async function buildServer(email: string): Promise<McpServer> {
       state.log.push({ date: today, entry: `Created custom page '${title}' (Claude, via ${email})` });
       await t.ref.set({ state }, { merge: true });
       return text(
-        `Created page '${title}' (page_id ${pageId}, v1). The family sees it in the Custom pages section of ` +
-        `https://counseled.app/tracker/?t=${tracker_id} — or directly at https://counseled.app/tracker/?t=${tracker_id}&p=${pageId}. ` +
+        `Created page '${title}' (page_id ${pageId}, v1). It appears as a view tab next to the Map at the top of ` +
+        `https://counseled.app/tracker/?t=${tracker_id} — deep link: https://counseled.app/tracker/?t=${tracker_id}&p=${pageId}. ` +
         `It renders with live tracker state; use update_page to iterate.`
       );
     }

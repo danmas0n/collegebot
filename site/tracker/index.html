@@ -60,9 +60,16 @@
   .donext .due { color: var(--bad); font-weight: 600; font-variant-numeric: tabular-nums; }
 
   /* map */
-  #map-panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  #map-panel summary { padding: 10px 16px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); cursor: pointer; font-weight: 600; }
-  #map { height: 300px; }
+  /* views panel: Map + custom Claude-built views as peer tabs */
+  #views { background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .view-tabs { display: flex; gap: 2px; flex-wrap: wrap; align-items: flex-end; padding: 8px 10px 0; border-bottom: 1px solid var(--line); }
+  .view-tab { font: inherit; font-size: .78rem; padding: 7px 14px; border: 1px solid transparent; border-bottom: none;
+              border-radius: 6px 6px 0 0; background: transparent; color: var(--muted); cursor: pointer; }
+  .view-tab:hover { color: var(--ink); }
+  .view-tab.active { color: var(--ink); border-color: var(--line); background: #fbfcfb; font-weight: 600; }
+  .view-tabs .hint { margin-left: auto; font-size: .72rem; color: var(--muted); padding: 0 6px 7px; }
+  #view-body iframe { width: 100%; height: 420px; border: none; display: block; background: #fff; }
+  #map { height: 340px; }
   #map-legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 14px; font-size: .78rem; color: var(--muted); }
   #map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
 
@@ -174,8 +181,9 @@
   const expanded = new Set();
   const dataCache = {};
   let customPages = null;          // [{page_id,title,version,updated}] lazily loaded
-  let viewingPage = new URLSearchParams(location.search).get("p") || null;
-  let pagePort = null;             // MessageChannel port to the sandboxed page
+  let activeView = new URLSearchParams(location.search).get("p") || "map";
+  let pagePort = null;             // MessageChannel port to the active sandboxed view
+  let pageMsgCleanup = null;       // removes the handshake listener of the active view
 
   const root = document.getElementById("root");
   const money = n => n == null || n === "" ? "—" : "$" + Math.round(+n).toLocaleString();
@@ -205,8 +213,8 @@
     render();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      ref.set({ state }, { merge: true }).then(() => { syncStatus = "live"; render(); })
-        .catch(e => { syncStatus = "error: " + e.message; render(); });
+      ref.set({ state }, { merge: true }).then(() => { syncStatus = "live"; renderSync(); })
+        .catch(e => { syncStatus = "error: " + e.message; renderSync(); });
     }, 400);
   }
 
@@ -485,7 +493,7 @@
   async function renderMap(schools) {
     const el = document.getElementById("map");
     if (!el) return;
-    try { await loadMaps(); } catch { el.closest("#map-panel")?.remove(); return; }
+    try { await loadMaps(); } catch { el.remove(); return; }
     if (!document.getElementById("map")) return;
     const pts = schools.filter(s => s.lat != null && s.lng != null);
     const bounds = new google.maps.LatLngBounds();
@@ -520,30 +528,17 @@
     return customPages;
   }
 
-  function openPageViewer(pageId, title) {
-    // capability nonce rides the URL fragment; the served bootstrap captures
-    // and clears it before page code runs, then proves itself with it
-    const k = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
-    const url = new URL(location.href);
-    url.searchParams.set("p", pageId);
-    history.replaceState(null, "", url);
-    viewingPage = pageId;
+  /** Mount a sandboxed custom view into the views panel body. The capability
+   * nonce rides the URL fragment; the served bootstrap captures and clears it
+   * before page code runs, then proves itself with it to get the data port. */
+  function mountPageView(body, pageId) {
+    if (pageMsgCleanup) { pageMsgCleanup(); pageMsgCleanup = null; }
     pagePort = null;
-
-    root.innerHTML = '<div class="wrap" id="app"></div>';
-    const app = document.getElementById("app");
-    app.append($(`<header>
-      <div class="toolbar" style="margin:0">
-        <button id="pg-back">← Back to tracker</button>
-        <span style="font-family:var(--serif);font-weight:600">${esc(title || "Custom page")}</span>
-        <span class="sync live" style="margin-left:auto">live data</span>
-      </div></header>`));
+    const k = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-scripts");
-    frame.style.cssText = "width:100%;height:calc(100vh - 130px);border:1px solid var(--line);border-radius:8px;background:#fff";
     frame.src = DATA_API + "/p/" + encodeURIComponent(pageId) + "#k=" + k;
-    app.append(frame);
-
+    body.append(frame);
     const onMsg = ev => {
       if (ev.source !== frame.contentWindow) return;
       if (!ev.data || ev.data.type !== "counseled-ready" || ev.data.k !== k) return;
@@ -553,31 +548,59 @@
       pagePort.postMessage({ type: "state", state });
     };
     window.addEventListener("message", onMsg);
-    document.getElementById("pg-back").onclick = () => {
-      window.removeEventListener("message", onMsg);
-      pagePort = null; viewingPage = null;
-      const u = new URL(location.href); u.searchParams.delete("p"); history.replaceState(null, "", u);
+    pageMsgCleanup = () => window.removeEventListener("message", onMsg);
+  }
+
+  /** The views panel: Map and Claude-built custom views as peer tabs. */
+  function viewsPanel(active) {
+    const hasMap = active.some(s => s.lat != null && s.lng != null);
+    const pages = customPages || [];
+    if (!hasMap && !pages.length) return null;
+    if (activeView !== "map" && !pages.some(p => p.page_id === activeView)) activeView = hasMap ? "map" : pages[0].page_id;
+    if (activeView === "map" && !hasMap && pages.length) activeView = pages[0].page_id;
+
+    const panel = $(`<div id="views">
+      <div class="view-tabs">
+        ${hasMap ? `<button class="view-tab ${activeView === "map" ? "active" : ""}" data-view="map">⚲ Map</button>` : ""}
+        ${pages.map(p => `<button class="view-tab ${activeView === p.page_id ? "active" : ""}" data-view="${esc(p.page_id)}">${esc(p.title)}</button>`).join("")}
+        <span class="hint">ask your Claude for a new view</span>
+      </div>
+      <div id="view-body"></div>
+    </div>`).firstElementChild;
+
+    panel.querySelectorAll(".view-tab").forEach(b => b.onclick = () => {
+      activeView = b.dataset.view;
+      const u = new URL(location.href);
+      if (activeView === "map") u.searchParams.delete("p"); else u.searchParams.set("p", activeView);
+      history.replaceState(null, "", u);
       render();
-    };
+    });
+
+    const body = panel.querySelector("#view-body");
+    if (activeView === "map") {
+      if (pageMsgCleanup) { pageMsgCleanup(); pageMsgCleanup = null; pagePort = null; }
+      body.append($(`<div id="map"></div><div id="map-legend">
+        ${TIERS.map(([k, t]) => `<span><i style="background:${TIER_COLOR[k]}"></i>${t.toLowerCase()}</span>`).join("")}`));
+      queueMicrotask(() => renderMap(active));
+    } else {
+      mountPageView(body, activeView);
+    }
+    return panel;
   }
 
   // ---------- render ----------
-  function render() {
-    if (viewingPage && state) {
-      // live updates flow to an open page; full re-render stays suspended
-      if (pagePort) pagePort.postMessage({ type: "state", state });
-      if (!document.getElementById("pg-back")) {
-        loadPages().then(pages => {
-          const p = pages.find(x => x.page_id === viewingPage);
-          openPageViewer(viewingPage, p ? p.title : "Custom page");
-        });
-      }
-      return;
-    }
-    renderMain();
+  /** Light path for save-status ticks: updates the sync chip and pushes fresh
+   * state to an open custom view WITHOUT rebuilding the DOM (a full rebuild
+   * would reload the sandboxed iframe on every keystroke-save). */
+  function renderSync() {
+    const el = document.querySelector(".sync");
+    if (!el) { render(); return; }
+    el.className = "sync " + (syncStatus === "live" ? "live" : syncStatus === "saving" ? "saving" : "error");
+    el.textContent = syncStatus === "live" ? "synced live" : syncStatus === "saving" ? "saving…" : syncStatus;
+    if (pagePort && state) pagePort.postMessage({ type: "state", state });
   }
 
-  function renderMain() {
+  function render() {
     if (!state) return;
     root.innerHTML = '<div class="wrap" id="app"></div>';
     const app = document.getElementById("app");
@@ -606,12 +629,9 @@
     app.append(insightsBlock());
 
     const active = state.schools.filter(s => s.status !== "dropped");
-    if (active.some(s => s.lat != null && s.lng != null)) {
-      app.append($(`<details id="map-panel" open><summary>Map</summary><div id="map"></div><div id="map-legend">
-        ${TIERS.map(([k, t]) => `<span><i style="background:${TIER_COLOR[k]}"></i>${t.toLowerCase()}</span>`).join("")}
-      </div></details>`));
-      queueMicrotask(() => renderMap(active));
-    }
+    const vp = viewsPanel(active);
+    if (vp) app.append(vp);
+    if (customPages === null) loadPages().then(() => { if (customPages.length) render(); });
 
     const maxPrice = Math.max(budget * 1.4, ...active.map(s => s.coa || 0), 1);
     for (const [key, title, blurb] of TIERS) {
@@ -657,21 +677,6 @@
       scheduleSave(null);
     };
     app.append(todosBlock);
-
-    // custom pages (freeform Claude-built views)
-    if (customPages === null) {
-      loadPages().then(() => { if (!viewingPage && customPages.length) render(); });
-    } else if (customPages.length) {
-      const pagesBlock = $(`<div class="todos block"><h2>Custom pages</h2><ul></ul></div>`).firstElementChild;
-      const pul = pagesBlock.querySelector("ul");
-      customPages.forEach(p => {
-        const li = $(`<li><span>${esc(p.title)}</span><span class="who">v${esc(p.version)}</span>
-          <span class="due2">${esc(p.updated || "")}</span><button data-open>open →</button></li>`).firstElementChild;
-        li.querySelector("[data-open]").onclick = () => openPageViewer(p.page_id, p.title);
-        pul.append(li);
-      });
-      app.append(pagesBlock);
-    }
 
     // ask-your-Claude capabilities
     const PROMPTS = [
