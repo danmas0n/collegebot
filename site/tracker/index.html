@@ -334,9 +334,22 @@
     };
   }
 
-  // ---------- family dialog (its own top-level control, independent of Edit) ----------
-  function familyDialog() {
+  // ---------- family & sharing dialog (its own top-level control) ----------
+  async function sha256hex(s) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function loadShares() {
+    try {
+      const snap = await db.collection("shares").where("tracker_id", "==", TRACKER_ID).get();
+      return snap.docs.map(d => ({ token: d.id, ...d.data() }));
+    } catch { return []; }
+  }
+
+  async function familyDialog() {
     const dlg = document.getElementById("family-dialog");
+    const shares = await loadShares();
     const rows = allowedEmails.map(e => {
       const isSelf = e.toLowerCase() === (user?.email || "").toLowerCase();
       const isOwner = e.toLowerCase() === ownerEmail.toLowerCase();
@@ -344,13 +357,47 @@
         ${isOwner ? '<span class="who">owner</span>' : ""}${isSelf ? '<span class="who">you</span>' : ""}
         ${!isSelf && !isOwner ? `<button class="subtle" data-rm="${esc(e)}" title="Remove access">✕</button>` : ""}</li>`;
     }).join("");
-    dlg.innerHTML = `<h2>Family access</h2>
+    const shareRows = shares.map(s => `<li><span>${esc(s.label || "share link")}</span>
+        ${s.passphrase_hash ? '<span class="who">passphrase</span>' : '<span class="who">open</span>'}
+        <button class="subtle" data-copy-share="${esc(s.token)}">copy link</button>
+        <button class="subtle" data-revoke="${esc(s.token)}" title="Revoke">✕</button></li>`).join("");
+    dlg.innerHTML = `<h2>Family & sharing</h2>
       <p class="hint">People who can see and edit this tracker — on this page and through their own
       Claude via the Counseled connector. Adding family happens here, by you (max 6, Google-sign-in emails).</p>
       <ul id="fam-list">${rows}</ul>
       <div class="addrow"><input class="inline" id="fam-email" type="email" placeholder="family-member@gmail.com"><button class="primary" id="fam-add">Add</button></div>
+      <h2 style="margin-top:18px">Read-only share links</h2>
+      <p class="hint">For grandparents, counselors, anyone — no Google or Claude account needed. They see
+      the list and prices, and can never edit. Add a passphrase for light protection; revoke any time.</p>
+      <ul id="share-list">${shareRows || ""}</ul>
+      <div class="addrow"><input class="inline" id="share-label" placeholder="label, e.g. 'for Grandma'">
+        <input class="inline" id="share-pass" placeholder="passphrase (optional)" style="flex:0 1 180px">
+        <button id="share-add">Create link</button></div>
       <div class="actions"><button id="fam-close">Done</button></div>`;
     dlg.showModal();
+
+    dlg.querySelectorAll("[data-copy-share]").forEach(b => b.onclick = () => {
+      const url = "https://counseled.app/s/" + b.dataset.copyShare;
+      navigator.clipboard.writeText(url).then(() => { b.textContent = "copied!"; setTimeout(() => b.textContent = "copy link", 1500); });
+    });
+    dlg.querySelectorAll("[data-revoke]").forEach(b => b.onclick = () => {
+      if (!confirm("Revoke this share link? Anyone using it loses access immediately.")) return;
+      db.collection("shares").doc(b.dataset.revoke).delete()
+        .then(() => { scheduleSave("Revoked a share link"); familyDialog(); })
+        .catch(e => alert("Could not revoke: " + e.message));
+    });
+    dlg.querySelector("#share-add").onclick = async () => {
+      const label = dlg.querySelector("#share-label").value.trim() || "share link";
+      const pass = dlg.querySelector("#share-pass").value;
+      const token = "sh_" + Array.from(crypto.getRandomValues(new Uint8Array(20)), b => b.toString(16).padStart(2, "0")).join("");
+      const doc = {
+        tracker_id: TRACKER_ID, label, created: today(), created_by: user.email,
+        passphrase_hash: pass ? await sha256hex(token + pass) : null,
+      };
+      db.collection("shares").doc(token).set(doc)
+        .then(() => { scheduleSave(`Created share link '${label}'${pass ? " (passphrase)" : ""}`); familyDialog(); })
+        .catch(e => alert("Could not create link: " + e.message));
+    };
     dlg.querySelector("#fam-close").onclick = () => dlg.close();
     dlg.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => {
       const e = b.dataset.rm;

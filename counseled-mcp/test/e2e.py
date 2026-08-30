@@ -344,3 +344,32 @@ st, body, _ = http("GET", BASE + "/p/pg_doesnotexist")
 check("unknown page 404s", st == 404)
 
 print(f"\n{PASS} checks passed ABSOLUTE FINAL total.")
+
+# --- 15. read-only share links ---
+import hashlib as _hl
+share_open = {"fields": {"tracker_id": fs_value("testfam"), "label": fs_value("for grandma"),
+    "created": fs_value("2026-07-19"), "created_by": fs_value(EMAIL), "passphrase_hash": fs_value(None)}}
+st, body, _ = http("PATCH",
+    "http://localhost:8080/v1/projects/demo-counseled/databases/(default)/documents/shares/sh_e2eopen",
+    share_open, headers={"Authorization": "Bearer owner"})
+check("seed open share", st == 200, body[:200])
+pp_hash = _hl.sha256(("sh_e2epass" + "tigers2027").encode()).hexdigest()
+share_pass = {"fields": {"tracker_id": fs_value("testfam"), "label": fs_value("counselor"),
+    "created": fs_value("2026-07-19"), "created_by": fs_value(EMAIL), "passphrase_hash": fs_value(pp_hash)}}
+st, body, _ = http("PATCH",
+    "http://localhost:8080/v1/projects/demo-counseled/databases/(default)/documents/shares/sh_e2epass",
+    share_pass, headers={"Authorization": "Bearer owner"})
+check("seed passphrase share", st == 200, body[:200])
+
+st, body, _ = http("GET", BASE + "/s/sh_e2eopen")
+check("share viewer served", st == 200 and "shared via Counseled" in body, body[:200])
+st, body, _ = http("POST", BASE + "/s/sh_e2eopen/state", {"passphrase": ""})
+check("open share returns state", st == 200 and "Test Student" in body, body[:200])
+st, body, _ = http("POST", BASE + "/s/sh_e2epass/state", {"passphrase": "wrong"})
+check("wrong passphrase refused", st == 403, body[:200])
+st, body, _ = http("POST", BASE + "/s/sh_e2epass/state", {"passphrase": "tigers2027"})
+check("right passphrase returns state", st == 200 and "Test Student" in body, body[:200])
+st, body, _ = http("GET", BASE + "/s/sh_nope")
+check("unknown share 404s", st == 404)
+
+print(f"\n{PASS} checks passed THE END total.")

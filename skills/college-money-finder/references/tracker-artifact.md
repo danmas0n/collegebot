@@ -68,10 +68,19 @@ exist. Maintain them on Claude's side; families won't type coordinates.
   remove a member, point them to the tracker page → Edit → Family access —
   a by-hand control, consistent with the rule that assistants never modify
   access permissions.
-- **Freeform custom pages (connector only):** when the family wants a view
-  the tracker doesn't offer — comparison matrices, decision grids, cost
-  projections, essay boards, anything — design one with `create_page` and
-  iterate with `get_page`/`update_page`. Pages are body-content-only HTML,
+- **Freeform views — pick the surface by audience:** when the family wants
+  a view the tracker doesn't offer — comparison matrices, decision grids,
+  cost projections, essay boards, anything — build it.
+  (a) *Claude Artifact with live connector data* (preferred where your
+  environment publishes artifacts with the `mcp` capability): declare
+  `{"mcp": {"servers": [{"server": "Counseled", "tools": ["get_tracker"]}]}}`
+  and render from `watchTool("Counseled", "get_tracker", {tracker_id})` —
+  each viewer reads with their own credentials; never hardcode family data.
+  (b) *Counseled-hosted page* via `create_page` — appears as a tab next to
+  the Map for every family member, including those without any Claude
+  account. This is the right surface when non-Claude family must see it.
+  Sharing outside the family (read-only links, optional passphrase) is
+  human-only in the tracker's Family & sharing dialog — point, never do. Pages are body-content-only HTML,
   everything inlined (the sandbox blocks ALL external network, iframes,
   objects, and outbound forms; 400KB max). Never hardcode family data into
   the page: it receives live tracker state read-only via
