@@ -1,29 +1,31 @@
-# The family tracker artifact (editable)
+# The family tracker artifact
 
-The tracker is the family's college search rendered as a single living
-dashboard — their list grouped by money tier, with prices, statuses,
-deadlines, to-dos, notes, and a journal. **It is directly editable in the
-page**: the family can add/archive/reorder schools, change tiers and
-statuses, keep to-dos, and journal — and Claude edits the same state when it
-republishes. Start from `assets/tracker-template.html`; replace only the
-JSON in `#tracker-state`, never the rendering code.
+The tracker is the family's college search as one live page: the list grouped
+by money tier, prices against the budget, deadlines, to-dos, and a journal.
+It is a **self-saving Claude artifact**: the family's state is embedded in the
+page as JSON, and every edit republishes the page with the new state through
+the artifact's `artifact` capability. The page is the record. There is no
+server.
+
+Start from `assets/tracker-template.html`: replace only the JSON in
+`<script type="application/json" id="state">`, never the rendering code, and
+publish with `capabilities: {"artifact": {}}`. The family edits in the page
+(status, tier, net price calculator results, to-dos, journal). You edit by
+changing the state JSON and republishing the same artifact (pass its URL from
+a new conversation).
 
 ## The state contract
 
-One JSON object in `<script type="application/json" id="tracker-state">`:
-
 ```json
 {
-  "baseline_version": 1,
   "student": {"name": "", "grad_year": 2027, "gpa": null, "sat": null, "act": null},
   "budget": {"yearly": 40000, "notes": ""},
   "updated": "2026-07-10",
   "schools": [
     {"name": "", "tier": "lock|conditional_target|merit_lottery|long_shot",
-     "status": "researching|visiting|applying|applied|admitted|denied|committed|dropped",
+     "status": "researching|visiting|applying|applied|admitted|denied|waitlisted|committed|dropped",
      "coa": 0, "merit_rate": 0.0, "avg_merit": 0, "est_price": 0,
      "npc_run": false, "npc_estimate": null,
-     "lat": null, "lng": null,
      "deadlines": {"merit_priority": "", "ea": "", "rd": ""},
      "next_action": "", "notes": ""}
   ],
@@ -33,97 +35,26 @@ One JSON object in `<script type="application/json" id="tracker-state">`:
 ```
 
 Array order within a tier is the family's chosen order — preserve it.
-`status: "dropped"` means archived (the page shows it in a collapsed
-section with a restore button); never delete school rows.
+`status: "dropped"` means archived (the page shows a restore button); never
+delete school rows, and never remove journal entries.
 
-Always include `lat`/`lng` (approximate main-campus coordinates — you know
-them; no geocoding call needed) when adding a school: the live tracker page
-renders a map of the list, color-coded by money tier, once coordinates
-exist. Maintain them on Claude's side; families won't type coordinates.
+## Working on an existing tracker
 
-## The sync loop (how edits flow both ways)
+1. Read the published artifact first: the family may have edited it since you
+   last saw it. Their edits win for statuses, tiers, order, net price
+   results, to-dos and journal; your analysis wins for money fields you have
+   just re-run.
+2. Change the state, append a journal entry describing what you did and why
+   (credit yourself: "(Claude)"), set `updated`, and republish.
+3. Restate the top 3 next actions in chat.
 
-- **Family → Claude:** the page's **Copy for Claude** button exports the
-  full state JSON with a preamble asking Claude to merge and republish. When
-  a user pastes such an export, MERGE it: **the export wins** for
-  user-owned fields (status, tier, order, notes, todos, log, archived,
-  added schools); **your analysis wins** for data-owned fields (coa,
-  merit_rate, avg_merit, and est_price when you re-run the numbers). Then
-  bump `baseline_version`, set `updated`, append a journal entry describing
-  what you changed, and republish.
-- **Claude → family:** every republish is a new baseline. Always bump
-  `baseline_version` — the page uses it to detect that Claude shipped a
-  newer version than the viewer's stored edits and warns instead of
-  silently discarding either side.
+A new test score or budget can flip tiers: offer a full frontier re-run rather
+than editing numbers piecemeal.
 
-## Runtime differences (pick behavior by environment)
+## Sharing and extra views
 
-- **Live mode via the Counseled connector (preferred):** if a `counseled`
-  MCP connector is available in this environment, use its tools instead of
-  anything below: `list_trackers` → `get_tracker` → merge per the rules
-  above → `update_tracker` with a one-sentence `session_note`. The family's
-  page at counseled.app/tracker/?t=<id> updates live; the server enforces
-  the guardrails (no school deletion, journal append-only) and provenance.
-  Access management is not yours to do: when the family wants to add or
-  remove a member, point them to the tracker page → Edit → Family access —
-  a by-hand control, consistent with the rule that assistants never modify
-  access permissions.
-- **Freeform views — pick the surface by audience:** when the family wants
-  a view the tracker doesn't offer — comparison matrices, decision grids,
-  cost projections, essay boards, anything — build it.
-  (a) *Claude Artifact with live connector data* (preferred where your
-  environment publishes artifacts with the `mcp` capability): declare
-  `{"mcp": {"servers": [{"server": "Counseled", "tools": ["get_tracker"]}]}}`
-  and render from `watchTool("Counseled", "get_tracker", {tracker_id})` —
-  each viewer reads with their own credentials; never hardcode family data.
-  (b) *Counseled-hosted page* via `create_page` — appears as a tab next to
-  the Map for every family member, including those without any Claude
-  account. This is the right surface when non-Claude family must see it.
-  Sharing outside the family (read-only links, optional passphrase) is
-  human-only in the tracker's Family & sharing dialog — point, never do. Pages are body-content-only HTML,
-  everything inlined (the sandbox blocks ALL external network, iframes,
-  objects, and outbound forms; 400KB max). Never hardcode family data into
-  the page: it receives live tracker state read-only via
-  `Counseled.ready(state => render(state))` and re-renders with
-  `Counseled.onUpdate(state => render(state))`. Match the tracker's calm
-  aesthetic (system fonts, #1e5b4f accent on #f6f7f5) unless asked
-  otherwise, and journal what you built.
-- **Live mode via service account (maintainer fallback, Claude Code only):**
-  same Firestore documents through `scripts/sync_tracker.py` (pull → merge →
-  push). Append a journal entry crediting "Claude" on every push. Add family
-  members with `sync_tracker.py allow <id> --email <email>`.
-
-- **Claude Code artifacts** (claude.ai/code/artifact/…): static — the page
-  has NO storage; in-page edits are session-only and Copy-for-Claude is the
-  save. Keep the canonical state in a file too (suggest
-  `college-search/tracker.json` in a git repo) so the artifact can always be
-  rebuilt. Note: on Pro/Max plans these artifacts are visible only to the
-  publishing account — for multi-person family viewing, share the HTML file
-  or use the claude.ai path.
-- **claude.ai published artifacts**: support persistent storage (Pro+
-  plans, text, ≤20MB, only after publishing; deleted if unpublished). Wire
-  the template's `PERSIST.load/save` hooks to the artifact storage API
-  available in your runtime, using **shared** storage so parents and
-  student co-edit one list (a first-use consent dialog appears — tell the
-  family to expect it). Keep the embedded baseline current anyway: storage
-  can be lost, the baseline is the floor.
-
-## Rendering rules (already implemented in the template)
-
-- One calm, phone-first screen. Header: student, budget, updated, Edit +
-  Copy-for-Claude toolbar with an unsaved-changes indicator.
-- "Needs attention" strip: deadlines within 45 days, to-dos due within 7,
-  anything overdue. Merit-priority deadlines outrank admission deadlines.
-- Tier sections in order (locks → conditional targets → lotteries → long
-  shots); each school card: price bar vs the budget rule, sticker/merit
-  rate/avg award/est or NPC price, next action, nearest deadline, notes.
-- Edit mode adds per-card controls (reorder, tier/status selects, edit
-  dialog, add-todo, archive) and an Add-school dialog. To-dos and journal
-  accept new entries in both modes.
-
-## Session discipline
-
-When a conversation touches the college search: ingest any pasted export →
-merge → re-run affected analysis (a new test score can flip tiers — offer
-the full frontier re-run, don't just edit numbers) → append to the journal
-→ republish → restate the top 3 next actions in chat.
+Sharing is done by the family from the artifact's Share menu. Point them to
+it; you never change who can see or edit the page. When they want a different
+way to look at the list (cost vs. selectivity, a decision grid, a timeline),
+build it as a separate artifact or add a section to this one, rendering from
+the same state.

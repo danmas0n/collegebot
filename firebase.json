@@ -1,33 +1,12 @@
 {
   "hosting": {
-    "public": "site",
+    "public": "site-farewell",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
-      {
-        "source": "/s/**",
-        "run": {
-          "serviceId": "counseled-mcp",
-          "region": "us-central1"
-        }
-      },
-      {
-        "source": "/join",
-        "run": {
-          "serviceId": "counseled-mcp",
-          "region": "us-central1"
-        }
-      },
-      {
-        "source": "/join/**",
-        "run": {
-          "serviceId": "counseled-mcp",
-          "region": "us-central1"
-        }
-      },
       {
         "source": "**",
         "destination": "/index.html"

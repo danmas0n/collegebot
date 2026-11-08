@@ -55,3 +55,6 @@ update-backend-env-prod.sh
 
 # Family tracker seed data (personal — lives in Firestore + GCS, not git)
 scripts/seed-tracker-state.json
+
+# Personal data exported at decommission (also in gs://counseled-cds-archive)
+decommission-backup/

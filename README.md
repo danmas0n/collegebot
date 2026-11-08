@@ -1,5 +1,27 @@
 # Counseled
 
+> **Status: decommissioned 2026-11-08.** The hosted service (counseled.app,
+> the `mcp.counseled.app` connector, Firestore data) has been shut down and the
+> domain allowed to lapse: Claude's self-saving artifacts now cover the live
+> tracker. What remains useful and maintained: the **dataset** and the two
+> **skills** in `skills/`, which work standalone (the tracker is now a
+> self-saving Claude artifact; see
+> `skills/college-money-finder/references/tracker-artifact.md`).
+>
+> **What was preserved**
+> - Firestore export (all collections): `gs://counseled-cds-archive/firestore-final-2026-11-08`
+>   (restore with `gcloud firestore import <that path>`)
+> - Raw CDS corpus + extraction derivatives: `gs://counseled-cds-archive/raw-cds-corpus/`, `derivatives/`
+> - All service code in this repo: `counseled-mcp/` (connector), `site/` (tracker
+>   + landing page), last active Firestore rules in commit `cfbfa2f`
+>
+> **To resurrect:** register a domain; point `firebase.json` hosting back at
+> `site/` (with the `/join` and `/s/**` rewrites from `cfbfa2f`); restore the
+> rules from `cfbfa2f`; import the Firestore export; `gcloud run deploy
+> counseled-mcp --source counseled-mcp`; map the domain; add it to Firebase
+> Auth authorized domains and a new referrer-restricted browser API key; new
+> service-account key and API keys (all old ones were revoked).
+
 Helps families find colleges that are **financially realistic** — especially
 the "hidden fit" schools that award substantial merit aid to families who
 won't qualify for need-based aid. Built around one insight: Section H2A of
